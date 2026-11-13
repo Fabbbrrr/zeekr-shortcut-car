@@ -456,6 +456,15 @@
             android:title="@string/dev_permissions_title"
             android:summary="@string/dev_permissions_summary" />
 
+        <!--
+          测试自己的构建用：打开就从自己的 fork 取更新（UpdateSource）。默认关，锁上开发者选项后按关算。
+          这一行和 update/UpdateSource.java 一起，是唯一为“测试版”留的口子，不进上游。
+        -->
+        <SwitchPreferenceCompat
+            android:key="pref_update_fork"
+            android:title="@string/dev_update_fork_title"
+            android:summary="@string/dev_update_fork_summary" />
+
         <!-- 车辆状态（试验性，名称旁带标签） -->
         <SwitchPreferenceCompat
             android:key="pref_vehicle_status"

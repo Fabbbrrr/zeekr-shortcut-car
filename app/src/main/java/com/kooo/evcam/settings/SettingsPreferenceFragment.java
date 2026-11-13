@@ -2108,6 +2108,13 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         bindSwitch("pref_vehicle_status", appConfig.isVehicleStatusEnabled(),
                 value -> appConfig.setVehicleStatusEnabled(value));
 
+        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）。上游不认这个开关
+        bindSwitch("pref_update_fork", appConfig.isUpdateFromFork(), value -> {
+            appConfig.setUpdateFromFork(value);
+            com.kooo.evcam.blackbox.BlackBox.noteImportant("开关变更: pref_update_fork → "
+                    + (value ? "自己的 fork" : "上游"));
+        });
+
         bindSwitch("pref_raw_frame_dump", appConfig.isRawFrameDumpEnabled(),
                 appConfig::setRawFrameDumpEnabled);
 
