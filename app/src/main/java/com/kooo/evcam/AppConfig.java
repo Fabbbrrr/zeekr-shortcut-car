@@ -130,6 +130,8 @@ public class AppConfig {
     private static final String KEY_LICENSE_PLATE = "license_plate";  // 车牌号（可选）
     private static final String KEY_LICENSE_PLATE_ENABLED = "license_plate_enabled";
     // 停车警报（Telegram）：开关、机器人令牌、会话号
+    // 测试用：更新从自己的 fork 取（UpdateSource；开发者选项里，默认关，不进上游）
+    private static final String KEY_UPDATE_FORK = "update_from_fork";
     private static final String KEY_ALERTS_ENABLED = "alerts_enabled";
     private static final String KEY_ALERTS_TELEGRAM_TOKEN = "alerts_telegram_token";
     private static final String KEY_ALERTS_TELEGRAM_CHAT = "alerts_telegram_chat";
@@ -724,6 +726,7 @@ public class AppConfig {
         java.util.Set<String> keys = new java.util.HashSet<>(java.util.Arrays.asList(
                 SettingsRegistry.RECORDING_MODE.key,  // 录制模式 → 自动
                 KEY_FORCE_H264_ENCODING,              // 强制 H.264 → 关，各路按自己配置里的编码
+                KEY_UPDATE_FORK,                      // 更新从自己的 fork 取 → 关（测试用）
                 KEY_SCREEN_OFF_RECORDING,             // 熄屏录制 → 关（2026-11-02 停用，读值固定为关；这道门留着等恢复）
                 KEY_SCREEN_OFF_WAKE_MINUTES,          // 熄屏录制的最长时长 → 默认（熄屏录制关着，用不到）
                 KEY_IMAGE_ADJUST_ENABLED,             // 画面调节 → 关
@@ -2145,6 +2148,22 @@ public class AppConfig {
      */
     public void setAlertsCommandOffset(long offset) {
         prefs.edit().putLong(KEY_ALERTS_COMMAND_OFFSET, Math.max(0L, offset)).commit();
+    }
+
+    /**
+     * 「检查更新」去自己的 fork，而不是上游（{@link com.kooo.evcam.update.UpdateSource}）。
+     *
+     * <p>测试用，开发者选项里，默认关。存着的值只在开发者选项解锁时才算数
+     * （{@link #DEVELOPER_KEYS}）—— 锁上之后就回到上游，免得把一台日常用的车
+     * 一直挂在一个人的 fork 上。</p>
+     */
+    public boolean isUpdateFromFork() {
+        return prefs.getBoolean(KEY_UPDATE_FORK, false);
+    }
+
+    public void setUpdateFromFork(boolean enabled) {
+        prefs.edit().putBoolean(KEY_UPDATE_FORK, enabled).apply();
+        AppLog.i(TAG, "更新来源设为 " + (enabled ? "自己的 fork" : "上游"));
     }
 
     /** 令牌和会话号都填了：可以试着发一条。 */

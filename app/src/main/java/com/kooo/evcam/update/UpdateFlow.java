@@ -64,6 +64,8 @@ public final class UpdateFlow {
         final boolean includeBeta = config.isUpdateBetaEnabled();
         // 「接收 Alpha 版」随「接收 Beta 版」：Beta 关着时它不算数
         final boolean includeAlpha = includeBeta && config.isUpdateAlphaEnabled();
+        // 测试自己的构建时才不是上游（UpdateSource；上游那份代码不认这个开关）
+        GithubReleases.useOwner(UpdateSource.owner(config));
         new Thread(() -> {
             GithubReleases.Release release = null;
             String error = null;

@@ -1057,6 +1057,8 @@
     <!-- 开发者选项分区 -->
     <string name="set_section_developer">开发者选项</string>
     <string name="dev_permissions_title">权限设置</string>
+    <string name="dev_update_fork_title">从自己的 fork 取更新</string>
+    <string name="dev_update_fork_summary">测试用：「检查更新」去问 Fabbbrrr/zeekr-shortcut-car 的 Release，而不是上游。默认关，关掉就回到上游</string>
     <string name="dev_permissions_summary">管理应用所需的各项权限</string>
     <string name="dev_perm_group_basic">基础权限</string>
     <string name="dev_perm_group_advanced">高级权限</string>
