@@ -55,6 +55,13 @@ public final class DeveloperMode {
         loaded = true;
     }
 
+    /**
+     * 不需密码地打开 —— <b>仅限 fork 的测试构建</b>，由 {@code ZeekrShortcutApp} 在进程起来时调。
+     */
+    public static void unlockForTestBuild(Context context) {
+        set(context, true);
+    }
+
     public static boolean isUnlocked() {
         return unlocked;
     }

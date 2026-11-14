@@ -1069,6 +1069,8 @@
 
     <!-- Bahagian pilihan pembangun -->
     <string name="set_section_developer">Pilihan pembangun</string>
+    <string name="dev_update_fork_title">Kemas kini dari fork saya</string>
+    <string name="dev_update_fork_summary">Untuk ujian: Semak kemas kini bertanya kepada Fabbbrrr/zeekr-shortcut-car, bukan hulu. Tutup secara lalai; matikan untuk kembali</string>
     <string name="dev_permissions_title">Kebenaran</string>
     <string name="dev_permissions_summary">Urus kebenaran yang diperlukan apl</string>
     <string name="dev_perm_group_basic">Kebenaran asas</string>

@@ -75,10 +75,13 @@ public final class GithubReleases {
 
     private static final String TAG = "GithubReleases";
 
-    private static final String OWNER = "dts88";
     private static final String REPO = "zeekr-shortcut-car";
-    private static final String LIST_URL =
-            "https://api.github.com/repos/" + OWNER + "/" + REPO + "/releases?per_page=20";
+
+    /**
+     * 问哪个所有者的 Releases。上游是 {@link UpdateSource#UPSTREAM_OWNER}；测试构建时
+     * 由 {@link UpdateFlow#start} 照设置改成自己 fork（{@link UpdateSource}）。
+     */
+    private static volatile String owner = UpdateSource.UPSTREAM_OWNER;
 
     /** GitHub 要求带 User-Agent，不带会直接 403。 */
     private static final String USER_AGENT = "ZeekrShortcut-UpdateCheck";
@@ -96,6 +99,15 @@ public final class GithubReleases {
     private static final int MAX_REDIRECTS = 5;
 
     private GithubReleases() {
+    }
+
+    /** 这次去问哪个仓库。空值一律回到上游 —— 设置读不到也不该把更新检查弄坏。 */
+    static void useOwner(String value) {
+        owner = value == null || value.trim().isEmpty() ? UpdateSource.UPSTREAM_OWNER : value.trim();
+    }
+
+    private static String listUrl() {
+        return "https://api.github.com/repos/" + owner + "/" + REPO + "/releases?per_page=20";
     }
 
     /** 一个可安装的版本。 */
@@ -152,7 +164,7 @@ public final class GithubReleases {
      */
     public static Release fetchLatest(boolean includeBeta, boolean includeAlpha, String currentVersion)
             throws IOException {
-        String body = getText(LIST_URL);
+        String body = getText(listUrl());
         Release best = null;
         List<Release> newer = new ArrayList<>();
         try {
