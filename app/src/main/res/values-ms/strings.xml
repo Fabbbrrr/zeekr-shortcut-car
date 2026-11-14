@@ -56,6 +56,13 @@
     <string name="alert_headline_screen">Skrin menyala semasa letak kereta</string>
     <string name="alert_headline_door">Pintu dibuka semasa letak kereta</string>
     <string name="alert_headline_test">Ujian</string>
+    <string name="alert_headline_request">Gambar diambil atas permintaan</string>
+        <string name="alert_cmd_no_sentry">Mod Sentri mati, jadi kepala unit akan tidur dan tiada gambar boleh diambil</string>
+    <string name="alert_cmd_not_parked">Kereta tidak diletakkan, jadi tiada gambar diambil</string>
+    <string name="alert_cmd_too_soon">Tunggu %1$d saat sebelum minta lagi</string>
+    <string name="alert_status_gear">Gear: %1$s</string>
+    <string name="set_alerts_commands_title">Jawab arahan di Telegram</string>
+    <string name="set_alerts_commands_summary">Hantar pic kepada bot untuk gambar, status untuk satu baris. Dijawab hanya semasa Mod Sentri hidup, kerana ketika itu kepala unit kekal jaga, dan hanya untuk sembang yang anda tetapkan</string>
     <string name="alert_sentry_on">Mod Sentri: hidup</string>
     <string name="alert_sentry_armed">Mod Sentri: berjaga (berkunci)</string>
     <string name="alert_sentry_off">Mod Sentri: mati</string>

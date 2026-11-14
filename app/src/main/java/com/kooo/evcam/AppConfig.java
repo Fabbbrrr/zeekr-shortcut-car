@@ -138,6 +138,8 @@ public class AppConfig {
     private static final String KEY_ALERTS_LAYOUT = "alerts_layout";       // 一张四宫格 / 每路一张
     private static final String KEY_ALERTS_CAMERAS = "alerts_cameras";     // 分开发时要哪几路（"0,1,2,3"）
     private static final String KEY_ALERTS_STRAIGHTEN = "alerts_straighten";  // 发之前掰直
+    private static final String KEY_ALERTS_COMMANDS = "alerts_commands";   // 回应 Telegram 里的命令
+    private static final String KEY_ALERTS_COMMAND_OFFSET = "alerts_command_offset";  // 轮询到哪一条（运行状态）
 
     // 亮度/降噪调节配置
     private static final String KEY_IMAGE_ADJUST_ENABLED = "image_adjust_enabled";  // 是否启用亮度/降噪调节
@@ -776,7 +778,8 @@ public class AppConfig {
                 KEY_FRONT_CABIN_IN_USE,
                 KEY_LAST_DETECTED_SD_PATH,
                 KEY_REARVIEW_GUIDE_SEEN,
-                KEY_PHOTO_VIA_JPEG_RESET)));
+                KEY_PHOTO_VIA_JPEG_RESET,
+                KEY_ALERTS_COMMAND_OFFSET)));
     }
 
     /**
@@ -2130,6 +2133,30 @@ public class AppConfig {
 
     public void setAlertsStraighten(boolean enabled) {
         prefs.edit().putBoolean(KEY_ALERTS_STRAIGHTEN, enabled).apply();
+    }
+
+    /**
+     * 回应 Telegram 里发来的命令（{@code pic}、{@code status}）。默认关。
+     *
+     * <p>开着的时候车会定期去问一次「有人找我吗」—— 长轮询，25 秒一次，车一直是客户端。
+     * 车机睡着时不问（进程本来就没了），所以那条命令要等车醒过来才有回音。</p>
+     */
+    public boolean isAlertsCommands() {
+        return prefs.getBoolean(KEY_ALERTS_COMMANDS, false);
+    }
+
+    public void setAlertsCommands(boolean enabled) {
+        prefs.edit().putBoolean(KEY_ALERTS_COMMANDS, enabled).apply();
+        AppLog.i(TAG, "停车警报命令回应设为 " + (enabled ? "开" : "关"));
+    }
+
+    /** 已经处理到哪一条更新：重启之后不能把上一条命令再执行一次。 */
+    public long getAlertsCommandOffset() {
+        return prefs.getLong(KEY_ALERTS_COMMAND_OFFSET, 0L);
+    }
+
+    public void setAlertsCommandOffset(long offset) {
+        prefs.edit().putLong(KEY_ALERTS_COMMAND_OFFSET, Math.max(0L, offset)).apply();
     }
 
     /** 令牌和会话号都填了：可以试着发一条。 */

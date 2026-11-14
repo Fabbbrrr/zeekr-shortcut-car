@@ -110,6 +110,12 @@ public final class SentryAlerts implements Telemetry.Listener {
     private Boolean lastLamps;
     private Boolean lastScreenOn;
     private long failureNotifiedAt;
+    /** 人从 Telegram 要照片时的频率上限（和警报那一套分开）。 */
+    private final RequestPolicy requests = new RequestPolicy();
+    /** 去问「有人找我吗」的那条线程；关着时是 null。 */
+    private TelegramPoller poller;
+    /** 上一次看到的「哨兵模式开着」：变了就重看一次要不要轮询。 */
+    private boolean pollerOn;
 
     private SentryAlerts(Context context) {
         this.app = context.getApplicationContext();
@@ -157,6 +163,7 @@ public final class SentryAlerts implements Telemetry.Listener {
             seedEdges(Readings.empty());
             BlackBox.note("停车警报：不再看车辆信号");
         }
+        syncPoller();
     }
 
     /** 设置里刚改过令牌 / 会话号：判断要重算，但没必要重挂监听。 */
@@ -169,6 +176,100 @@ public final class SentryAlerts implements Telemetry.Listener {
         } else if (configured && !watching) {
             refresh();
         }
+        syncPoller();
+    }
+
+    /**
+     * 照设置开或关那条轮询线程。
+     *
+     * <p>四件事都成立才问：开着警报、令牌与会话号都填了、允许回应命令、<b>哨兵模式开着</b>。
+     * 最后一条不是可有可无的：哨兵模式开着时车机一直醒着（平台笔记 §3.6），这条线程才有意义；
+     * 哨兵关掉之后车机会在几分钟内下电、进程被结束，那时既问不到也没有照片可拍 ——
+     * 与其留一条必然要死的线程，不如当场停掉。</p>
+     */
+    private void syncPoller() {
+        boolean want = config.isAlertsEnabled() && config.hasAlertsTelegramConfig()
+                && config.isAlertsCommands() && sentryOn();
+        if (want == (poller != null)) {
+            return;
+        }
+        if (want) {
+            poller = new TelegramPoller(config, new TelegramPoller.Handler() {
+                @Override
+                public void onPicture(int lane) {
+                    requestPicture(lane);
+                }
+
+                @Override
+                public void onStatus() {
+                    requestStatus();
+                }
+            });
+            poller.start();
+        } else {
+            poller.stop();
+            poller = null;
+        }
+    }
+
+    /**
+     * 车主在 Telegram 里要一张照片。
+     *
+     * <p>停着才拍：车在开的时候拍照，拍的是一张他现在没法看的图，还可能和录像抢相机。
+     * 频率由 {@link RequestPolicy} 管（30 秒一张、一小时 6 张）。</p>
+     */
+    private void requestPicture(int lane) {
+        String token = config.getAlertsTelegramToken();
+        String chatId = config.getAlertsTelegramChatId();
+        if (!TelegramRequest.looksLikeToken(token) || !TelegramRequest.looksLikeChatId(chatId)) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        VehicleState state = Telemetry.get().latest();
+        if (!sentryOn()) {
+            // 哨兵关掉之后车机就要睡了：拍不了，也别假装拍
+            deliverText(token, chatId, app.getString(R.string.alert_cmd_no_sentry));
+            return;
+        }
+        if (state == null || !"P".equals(state.gear)) {
+            deliverText(token, chatId, app.getString(R.string.alert_cmd_not_parked));
+            return;
+        }
+        if (!requests.allows(now)) {
+            long wait = Math.max(1, requests.cooldownLeftMs(now) / 1000);
+            deliverText(token, chatId, app.getString(R.string.alert_cmd_too_soon, wait));
+            return;
+        }
+        requests.noteSent(now);
+        BlackBox.note("停车警报：车主在 Telegram 里要了一张照片"
+                + (lane == TelegramCommand.ANY_LANE ? "" : "（第 " + lane + " 路）"));
+        String caption = TelegramRequest.caption(app.getString(R.string.alert_headline_request),
+                sentryLine(sentryValue()), clock.format(new Date()));
+        SnapshotTaker.take(app, new SnapshotTaker.Callback() {
+            @Override
+            public void onPicture(Bitmap grid) {
+                deliver(token, chatId, grid, caption, lane, null);
+            }
+
+            @Override
+            public void onFailed(String reason) {
+                deliverText(token, chatId, app.getString(R.string.set_alerts_failed, reason));
+            }
+        });
+    }
+
+    /** 车主问一句状态：回一句话，不拍。 */
+    private void requestStatus() {
+        String token = config.getAlertsTelegramToken();
+        String chatId = config.getAlertsTelegramChatId();
+        if (!TelegramRequest.looksLikeToken(token) || !TelegramRequest.looksLikeChatId(chatId)) {
+            return;
+        }
+        VehicleState state = Telemetry.get().latest();
+        String gear = state == null || state.gear == null ? "?" : state.gear;
+        String text = sentryLine(sentryValue()) + "\n"
+                + app.getString(R.string.alert_status_gear, gear);
+        deliverText(token, chatId, text);
     }
 
     // ------------------------------------------------------------------ 设置里的两个动作
@@ -197,7 +298,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         SnapshotTaker.take(app, new SnapshotTaker.Callback() {
             @Override
             public void onPicture(Bitmap grid) {
-                deliver(token, chatId, grid, caption, callback);
+                deliver(token, chatId, grid, caption, TelegramCommand.ANY_LANE, callback);
             }
 
             @Override
@@ -266,6 +367,11 @@ public final class SentryAlerts implements Telemetry.Listener {
         boolean armed = SentryFacts.armed(sentry);
         policy.setParked(parked);
         policy.setArmed(armed);
+        // 哨兵模式开 / 关是这条轮询线程的开关：车机醒着才问，睡了就不问
+        if (sentryOn() != pollerOn) {
+            pollerOn = sentryOn();
+            syncPoller();
+        }
 
         Boolean hazard = hazardOn(readings);
         boolean hazardRising = SentryFacts.rising(hazard, lastHazard);
@@ -373,7 +479,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         SnapshotTaker.take(app, new SnapshotTaker.Callback() {
             @Override
             public void onPicture(Bitmap grid) {
-                deliver(token, chatId, grid, caption, null);
+                deliver(token, chatId, grid, caption, TelegramCommand.ANY_LANE, null);
             }
 
             @Override
@@ -393,14 +499,18 @@ public final class SentryAlerts implements Telemetry.Listener {
      * 这里只负责把字节一张张按顺序发出去（一次一条，别撞上 Telegram 的频率限制），
      * 然后是回收位图 —— 这条路一晚上可能走好几次，不能漏内存。</p>
      */
-    private void deliver(String token, String chatId, Bitmap grid, String caption, Callback callback) {
+    private void deliver(String token, String chatId, Bitmap grid, String caption, int onlyLane,
+                         Callback callback) {
         Bitmap picture = AlertPicture.straighten(grid, config.isAlertsStraighten(),
                 fisheyeFov(), fisheyeProjection());
         List<byte[]> photos = new ArrayList<>();
         List<String> captions = new ArrayList<>();
         try {
-            if (AlertPicture.layout(config.getAlertsLayout()) == AlertPicture.Layout.SEPARATE) {
-                for (int lane : AlertPicture.lanes(config.getAlertsCameras())) {
+            int[] lanes = onlyLane >= 0 ? new int[] {onlyLane}
+                    : AlertPicture.layout(config.getAlertsLayout()) == AlertPicture.Layout.SEPARATE
+                            ? AlertPicture.lanes(config.getAlertsCameras()) : null;
+            if (lanes != null) {
+                for (int lane : lanes) {
                     Bitmap cell = AlertPicture.quadrant(picture, lane);
                     if (cell == null) {
                         continue;
@@ -486,6 +596,17 @@ public final class SentryAlerts implements Telemetry.Listener {
     private Integer sentryValue() {
         VehicleState state = Telemetry.get().latest();
         return state == null ? null : state.sentry;
+    }
+
+    /**
+     * 哨兵模式开着没有（0 关、1 开、2 布防）。
+     *
+     * <p>命令这一路只在开的时候跑：哨兵模式是车机保持醒着的唯一原因（平台笔记 §3.6）。
+     * 关掉之后车机会在几分钟内下电、进程被结束，留着一条必然要死的轮询线程没有意义。</p>
+     */
+    private boolean sentryOn() {
+        Integer sentry = sentryValue();
+        return sentry != null && sentry != 0;
     }
 
     /** 配图里那一行哨兵模式状态：布防 / 开 / 关。 */

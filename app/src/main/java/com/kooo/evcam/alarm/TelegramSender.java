@@ -234,6 +234,26 @@ public final class TelegramSender {
         }
     }
 
+    /**
+     * 长轮询：把 {@code offset} 之后的命令取回来，最多等 {@code timeoutSeconds} 秒。
+     *
+     * <p>长轮询是这套「反向命令」能穿过运营商 NAT 的全部原因：请求是车发出去的，
+     * 车主的消息塞在这条请求的回复里回来，车永远是客户端。</p>
+     *
+     * @param offset 已经处理到哪一条（{@code 0} 表示不要历史，只等新的）
+     */
+    static org.json.JSONObject getUpdates(String token, long offset, int timeoutSeconds)
+            throws ChatListException {
+        int wait = Math.max(1, Math.min(25, timeoutSeconds));
+        StringBuilder url = new StringBuilder(TelegramRequest.updatesUrl(token))
+                .append("?timeout=").append(wait)
+                .append("&allowed_updates=%5B%22message%22%5D");
+        if (offset > 0) {
+            url.append("&offset=").append(offset);
+        }
+        return get(url.toString());
+    }
+
     /** 问机器人叫什么。名字对得上，说明令牌没错。 */
     public static String botName(String token) throws ChatListException {
         if (!TelegramRequest.looksLikeToken(token)) {
@@ -294,7 +314,7 @@ public final class TelegramSender {
         return chats;
     }
 
-    private static JSONObject get(String url) throws ChatListException {
+    static JSONObject get(String url) throws ChatListException {
         HttpURLConnection connection = null;
         try {
             connection = open(url);

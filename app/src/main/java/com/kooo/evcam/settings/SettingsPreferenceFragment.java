@@ -940,6 +940,20 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             });
         }
 
+        SwitchPreferenceCompat commands = findPreference("pref_alerts_commands");
+        if (commands != null) {
+            commands.setPersistent(false);
+            commands.setChecked(appConfig.isAlertsCommands());
+            commands.setOnPreferenceChangeListener((preference, newValue) -> {
+                boolean answered = Boolean.TRUE.equals(newValue);
+                appConfig.setAlertsCommands(answered);
+                com.kooo.evcam.blackbox.BlackBox.noteImportant("开关变更: pref_alerts_commands → "
+                        + (answered ? "开" : "关"));
+                com.kooo.evcam.alarm.SentryAlerts.get(requireContext()).refreshConfig();
+                return true;
+            });
+        }
+
         Preference test = findPreference("pref_alerts_test");
         if (test != null) {
             test.setPersistent(false);

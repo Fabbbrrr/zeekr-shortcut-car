@@ -56,6 +56,13 @@
     <string name="alert_headline_screen">Screen came on while parked</string>
     <string name="alert_headline_door">A door opened while parked</string>
     <string name="alert_headline_test">Test</string>
+    <string name="alert_headline_request">Picture taken on request</string>
+        <string name="alert_cmd_no_sentry">Sentry Mode is off, so the head unit is going to sleep and nothing can be taken</string>
+    <string name="alert_cmd_not_parked">The car is not parked, so nothing was taken</string>
+    <string name="alert_cmd_too_soon">Wait %1$d s before asking again</string>
+    <string name="alert_status_gear">Gear: %1$s</string>
+    <string name="set_alerts_commands_title">Answer commands on Telegram</string>
+    <string name="set_alerts_commands_summary">Send the bot pic for a picture, status for one line. Answered only while Sentry Mode is on, because that is when the head unit stays awake, and only for the chat you configured</string>
     <string name="alert_sentry_on">Sentry Mode: on</string>
     <string name="alert_sentry_armed">Sentry Mode: armed (locked)</string>
     <string name="alert_sentry_off">Sentry Mode: off</string>
