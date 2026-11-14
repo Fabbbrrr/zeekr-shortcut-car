@@ -55,6 +55,16 @@ public final class DeveloperMode {
         loaded = true;
     }
 
+    /**
+     * 不需密码地打开 —— <b>仅限 fork 的测试构建</b>，由 {@code ZeekrShortcutApp} 在进程起来时调。
+     *
+     * <p>上游那扇门（关于页点「安全须知」输 6651）和这个并存：这里只是开着默认值，
+     * 车主仍然可以用原来那个手势把它再锁上（下一次进程起来又会开着）。</p>
+     */
+    public static void unlockForTestBuild(Context context) {
+        set(context, true);
+    }
+
     public static boolean isUnlocked() {
         return unlocked;
     }
