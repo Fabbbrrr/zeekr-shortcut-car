@@ -118,6 +118,21 @@
                 android:title="@string/set_alerts_find_title"
                 android:summary="@string/set_alerts_find_summary" />
 
+            <ListPreference
+                android:key="pref_alerts_picture"
+                android:title="@string/set_alerts_picture_title"
+                android:summary="%s" />
+
+            <Preference
+                android:key="pref_alerts_cameras"
+                android:title="@string/set_alerts_cameras_title"
+                android:summary="@string/set_alerts_cameras_summary" />
+
+            <SwitchPreferenceCompat
+                android:key="pref_alerts_straighten"
+                android:title="@string/set_alerts_straighten_title"
+                android:summary="@string/set_alerts_straighten_summary" />
+
             <Preference
                 android:key="pref_alerts_test"
                 android:title="@string/set_alerts_test_title"

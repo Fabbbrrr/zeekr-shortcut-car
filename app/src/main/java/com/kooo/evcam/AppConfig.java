@@ -135,6 +135,9 @@ public class AppConfig {
     private static final String KEY_ALERTS_ENABLED = "alerts_enabled";
     private static final String KEY_ALERTS_TELEGRAM_TOKEN = "alerts_telegram_token";
     private static final String KEY_ALERTS_TELEGRAM_CHAT = "alerts_telegram_chat";
+    private static final String KEY_ALERTS_LAYOUT = "alerts_layout";       // 一张四宫格 / 每路一张
+    private static final String KEY_ALERTS_CAMERAS = "alerts_cameras";     // 分开发时要哪几路（"0,1,2,3"）
+    private static final String KEY_ALERTS_STRAIGHTEN = "alerts_straighten";  // 发之前掰直
 
     // 亮度/降噪调节配置
     private static final String KEY_IMAGE_ADJUST_ENABLED = "image_adjust_enabled";  // 是否启用亮度/降噪调节
@@ -2050,7 +2053,20 @@ public class AppConfig {
     }
 
     public void setAlertsTelegramToken(String value) {
-        String clean = value == null ? "" : value.trim();
+        // 粘贴最容易带进来的东西：前后的空白、不断行空格、零宽字符、弯引号、从网页复制来的换行。
+        // 真令牌只有数字、冒号、字母、下划线、横线，所以别的字符一律丢掉 —— 存进去的必须就是能用的那一串。
+        StringBuilder kept = new StringBuilder();
+        if (value != null) {
+            for (int i = 0; i < value.length(); i++) {
+                char c = value.charAt(i);
+                boolean ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                        || c == ':' || c == '_' || c == '-';
+                if (ok) {
+                    kept.append(c);
+                }
+            }
+        }
+        String clean = kept.toString();
         secrets().edit().putString(KEY_ALERTS_TELEGRAM_TOKEN, clean).apply();
         // 只记“填了还是清空了”：令牌本身绝不落进日志。
         AppLog.i(TAG, "Telegram 令牌" + (clean.isEmpty() ? "已清空" : "已填写"));
@@ -2082,6 +2098,38 @@ public class AppConfig {
     public void setUpdateFromFork(boolean enabled) {
         prefs.edit().putBoolean(KEY_UPDATE_FORK, enabled).apply();
         AppLog.i(TAG, "更新来源设为 " + (enabled ? "自己的 fork" : "上游"));
+    }
+
+    /** 发一张 2×2，还是勾选的那几路各一张（{@link com.kooo.evcam.alarm.AlertPicture}）。 */
+    public String getAlertsLayout() {
+        return prefs.getString(KEY_ALERTS_LAYOUT, com.kooo.evcam.alarm.AlertPicture.layoutValue(
+                com.kooo.evcam.alarm.AlertPicture.Layout.GRID));
+    }
+
+    public void setAlertsLayout(String value) {
+        String clean = com.kooo.evcam.alarm.AlertPicture.layoutValue(
+                com.kooo.evcam.alarm.AlertPicture.layout(value));
+        prefs.edit().putString(KEY_ALERTS_LAYOUT, clean).apply();
+    }
+
+    /** 分开发时要哪几路。空表示全都要。 */
+    public String getAlertsCameras() {
+        return prefs.getString(KEY_ALERTS_CAMERAS, "0,1,2,3");
+    }
+
+    public void setAlertsCameras(String value) {
+        prefs.edit().putString(KEY_ALERTS_CAMERAS,
+                com.kooo.evcam.alarm.AlertPicture.lanesValue(
+                        com.kooo.evcam.alarm.AlertPicture.lanes(value))).apply();
+    }
+
+    /** 发之前把鱼眼掰直（和回看界面同一个校正）。 */
+    public boolean isAlertsStraighten() {
+        return prefs.getBoolean(KEY_ALERTS_STRAIGHTEN, false);
+    }
+
+    public void setAlertsStraighten(boolean enabled) {
+        prefs.edit().putBoolean(KEY_ALERTS_STRAIGHTEN, enabled).apply();
     }
 
     /** 令牌和会话号都填了：可以试着发一条。 */
