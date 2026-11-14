@@ -45,18 +45,29 @@ public final class TriggerSet {
     public static final String ALL_ON = MOTION + "," + HAZARD + "," + FLASH + ","
             + DOORS + "," + LAMPS + "," + SCREEN;
 
+    /**
+     * 车主一项都没选时存的记号。
+     *
+     * <p>不能存空串：空串留给「存坏了」那道安全网（{@link #parse}），会被读回全开。
+     * 没有这个记号，「什么都不要报」这个选择就写不进去。</p>
+     */
+    public static final String NONE = "none";
+
     private final Set<String> enabled;
 
     private TriggerSet(Set<String> enabled) {
         this.enabled = enabled;
     }
 
-    /** 读一串逗号分开的名字；空串或全是认不出的名字时当默认全开。 */
+    /** 读一串逗号分开的名字；{@link #NONE} 是按车主选的「都不报」；空串或全是认不出的名字时当默认全开。 */
     public static TriggerSet parse(String csv) {
         Set<String> kept = new LinkedHashSet<>();
         if (csv != null) {
             for (String part : csv.split(",")) {
                 String name = part.trim().toLowerCase(java.util.Locale.US);
+                if (NONE.equals(name)) {
+                    return new TriggerSet(new LinkedHashSet<>());
+                }
                 for (String known : ALL) {
                     if (known.equals(name)) {
                         kept.add(known);
@@ -72,7 +83,7 @@ public final class TriggerSet {
         return new TriggerSet(kept);
     }
 
-    /** 把选中的名字写回字符串（按 {@link #ALL} 的顺序）。一个都没选时返回空串。 */
+    /** 把选中的名字写回字符串（按 {@link #ALL} 的顺序）。一个都没选时返回 {@link #NONE}。 */
     public static String value(Set<String> names) {
         StringBuilder out = new StringBuilder();
         for (String known : ALL) {
@@ -84,7 +95,7 @@ public final class TriggerSet {
             }
             out.append(known);
         }
-        return out.toString();
+        return out.length() == 0 ? NONE : out.toString();
     }
 
     public boolean has(String name) {

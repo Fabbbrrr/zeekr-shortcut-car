@@ -62,9 +62,21 @@ public class TriggerSetTest {
     }
 
     @Test
-    public void anEmptySelectionWritesAnEmptyString() {
-        assertEquals("", TriggerSet.value(new LinkedHashSet<>()));
-        assertEquals("", TriggerSet.value(null));
+    public void anEmptySelectionIsStoredAsAMarkerNotAnEmptyString() {
+        // 空串是「存坏了」的安全网，会被读回全开 —— 所以车主真的一个都没选时要存记号。
+        assertEquals(TriggerSet.NONE, TriggerSet.value(new LinkedHashSet<>()));
+        assertEquals(TriggerSet.NONE, TriggerSet.value(null));
+        assertEquals(0, TriggerSet.parse(TriggerSet.NONE).size());
+    }
+
+    @Test
+    public void choosingNothingStaysNothingAfterAStoreAndReload() {
+        // 全不勾 → 存 → 重开界面：还是全不勾，不能跳回全开。
+        TriggerSet back = TriggerSet.parse(TriggerSet.value(new LinkedHashSet<String>()));
+        assertEquals(0, back.size());
+        for (String name : TriggerSet.ALL) {
+            assertFalse(name, back.has(name));
+        }
     }
 
     @Test
