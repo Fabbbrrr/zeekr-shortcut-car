@@ -64,6 +64,8 @@ public class DeveloperSettingsTest {
         ROWS.put("pref_camera_mapping", Arrays.asList("zeekr_camera_override_front",
                 "zeekr_camera_override_back", "zeekr_camera_override_left"));
         ROWS.put("pref_permissions", NONE);
+        // 停车警报调试（开发者选项）：只是一个入口，不存设置
+        ROWS.put("pref_alerts_debug", NONE);
         // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）
         ROWS.put("pref_update_fork", Arrays.asList("update_from_fork"));
         ROWS.put("pref_raw_frame_dump", Arrays.asList("raw_frame_dump"));
