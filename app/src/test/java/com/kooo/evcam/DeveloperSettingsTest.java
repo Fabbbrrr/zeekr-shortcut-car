@@ -64,6 +64,8 @@ public class DeveloperSettingsTest {
         ROWS.put("pref_camera_mapping", Arrays.asList("zeekr_camera_override_front",
                 "zeekr_camera_override_back", "zeekr_camera_override_left"));
         ROWS.put("pref_permissions", NONE);
+        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）
+        ROWS.put("pref_update_fork", Arrays.asList("update_from_fork"));
         ROWS.put("pref_raw_frame_dump", Arrays.asList("raw_frame_dump"));
         ROWS.put("pref_gpu_fisheye_preview", Arrays.asList("gpu_fisheye_preview"));
         ROWS.put("pref_gpu_fisheye_video", Arrays.asList("gpu_fisheye_video"));
