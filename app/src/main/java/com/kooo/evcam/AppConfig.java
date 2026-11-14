@@ -134,6 +134,7 @@ public class AppConfig {
     // 测试用：更新从自己的 fork 取（UpdateSource；开发者选项里，默认关，不进上游）
     private static final String KEY_UPDATE_FORK = "update_from_fork";
     private static final String KEY_ALERTS_ENABLED = "alerts_enabled";
+    private static final String KEY_ALERTS_TRIGGERS = "alerts_triggers";  // 哪些事情算「有事」
     private static final String KEY_ALERTS_TELEGRAM_TOKEN = "alerts_telegram_token";
     private static final String KEY_ALERTS_TELEGRAM_CHAT = "alerts_telegram_chat";
     private static final String KEY_ALERTS_OWNER_ID = "alerts_owner_id";  // 谁能发命令（私聊里就是会话号）
@@ -2205,6 +2206,32 @@ public class AppConfig {
     public void setUpdateFromFork(boolean enabled) {
         prefs.edit().putBoolean(KEY_UPDATE_FORK, enabled).apply();
         AppLog.i(TAG, "更新来源设为 " + (enabled ? "自己的 fork" : "上游"));
+    }
+
+    /**
+     * 哪些事情算「有事」（{@link com.kooo.evcam.alarm.TriggerSet}）。
+     *
+     * <p>存的是一串逗号分开的名字；空串按全开算。每台车上能看到的信号不一样，
+     * 能不能看到那一项由车主自己选。</p>
+     */
+    public String getAlertsTriggers() {
+        return prefs.getString(KEY_ALERTS_TRIGGERS, com.kooo.evcam.alarm.TriggerSet.DEFAULT);
+    }
+
+    public void setAlertsTriggers(String value) {
+        String clean = com.kooo.evcam.alarm.TriggerSet.value(
+                parseTriggers(com.kooo.evcam.alarm.TriggerSet.parse(value)));
+        prefs.edit().putString(KEY_ALERTS_TRIGGERS, clean).apply();
+    }
+
+    private static java.util.Set<String> parseTriggers(com.kooo.evcam.alarm.TriggerSet set) {
+        java.util.Set<String> names = new java.util.LinkedHashSet<>();
+        for (String name : com.kooo.evcam.alarm.TriggerSet.ALL) {
+            if (set.has(name)) {
+                names.add(name);
+            }
+        }
+        return names;
     }
 
     /** 令牌和会话号都填了：可以试着发一条。 */
