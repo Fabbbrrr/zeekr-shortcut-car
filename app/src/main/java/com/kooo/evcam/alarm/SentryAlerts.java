@@ -1009,7 +1009,7 @@ public final class SentryAlerts implements Telemetry.Listener {
                         cell.recycle();
                         if (jpeg != null && jpeg.length > 0) {
                             photos.add(jpeg);
-                            captions.add(CameraNames.ofLane(app, lane) + "'+bs+'n" + caption);
+                            captions.add(CameraNames.ofLane(app, lane) + "\n" + caption);
                         }
                     }
                 } else {
@@ -1173,7 +1173,7 @@ public final class SentryAlerts implements Telemetry.Listener {
                 BlackBox.note("alerts: no clip (ring holds too little video)");
                 return;
             }
-            String clipCaption = caption + "'+bs+'n"
+            String clipCaption = caption + "\n"
                     + app.getString(seconds == 5 ? R.string.opt_alerts_clip_5 : R.string.opt_alerts_clip_10);
             sender.execute(() -> {
                 TelegramSender.Result result = TelegramSender.sendVideo(token, chatId, file, clipCaption, markup);
