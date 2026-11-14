@@ -96,6 +96,7 @@ public final class SentryAlerts implements Telemetry.Listener {
     private final Context app;
     private final AppConfig config;
     private final AlertPolicy policy;
+    /** 只给 {@link #time()} 用；SimpleDateFormat 不是线程安全的，命令那一路在主线程之外调。 */
     private final SimpleDateFormat clock = new SimpleDateFormat("HH:mm", Locale.US);
 
     private boolean watching;
@@ -116,6 +117,13 @@ public final class SentryAlerts implements Telemetry.Listener {
     private TelegramPoller poller;
     /** 上一次看到的「哨兵模式开着」：变了就重看一次要不要轮询。 */
     private boolean pollerOn;
+
+    /** 现在几点（{@code HH:mm}）。加锁是因为警报在主线程、命令在轮询线程，而 SimpleDateFormat 不是线程安全的。 */
+    private String time() {
+        synchronized (clock) {
+            return clock.format(new Date());
+        }
+    }
 
     private SentryAlerts(Context context) {
         this.app = context.getApplicationContext();
@@ -219,6 +227,15 @@ public final class SentryAlerts implements Telemetry.Listener {
      * 频率由 {@link RequestPolicy} 管（30 秒一张、一小时 6 张）。</p>
      */
     private void requestPicture(int lane) {
+        try {
+            requestPictureInner(lane);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // 已经发过「处理命令时出错」了，这里只保证不把进程带走
+            BlackBox.noteImportant("停车警报：要照片时出错（" + e + "）");
+        }
+    }
+
+    private void requestPictureInner(int lane) {
         String token = config.getAlertsTelegramToken();
         String chatId = config.getAlertsTelegramChatId();
         if (!TelegramRequest.looksLikeToken(token) || !TelegramRequest.looksLikeChatId(chatId)) {
@@ -244,7 +261,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         BlackBox.note("停车警报：车主在 Telegram 里要了一张照片"
                 + (lane == TelegramCommand.ANY_LANE ? "" : "（第 " + lane + " 路）"));
         String caption = TelegramRequest.caption(app.getString(R.string.alert_headline_request),
-                sentryLine(sentryValue()), clock.format(new Date()));
+                sentryLine(sentryValue()), time());
         SnapshotTaker.take(app, new SnapshotTaker.Callback() {
             @Override
             public void onPicture(Bitmap grid) {
@@ -294,7 +311,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         String caption = TelegramRequest.caption(
                 app.getString(R.string.alert_headline_test),
                 sentryLine(sentryValue()),
-                clock.format(new Date()));
+                time());
         SnapshotTaker.take(app, new SnapshotTaker.Callback() {
             @Override
             public void onPicture(Bitmap grid) {
@@ -475,7 +492,7 @@ public final class SentryAlerts implements Telemetry.Listener {
             return;
         }
         String caption = TelegramRequest.caption(headline, sentryLine(sentryValue()),
-                clock.format(new Date()));
+                time());
         SnapshotTaker.take(app, new SnapshotTaker.Callback() {
             @Override
             public void onPicture(Bitmap grid) {

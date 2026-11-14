@@ -144,17 +144,25 @@ public final class TelegramPoller {
                 continue;
             }
             TelegramCommand command = TelegramCommand.parseText(message.optString("text", ""));
+            // 先把这一条记成「处理过了」再动手：命令半路把进程弄崩了，重启后也不会把同一张照片再发一遍。
             offset = Math.max(offset, updateId + 1);
-            switch (command.verb) {
-                case PICTURE:
-                    handler.onPicture(command.lane);
-                    break;
-                case STATUS:
-                    handler.onStatus();
-                    break;
-                default:
-                    // 不是命令：不回，免得把聊天变成回声
-                    break;
+            config.setAlertsCommandOffset(offset);
+            try {
+                switch (command.verb) {
+                    case PICTURE:
+                        handler.onPicture(command.lane);
+                        break;
+                    case STATUS:
+                        handler.onStatus();
+                        break;
+                    default:
+                        // 不是命令：不回，免得把聊天变成回声
+                        break;
+                }
+            } catch (RuntimeException | OutOfMemoryError e) {
+                // 一条命令出错不能把整辆车带走：记下来，线程接着问下一条。
+                AppLog.w(TAG, "command failed: " + TelegramRequest.redact(String.valueOf(e)));
+                BlackBox.noteImportant("停车警报：处理命令时出错（" + e + "）");
             }
         }
         config.setAlertsCommandOffset(offset);

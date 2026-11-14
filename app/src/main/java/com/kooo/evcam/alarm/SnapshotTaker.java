@@ -90,7 +90,20 @@ public final class SnapshotTaker {
             return;
         }
         MAIN.post(() -> {
-            CameraKeeper.get(app).takePhoto(new MultiCameraManager.PhotoCallback() {
+            com.kooo.evcam.camera.MultiCameraManager pipeline;
+            try {
+                pipeline = CameraKeeper.get(app).pipeline();
+            } catch (RuntimeException e) {
+                AppLog.w(TAG, "no camera pipeline: " + e);
+                callback.onFailed("cameras not ready");
+                return;
+            }
+            if (pipeline == null) {
+                // 熄屏停录、管线被放掉的时候就是这样：不是崩溃，是这会儿没有相机
+                callback.onFailed("cameras not ready");
+                return;
+            }
+            pipeline.takePhoto(new MultiCameraManager.PhotoCallback() {
                 @Override
                 public void onPhotoResult(int saved, int pressed, int expected) {
                     if (saved <= 0) {
