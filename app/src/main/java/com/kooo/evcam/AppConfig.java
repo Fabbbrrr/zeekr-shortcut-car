@@ -2246,6 +2246,8 @@ public class AppConfig {
     public void setUpdateFromFork(boolean enabled) {
         prefs.edit().putBoolean(KEY_UPDATE_FORK, enabled).apply();
         AppLog.i(TAG, "更新来源设为 " + (enabled ? "自己的 fork" : "上游"));
+    }
+
     /** 警报时发一段短视频吗：0 关，5 或 10 秒。 */
     public int getAlertsClipSeconds() {
         int value = prefs.getInt(KEY_ALERTS_CLIP_SECONDS, 0);
