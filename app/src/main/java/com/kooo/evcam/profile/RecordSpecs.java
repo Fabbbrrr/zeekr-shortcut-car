@@ -65,8 +65,16 @@ public final class RecordSpecs {
      * @param cameraKey 接线用的槽位名（front / back / left）
      */
     public static boolean storedAsGrid(Context context, String cameraKey) {
-        return CameraProfile.ROLE_COMPOSITE.equals(ProfileSizes.roleForCameraKey(cameraKey))
+        return layoutCanRepack(ProfileSizes.roleForCameraKey(cameraKey))
                 && forCameraKey(context, cameraKey).grid;
+    }
+
+    /**
+     * 这一路摆不摆得进 {@link LaneLayout} 的 2×2 —— {@link #storedAsGrid} 和
+     * {@link #anyGridEnabled} 认同一条规则：摆不进去的路，{@code grid} 只是默认值，问它等于白问。
+     */
+    private static boolean layoutCanRepack(String role) {
+        return CameraProfile.ROLE_COMPOSITE.equals(role);
     }
 
     /** 同上，按角色取。 */
@@ -163,6 +171,10 @@ public final class RecordSpecs {
      *
      * <p>重排要用 GL，只有 MediaCodec 那条录制路径插得上手 —— 这个问题问的是
      * 「这次录制能不能用 MediaRecorder」，所以只要有一路要重排就得走 MediaCodec。</p>
+     *
+     * <p>只数摆得进 2×2 的那一路（{@link #layoutCanRepack}），跟 {@link #storedAsGrid} 同一条规则：
+     * 座舱那几路的 {@code grid} 是没有意义的默认值，只看它会让一场只录座舱的录像
+     * 报上「开了四宫格」，把 MediaRecorder 的选择顶掉。</p>
      */
     public static boolean anyGridEnabled(Context context) {
         if (context == null) {
@@ -170,7 +182,8 @@ public final class RecordSpecs {
         }
         try {
             for (CameraProfile camera : effectiveProfile(context).cameras) {
-                if (camera.enabled && camera.record != null && camera.record.grid) {
+                if (camera.enabled && layoutCanRepack(camera.role)
+                        && camera.record != null && camera.record.grid) {
                     return true;
                 }
             }

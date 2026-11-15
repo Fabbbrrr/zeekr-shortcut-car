@@ -64,7 +64,7 @@ public final class StreamSpec {
     /** auto / h264 / hevc。只有录制流用得上。 */
     public String codec = "auto";
 
-    /** 分段时长（分钟）。只有录制流用得上；0 表示不分段。 */
+    /** 分段时长（分钟）。只有录制流用得上。0 或负数按 {@link RecordSpecs#DEFAULT_SEGMENT_MINUTES} 算，没有「不分段」这一档（见 {@link RecordSpecs#segmentMs}）。 */
     public int segmentMinutes;
 
     /**

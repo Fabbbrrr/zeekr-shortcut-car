@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <ul>
  *   <li><b>主线程</b>（{@link #update}）：设置或车辆信号（档位、驾驶模式、点火、车辆接口）一变就问一遍裁判 ——
- *       要不要快读（{@link Telemetry#acquireFast}：车速、油门、刹车深度 50 ms 一遍）、虚拟发动机转不转（起、停声音线程）。
+ *       要不要快读（{@link Telemetry#acquireFast}：车速、油门、刹车深度 20 ms 一遍）、虚拟发动机转不转（起、停声音线程）。
  *       只登记 / 注销、起 / 停线程，不碰声音。</li>
  *   <li><b>声音线程</b>（{@link Run}，THREAD_PRIORITY_URGENT_AUDIO）：每 {@link #BLOCK} 帧（48 kHz 下 5.3 ms）读一次快读和读数
  *       （都是不可变快照，不加锁）→ {@link DriveInputs} 算出油门变化率、加减速度 → {@link VirtualEngine} 推进一步 →
@@ -86,6 +86,8 @@ public final class DriveSound {
     private Run leaving;
     /** 上一个声音线程自己出错停下的时刻（elapsedRealtime）；0 = 没有。 */
     private long failedAtMs;
+    /** 这个失败窗口里已经排过的到点重跑（主线程管）：一个窗口只排一次。 */
+    private boolean retryScheduled;
 
     // ---- 设置（主线程、声音线程都会刷新，读的人拿到的总是完整的一项）
     private volatile boolean enabled;
@@ -178,15 +180,27 @@ public final class DriveSound {
         }
         if (run != null && (run.style != style || run.cabin != cabinView || !run.outputMode.equals(outputMode)
                 || (!run.exteriorRoute.equals(exteriorRoute) && !AppConfig.DRIVE_SOUND_OUTPUT_CABIN.equals(outputMode)))) {
-            // 换了声音风格、听感、播放喇叭或者（用着车外时）车外线路：这一台淡出，下面按新的重新开始
+            // 换了声音风格、听感、播放喇叭或者（用着车外时）车外线路：这一台淡出，收进 leaving（hurry() 还能叫它，它出错也报得上来）
+            if (leaving != null) {
+                // leaving 还占着：现在换就是三台一起活着（这一台、那一台、新的一台），这一轮不动，等那台退了下次再换
+                BlackBox.note("模拟声浪：换台推迟（上一台还在放）");
+                return;
+            }
             run.stop();
+            leaving = run;
             run = null;
         }
         if (why.open && run == null) {
             long now = SystemClock.elapsedRealtime();
             if (failedAtMs != 0L && now - failedAtMs < RETRY_AFTER_FAILURE_MS) {
+                // 门挡着也要有人到点再问一遍（停车安静时没有别的信号会叫醒 update()）：一个窗口只排一次
+                if (!retryScheduled) {
+                    retryScheduled = true;
+                    main.postDelayed(this::update, RETRY_AFTER_FAILURE_MS - (now - failedAtMs));
+                }
                 return;
             }
+            retryScheduled = false;
             if (leaving != null) {
                 // 刚切出去又切回来：上一台的熄火不放完了，很快淡掉
                 leaving.hurry();
@@ -765,13 +779,14 @@ public final class DriveSound {
                 }
                 if (now >= nextWatch) {
                     nextWatch = now + WATCH_MS;
-                    boolean grown = inside != null && inside.watch();
-                    grown |= outside != null && outside.watch();
+                    // watch() 说该报就报：没到顶每次欠载涨都说一句；到顶了每多涨 50 才再说一句（SoundOutput.shouldReport）
+                    boolean report = inside != null && inside.watch();
+                    report |= outside != null && outside.watch();
                     // 每秒刷新一次（输出延迟要实时的；以前只在加缓冲时刷新，诊断里一直是开的那一刻的「?」）
                     output = describeOutputs(inside, outside);
                     outputLatencyMs = (inside != null ? inside : outside).latencyMs();
-                    if (grown) {
-                        BlackBox.note("模拟声浪：欠载，缓冲加大（" + output + "）");
+                    if (report) {
+                        BlackBox.note("模拟声浪：欠载（" + output + "）");
                     }
                 }
             }

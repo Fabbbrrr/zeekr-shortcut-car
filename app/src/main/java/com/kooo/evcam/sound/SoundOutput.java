@@ -43,6 +43,10 @@ final class SoundOutput {
     private final AudioTimestamp stamp = new AudioTimestamp();
     private int bufferFrames;
     private int underruns;
+    /** 上次朝黑匣子开口的欠载数（到顶后的节流基准，见 {@link #shouldReport}）。 */
+    private int lastReportedUnderruns;
+    /** 缓冲已经在顶上以后，欠载还要再涨这么多才再说一句（防噪声总线刷屏）。 */
+    static final int REPORT_STEP_AT_CAP = 50;
     private long written;
     private volatile float latencyMs = -1f;
     private volatile String grew = "";
@@ -116,26 +120,42 @@ final class SoundOutput {
     /**
      * 看一眼（声音线程上大约每秒一次）：欠载涨了就把缓冲加 {@link #GROW_MS}（到 {@link #MAX_BUFFER_MS} 为止）；估一次输出延迟。
      *
-     * @return 这一次加了缓冲（叫的人记一行黑匣子）
+     * @return 这一次该记一行黑匣子：没到顶，每次涨都说一句（加没加得动都说）；已经在顶上，每多涨
+     *         {@link #REPORT_STEP_AT_CAP} 才再说一句（见 {@link #shouldReport}）。
      */
     boolean watch() {
-        boolean grown = false;
+        boolean report = false;
         int count = track.getUnderrunCount();
-        if (count > underruns) {
+        int delta = count - underruns;
+        if (delta > 0) {
             underruns = count;
             int limit = Math.min(capacityFrames, RATE * MAX_BUFFER_MS / 1000);
-            if (bufferFrames < limit) {
+            boolean atCap = bufferFrames >= limit;
+            if (!atCap) {
                 int before = bufferFrames;
                 bufferFrames = track.setBufferSizeInFrames(Math.min(limit, bufferFrames + RATE * GROW_MS / 1000));
-                grown = bufferFrames > before;
-                grew = before + "->" + bufferFrames;
+                if (bufferFrames > before) {
+                    grew = before + "->" + bufferFrames;
+                }
+            }
+            if (shouldReport(atCap, delta, atCap ? count - lastReportedUnderruns : delta)) {
+                lastReportedUnderruns = count;
+                report = true;
             }
         }
         if (track.getTimestamp(stamp)) {
             long ageNs = System.nanoTime() - stamp.nanoTime;
             latencyMs = (written - stamp.framePosition) * 1000f / RATE - ageNs / 1_000_000f;
         }
-        return grown;
+        return report;
+    }
+
+    /** 上报规则（纯函数，测试用假计数跑）：还没到顶，每次涨都说一句；已经在顶上，每攒够 {@link #REPORT_STEP_AT_CAP} 才再说一句。 */
+    static boolean shouldReport(boolean atCap, int delta, int sinceLastReport) {
+        if (delta <= 0) {
+            return false;
+        }
+        return !atCap || sinceLastReport >= REPORT_STEP_AT_CAP;
     }
 
     /** 停掉、放掉（淡出由叫的人先做完）。 */
