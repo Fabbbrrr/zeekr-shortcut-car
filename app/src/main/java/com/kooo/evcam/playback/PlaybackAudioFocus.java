@@ -45,6 +45,8 @@ public final class PlaybackAudioFocus {
     private final Listener listener;
     /** 拿着焦点（申请到了、还没被长期拿走、还没放掉）。 */
     private boolean held;
+    /** 申请到过焦点（哪怕后来被别的应用长期拿走了）：申请到过，离开界面时就要注销。 */
+    private boolean everGranted;
 
     public PlaybackAudioFocus(Context context, Listener listener) {
         this.audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
@@ -64,18 +66,20 @@ public final class PlaybackAudioFocus {
         int result = audioManager.requestAudioFocus(request);
         held = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
         if (held) {
+            everGranted = true;
             BlackBox.note("录像回放：申请音频焦点，拿到了");
         } else {
             BlackBox.note("录像回放：申请音频焦点没拿到（结果 " + result + "），照常放");
         }
     }
 
-    /** 离开回放界面：拿着就放掉。 */
+    /** 离开回放界面：申请到过就注销 —— 中途被别的应用长期拿走的，{@code held} 已经是假，注册还挂在系统手里。 */
     public void abandon() {
-        if (!held || audioManager == null) {
+        if (!everGranted || audioManager == null) {
             return;
         }
         held = false;
+        everGranted = false;
         audioManager.abandonAudioFocusRequest(request);
         BlackBox.note("录像回放：放掉音频焦点");
     }

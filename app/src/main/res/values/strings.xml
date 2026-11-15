@@ -720,6 +720,10 @@
     <plurals name="dlg_delete_photos_msg">
         <item quantity="other">将删除所选 %1$d 组的全部照片，已锁定的除外。删除后无法恢复。</item>
     </plurals>
+    <!-- 全选连收起来的日期一起选了，屏幕上看不见那几组 —— 删之前说清楚 -->
+    <plurals name="dlg_delete_photos_hidden">
+        <item quantity="other">其中 %1$d 组在收起来的日期里。</item>
+    </plurals>
     <string name="action_delete">删除</string>
     <plurals name="msg_photos_deleted">
         <item quantity="other">已删除 %1$d 张照片</item>

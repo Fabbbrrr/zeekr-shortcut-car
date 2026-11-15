@@ -712,6 +712,10 @@
         <item quantity="one">All photos in the %1$d selected group will be deleted, except locked ones. This can\'t be undone.</item>
         <item quantity="other">All photos in the %1$d selected groups will be deleted, except locked ones. This can\'t be undone.</item>
     </plurals>
+    <plurals name="dlg_delete_photos_hidden">
+        <item quantity="one">That includes %1$d group in a collapsed date section.</item>
+        <item quantity="other">That includes %1$d groups in collapsed date sections.</item>
+    </plurals>
     <string name="action_delete">Delete</string>
     <plurals name="msg_photos_deleted">
         <item quantity="one">%1$d photo deleted</item>

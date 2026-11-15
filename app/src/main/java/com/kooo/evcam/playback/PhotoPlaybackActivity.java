@@ -11,7 +11,6 @@ package com.kooo.evcam.playback;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
-import android.content.res.Configuration;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
@@ -29,7 +28,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.FileProvider;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -241,22 +239,9 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
         btnLock = findViewById(R.id.btn_lock);
         controlsLayout = findViewById(R.id.controls_layout);
 
-        // 设置列表（竖屏2列，横屏1列，日期头部跨越所有列）
+        // 设置列表：清单把这个界锁在横屏（AndroidManifest），所以只有一列
         adapter = new ExpandablePhotoGroupAdapter(PhotoPlaybackActivity.this, dateSections);
-        int orientation = getResources().getConfiguration().orientation;
-        if (orientation == Configuration.ORIENTATION_PORTRAIT) {
-            GridLayoutManager gridLayoutManager = new GridLayoutManager(PhotoPlaybackActivity.this, 2);
-            gridLayoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
-                @Override
-                public int getSpanSize(int position) {
-                    // 日期头部占满2列，图片项占1列
-                    return adapter.getItemViewType(position) == 0 ? 2 : 1;
-                }
-            });
-            photoList.setLayoutManager(gridLayoutManager);
-        } else {
-            photoList.setLayoutManager(new LinearLayoutManager(PhotoPlaybackActivity.this));
-        }
+        photoList.setLayoutManager(new LinearLayoutManager(PhotoPlaybackActivity.this));
         photoList.setAdapter(adapter);
 
         // 初始状态：隐藏四宫格，显示提示
@@ -894,10 +879,18 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
             return;
         }
 
+        // 全选连收起来的日期一起选了：屏幕上看不见的那几组也要说出来，不能背着用户删
+        String message = getResources().getQuantityString(R.plurals.dlg_delete_photos_msg,
+                selectedGroups.size(), selectedGroups.size());
+        int hiddenGroups = adapter.getSelectedCountInCollapsedSections();
+        if (hiddenGroups > 0) {
+            message += "\n" + getResources().getQuantityString(R.plurals.dlg_delete_photos_hidden,
+                    hiddenGroups, hiddenGroups);
+        }
+
         com.kooo.evcam.ui.CamDialogs.showDestructive(new MaterialAlertDialogBuilder(this, R.style.Theme_Cam_MaterialAlertDialog)
                 .setTitle(R.string.dlg_delete_photos_title)
-                .setMessage(getResources().getQuantityString(R.plurals.dlg_delete_photos_msg,
-                        selectedGroups.size(), selectedGroups.size()))
+                .setMessage(message)
                 .setPositiveButton(R.string.action_delete, (dialog, which) -> {
                     // selectedGroups 就是 adapter 手里那个集合，下面会被清空，
                     // 先留一份 —— 删完还要拿它对一下预览区放的是不是其中之一

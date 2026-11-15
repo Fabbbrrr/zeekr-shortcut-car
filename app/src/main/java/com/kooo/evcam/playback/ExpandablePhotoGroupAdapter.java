@@ -145,12 +145,31 @@ public class ExpandablePhotoGroupAdapter extends RecyclerView.Adapter<RecyclerVi
 
     /**
      * 全选所有图片组
+     *
+     * <p>收起来的日期里的组也算 —— 删除确认框会把这部分单独说一句（
+     * {@link #getSelectedCountInCollapsedSections}）。</p>
      */
     public void selectAll() {
         selectedGroups.clear();
         for (DateSection<PhotoGroup> section : dateSections) {
             selectedGroups.addAll(section.getItems());
         }
+    }
+
+    /** 选中的组里，有多少在<b>收起来</b>的日期里（屏幕上看不见，但删起来一样算）。 */
+    public int getSelectedCountInCollapsedSections() {
+        int hidden = 0;
+        for (DateSection<PhotoGroup> section : dateSections) {
+            if (section.isExpanded()) {
+                continue;
+            }
+            for (PhotoGroup group : section.getItems()) {
+                if (selectedGroups.contains(group)) {
+                    hidden++;
+                }
+            }
+        }
+        return hidden;
     }
 
     @Override

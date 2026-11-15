@@ -705,6 +705,9 @@
     <plurals name="dlg_delete_photos_msg">
         <item quantity="other">Semua foto dalam %1$d kumpulan yang dipilih akan dipadam, kecuali yang dikunci. Tindakan ini tidak boleh dibatalkan.</item>
     </plurals>
+    <plurals name="dlg_delete_photos_hidden">
+        <item quantity="other">Ia termasuk %1$d kumpulan dalam tarikh yang diruntuhkan.</item>
+    </plurals>
     <string name="action_delete">Padam</string>
     <plurals name="msg_photos_deleted">
         <item quantity="other">%1$d foto dipadam</item>
