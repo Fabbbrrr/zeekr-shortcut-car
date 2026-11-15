@@ -27,8 +27,10 @@ import com.kooo.evcam.R;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -53,6 +55,27 @@ public class ExpandablePhotoGroupAdapter extends RecyclerView.Adapter<RecyclerVi
     private boolean isMultiSelectMode = false;
     /** 锁定的文件名（锁定影像关着时是空的）：锁定的组在张数后面多写一句。 */
     private Set<String> lockedNames = new HashSet<>();
+    /** 扫描时读到的修改时间（文件名 → lastModified，见 PhotoPlaybackActivity#updatePhotoList）。 */
+    private Map<String, Long> scanStamps = new HashMap<>();
+
+    /** 扫描结果里的修改时间，绑定时用 —— 不再为一张缩略图回盘上问一次（F-07.05）。 */
+    void setScanStamps(Map<String, Long> stamps) {
+        scanStamps = stamps != null ? stamps : new HashMap<String, Long>();
+    }
+
+    /**
+     * 这个文件的修改时间：扫描时读到过就用那一份，没读到才再问一次盘。
+     *
+     * <p>扫描在主线程外跑，扫到的都是当时在场的文件；绑定时再 stat 一次，
+     * 就是在 U 盘上多问一句——所以这里只查表。</p>
+     */
+    static Long signatureFor(File photoFile, Map<String, Long> stamps) {
+        if (photoFile == null) {
+            return null;
+        }
+        Long stamp = stamps == null ? null : stamps.get(photoFile.getName());
+        return stamp != null ? stamp : photoFile.lastModified();
+    }
 
     public void setLockedNames(Set<String> names) {
         lockedNames = names != null ? names : new HashSet<String>();
@@ -311,7 +334,8 @@ public class ExpandablePhotoGroupAdapter extends RecyclerView.Adapter<RecyclerVi
     }
 
     private void loadThumbnail(File photoFile, ImageView imageView) {
-        if (photoFile == null || !photoFile.exists()) {
+        // 扫描见过这个文件（在表里）就不再 stat；只有表里没有的才回盘上问一次
+        if (photoFile == null || (!scanStamps.containsKey(photoFile.getName()) && !photoFile.exists())) {
             imageView.setImageDrawable(null);
             imageView.setBackgroundColor(
                     ContextCompat.getColor(imageView.getContext(), R.color.sunken));
@@ -321,7 +345,7 @@ public class ExpandablePhotoGroupAdapter extends RecyclerView.Adapter<RecyclerVi
         RequestOptions options = new RequestOptions()
                 .centerCrop()
                 .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                .signature(new ObjectKey(photoFile.lastModified()))
+                .signature(new ObjectKey(signatureFor(photoFile, scanStamps)))
                 .placeholder(android.R.color.black)
                 .error(android.R.color.black);
 

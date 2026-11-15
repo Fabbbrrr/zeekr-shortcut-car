@@ -111,6 +111,8 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
     private boolean lockEnabled;
     /** 照片目录里锁定的文件名（开关关着时是空的）。 */
     private Set<String> lockedPhotos = new HashSet<>();
+    /** 扫描时读到的修改时间（文件名 → lastModified）：绑定时不再回盘上问。 */
+    private Map<String, Long> photoStamps = new HashMap<>();
     private View controlsLayout;
 
     // 数据
@@ -560,6 +562,7 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
             } else {
                 lockedPhotos.addAll(names);
             }
+            listVersion++;   // 扫描期间锁上的，那份快照不要再贴到界面上
             Toast.makeText(this, getResources().getQuantityString(
                     unlock ? R.plurals.msg_footage_unlocked : R.plurals.msg_footage_locked,
                     names.size(), names.size()), Toast.LENGTH_SHORT).show();
@@ -622,7 +625,7 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
 
         RequestOptions options = new RequestOptions()
                 .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-                .signature(new ObjectKey(photoFile.lastModified()))
+                .signature(new ObjectKey(ExpandablePhotoGroupAdapter.signatureFor(photoFile, photoStamps)))
                 .error(android.R.color.black);
 
         // 校正只对环视那一路：座舱是普通相机，一张图就是一个画面，不该动它
@@ -714,24 +717,65 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
     }
 
     /**
-     * 更新图片列表（按日期分组，然后按时间戳分组）
+     * 更新图片列表（按日期分组，然后按时间戳分组）。
+     *
+     * <p>列目录、每一个文件的 stat、读锁定清单 —— 都在 {@link #IO} 上（F-07.05）。
+     * 这个界面的照片在 U 盘上（exFAT），存储那边已经报过它慢、偶尔还 {@code EIO}。
+     * 扫完把分组交回主线程，<b>搭列表这一段照旧在主线程上</b>。</p>
      */
     private void updatePhotoList() {
         // 屏幕上现在放的是哪一组。扫描之后 PhotoGroup 全是新对象，
         // 得靠时间戳把它认回来。
-        String shown = currentGroup != null ? currentGroup.getTimestampPrefix() : null;
-        dateSections.clear();
+        scheduleScan(currentGroup != null ? currentGroup.getTimestampPrefix() : null,
+                StorageHelper.getPhotoDir(PhotoPlaybackActivity.this));
+    }
 
-        File saveDir = StorageHelper.getPhotoDir(PhotoPlaybackActivity.this);
-        lockEnabled = com.kooo.evcam.storage.FootageLocks.enabled(PhotoPlaybackActivity.this);
-        lockedPhotos = com.kooo.evcam.storage.FootageLocks.shown(PhotoPlaybackActivity.this, saveDir);
-        adapter.setLockedNames(lockedPhotos);
-        updateLockButton();
+    /** 扫描的结果（F-07.05）：分组、锁定的名字、每个文件的修改时间（缩略图的签名）。 */
+    static final class Scan {
+        final List<DateSection<PhotoGroup>> sections = new ArrayList<>();
+        final Map<String, Long> stamps = new HashMap<>();
+        Set<String> locked = new HashSet<>();
+        boolean lockEnabled;
+        /** 目录在、里面也有照片。 */
+        boolean hasPhotos;
+    }
+
+    /** 扫描在后台跑；主线程改了列表（删完、锁完）就把在跑的那一次作废。 */
+    private static final java.util.concurrent.ExecutorService IO =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "PhotoScan");
+                thread.setDaemon(true);
+                return thread;
+            });
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    /** 列表在主线程上被改过的次数（删除、锁定）。扫描期间动过，那份快照就不要了。 */
+    private volatile long listVersion;
+
+    /** 扫 {@code saveDir}：扫完回主线程 {@link #applyScan}。 */
+    private void scheduleScan(String shown, File saveDir) {
+        final long version = listVersion;
+        IO.execute(() -> {
+            Scan scan = scanPhotos(getApplicationContext(), saveDir);
+            mainHandler.post(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;                                  // 界面已经关了
+                }
+                if (version != listVersion) {
+                    return;                                  // 扫的时候列表已经改了（删掉的那批别贴回来）
+                }
+                applyScan(shown, scan);
+            });
+        });
+    }
+
+    /** 列目录 + 每个文件的修改时间 + 锁定清单。在后台线程上跑，不碰界面。 */
+    static Scan scanPhotos(android.content.Context context, File saveDir) {
+        Scan scan = new Scan();
+        scan.lockEnabled = com.kooo.evcam.storage.FootageLocks.enabled(context);
+        scan.locked = com.kooo.evcam.storage.FootageLocks.shown(context, saveDir);
         // null：没有地方存照片（没有 U 盘、开发者选项没开），也就没有照片可列
         if (saveDir == null || !saveDir.exists() || !saveDir.isDirectory()) {
-            showEmptyState();
-            showNoSelection();
-            return;
+            return scan;
         }
 
         File[] files = saveDir.listFiles((dir, name) -> {
@@ -740,10 +784,9 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
         });
 
         if (files == null || files.length == 0) {
-            showEmptyState();
-            showNoSelection();
-            return;
+            return scan;
         }
+        scan.hasPhotos = true;
 
         // 第一步：按时间戳分组（同一秒拍摄的多路图片）
         Map<String, PhotoGroup> groupMap = new HashMap<>();
@@ -755,6 +798,7 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
                 groupMap.put(timestamp, group);
             }
             group.addFile(file);
+            scan.stamps.put(file.getName(), file.lastModified());   // 顺手记下来，绑定时不再问盘
         }
 
         // 转为列表并排序（最新的在前）
@@ -764,7 +808,7 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
         // 第二步：按日期分组
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
         Map<String, DateSection<PhotoGroup>> dateSectionMap = new LinkedHashMap<>();
-        
+
         for (PhotoGroup group : allGroups) {
             String dateString = dateFormat.format(group.getCaptureTime());
             DateSection<PhotoGroup> section = dateSectionMap.get(dateString);
@@ -776,15 +820,29 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
         }
 
         // 日期分组已按日期排序（LinkedHashMap 保持插入顺序，而 allGroups 已排序）
-        dateSections.addAll(dateSectionMap.values());
+        scan.sections.addAll(dateSectionMap.values());
+        return scan;
+    }
+
+    /** 把扫描的结果接到界面上（主线程）。 */
+    private void applyScan(String shown, Scan scan) {
+        lockEnabled = scan.lockEnabled;
+        lockedPhotos = scan.locked;
+        photoStamps = scan.stamps;
+        adapter.setScanStamps(photoStamps);
+        adapter.setLockedNames(lockedPhotos);
+        updateLockButton();
+        dateSections.clear();
+        if (!scan.hasPhotos) {
+            showEmptyState();
+            showNoSelection();
+            return;
+        }
+        dateSections.addAll(scan.sections);
 
         // 更新UI
-        if (dateSections.isEmpty()) {
-            showEmptyState();
-        } else {
-            photoList.setVisibility(View.VISIBLE);
-            emptyText.setVisibility(View.GONE);
-        }
+        photoList.setVisibility(View.VISIBLE);
+        emptyText.setVisibility(View.GONE);
 
         adapter.buildFlattenedList();
         adapter.notifyDataSetChanged();
@@ -921,6 +979,7 @@ public class PhotoPlaybackActivity extends AppCompatActivity {
 
     /** 删完（{@link #deleteSelected}）：组里拿掉删掉了的，删空的组从列表里拿掉，留下的那几组还在列表里。 */
     private void showDeleted(Set<PhotoGroup> chosen, Set<String> gone) {
+        listVersion++;   // 删除改过列表：起在前的那一次扫描快照过期了（见 scheduleScan）
         int keptCount = 0;
         Set<PhotoGroup> emptied = new HashSet<>();
         for (PhotoGroup group : chosen) {
