@@ -177,12 +177,15 @@ public final class AlertPolicy {
         return sentThisHour;
     }
 
-    /** 冷却还剩多久；不在冷却里是 0。 */
+    /** 冷却与失败退避哪个还剩得多就报哪个；不在任何一个里才是 0。{@link #decide} 不变。 */
     public synchronized long cooldownLeftMs(long nowMs) {
-        if (lastSentAt == 0) {
-            return 0;
+        long left = 0;
+        if (failureUntilMs != 0) {
+            left = Math.max(left, failureUntilMs - nowMs);
         }
-        long left = COOLDOWN_MS - (nowMs - lastSentAt);
+        if (lastSentAt != 0) {
+            left = Math.max(left, COOLDOWN_MS - (nowMs - lastSentAt));
+        }
         return Math.max(0, left);
     }
 

@@ -15,6 +15,7 @@ import android.os.Looper;
 import com.kooo.evcam.AppConfig;
 import com.kooo.evcam.AppLog;
 import com.kooo.evcam.WakeUpHelper;
+import com.kooo.evcam.blackbox.BlackBox;
 import com.kooo.evcam.service.RecordingFloatingService;
 import com.kooo.evcam.zeekr.RearViewMirrorService;
 import com.kooo.evcam.zeekr.SideViewService;
@@ -78,8 +79,13 @@ public final class OverlayCoordinator {
             // 这一段以前没有：开关存着「开」，但没人在启动时把服务拉起来，
             // 于是每次重开应用都要去设置里关一次再开一次它才出现。
             main().postDelayed(() -> {
-                RearViewMirrorService.start(context);
-                AppLog.d(TAG, "超级镜子已按设置自动开启");
+                if (startRearView(context)) {
+                    AppLog.d(TAG, "超级镜子已按设置自动开启");
+                } else {
+                    refused.add("超级镜子");
+                    // 名单已经交到调用方手里了（它当场就读），所以这一笔自己再记一行。
+                    BlackBox.noteImportant("恢复：超级镜子被安卓拒了，没起来（晚两秒起那一个）");
+                }
             }, REAR_VIEW_DELAY_MS);
         }
 
@@ -194,6 +200,17 @@ public final class OverlayCoordinator {
             return true;
         } catch (RuntimeException e) {
             AppLog.w(TAG, "startService(RecordingFloatingService) failed: " + e);
+            return false;
+        }
+    }
+
+    /** 拉超级镜子；被安卓拒了返回 {@code false}，同 {@link #sendToRecordingFloating}。 */
+    private static boolean startRearView(Context context) {
+        try {
+            RearViewMirrorService.start(context);
+            return true;
+        } catch (RuntimeException e) {
+            AppLog.w(TAG, "startService(RearViewMirrorService) failed: " + e);
             return false;
         }
     }
