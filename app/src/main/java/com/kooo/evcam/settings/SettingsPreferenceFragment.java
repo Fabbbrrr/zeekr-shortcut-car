@@ -2799,6 +2799,13 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             brand.setEnabled(false);
         }
 
+        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）。上游不认这个开关
+        bindSwitch("pref_update_fork", appConfig.isUpdateFromFork(), value -> {
+            appConfig.setUpdateFromFork(value);
+            com.kooo.evcam.blackbox.BlackBox.noteImportant("开关变更: pref_update_fork → "
+                    + (value ? "自己的 fork" : "上游"));
+        });
+
         // 车辆状态面板（2026-10-23 从界面页挪来）：主界面那个控件自己听这个开关
         bindSwitch("pref_vehicle_status", appConfig.isVehicleStatusEnabled(),
                 value -> appConfig.setVehicleStatusEnabled(value));

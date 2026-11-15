@@ -68,6 +68,8 @@ public class DeveloperSettingsTest {
         ROWS.put("pref_alerts_debug", NONE);
         // ntfy 警报的出口开关（2026-11-15）：关着开发者选项就按 telegram 算（docs/ntfy/DECISIONS.md D14）
         ROWS.put("pref_dev_alerts_ntfy", Arrays.asList("alerts_transport"));
+        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）
+        ROWS.put("pref_update_fork", Arrays.asList("update_from_fork"));
         ROWS.put("pref_raw_frame_dump", Arrays.asList("raw_frame_dump"));
         ROWS.put("pref_gpu_fisheye_preview", Arrays.asList("gpu_fisheye_preview"));
         ROWS.put("pref_gpu_fisheye_video", Arrays.asList("gpu_fisheye_video"));

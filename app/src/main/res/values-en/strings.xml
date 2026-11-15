@@ -1157,6 +1157,8 @@ If I forget: %3$s</string>
 
     <!-- Developer options section -->
     <string name="set_section_developer">Developer options</string>
+    <string name="dev_update_fork_title">Updates from my fork</string>
+    <string name="dev_update_fork_summary">Testing only: Check for updates asks Fabbbrrr/zeekr-shortcut-car for releases instead of upstream. Off by default; turn it off to go back</string>
     <string name="dev_permissions_title">Permissions</string>
     <string name="dev_permissions_summary">Manage the permissions the app needs</string>
     <string name="dev_perm_group_basic">Basic permissions</string>
