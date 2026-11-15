@@ -136,4 +136,15 @@ public class AlertPolicyTest {
         assertEquals(AlertPolicy.COOLDOWN_MS - 20_000L, policy.cooldownLeftMs(25_000L));
         assertEquals(0, policy.cooldownLeftMs(5_000L + AlertPolicy.COOLDOWN_MS + 1));
     }
+
+    @Test
+    public void cooldownLeftReportsTheFailureBackoffToo() {
+        AlertPolicy policy = ready();
+        // 占位那一格同时开着两条窗口：报剩得多的那条 —— 那才是实际还要静的多久。
+        assertEquals(AlertPolicy.Decision.ALLOW, policy.reserve(1_000L));
+        policy.noteFailure(1_000L);
+        assertEquals(AlertPolicy.FAILURE_BACKOFF_MS - 20_000L, policy.cooldownLeftMs(21_000L));
+        // 退避一跳完（占位那一格的冷却早就过了）：0。
+        assertEquals(0, policy.cooldownLeftMs(1_000L + AlertPolicy.FAILURE_BACKOFF_MS));
+    }
 }
