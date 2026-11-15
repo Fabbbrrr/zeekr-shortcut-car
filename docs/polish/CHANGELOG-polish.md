@@ -84,3 +84,14 @@ Verdict was HOLD. One blocker and three should-fixes, all now fixed:
 Also noted, not changed: `135a390b` does not compile on its own (it calls `runBetweenPolls`, added in `d0588cc7`) — the two are one unit; a bisect lands on a broken commit between them. And the review confirms two costs already accepted in `DECISIONS.md`: failed sends are charged against the hourly cap even though nothing delivered, and an activity destroy now persists pending slider moves where it previously just leaked.
 
 **Gates on the final tree: 1900 tests, 0 failures, 0 errors; `assembleRelease` successful.**
+
+## Wave 2 (the findings wave 1 left out) — gate green: 1911 tests, 0 failures; assembleRelease OK
+
+| Commit | Findings | What shipped |
+|---|---|---|
+| `ec1c1795` | F-07.03, F-07.04, F-07.05 | share server stopped by its host's lifecycle; interface scan + QR encode off main with a generation guard; photo scan off main, rebuild on main, stale snapshot dropped on a mid-scan delete or lock |
+| `87598814` | F-06.05, F-06.09 | a background voice action no longer claims success for a start the platform drops silently; `release_notes.py` exits non-zero on a missing section for a stable tag (prerelease behaviour unchanged) |
+| `10bdafc0` | — | the `AlertPolicyTest` change `05c9e6b3` left behind |
+
+New tests: `PhoneShareHostTest` (5), `PhotoPlaybackScanTest` (4), `MediaMoveTest` (2). Timing claims
+(F-07.04, F-07.05) are pinned by shape, not by measurement — the milliseconds need a device.
