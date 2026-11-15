@@ -45,6 +45,13 @@ public class SettingsHeadersFragment extends PreferenceFragmentCompat {
     private boolean builtUnlocked;
     /** 右栏正在显示的分区。 */
     private String selectedKey;
+    /** 现成的回调：录制那几个键一变就重写状态行（ui-spec §十三「设置页看得见时跟着实际状态变」）。 */
+    private AppConfig watchedConfig;
+    private android.content.SharedPreferences.OnSharedPreferenceChangeListener recordingListener;
+    /** 存储快照的现成回调（U 盘插拔）；和主界面用的是同一条，不另起轮询。 */
+    private final com.kooo.evcam.storage.StorageState.Listener storageListener = snapshot -> refreshStatus();
+    /** 视图活着的时候重写状态行的次数（测试钉住「跟着变」和「注销」这一对）。 */
+    int refreshCount;
 
     @Override
     public void onCreatePreferences(@Nullable Bundle savedInstanceState, @Nullable String rootKey) {
@@ -58,6 +65,21 @@ public class SettingsHeadersFragment extends PreferenceFragmentCompat {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         PreferenceRows.styleList(this, 0, 12);
+        // 监听器要用字段拿住：SharedPreferences 只弱引用它们，不拿住会被回收，之后就再也收不到
+        watchedConfig = new AppConfig(requireContext());
+        recordingListener = watchedConfig.onScreenOffPlanChanged(this::refreshStatus);
+        com.kooo.evcam.storage.StorageState.addListener(requireContext(), storageListener);
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (recordingListener != null) {
+            watchedConfig.removeChangeListener(recordingListener);
+            recordingListener = null;
+            watchedConfig = null;
+        }
+        com.kooo.evcam.storage.StorageState.removeListener(storageListener);
+        super.onDestroyView();
     }
 
     /**
@@ -107,6 +129,7 @@ public class SettingsHeadersFragment extends PreferenceFragmentCompat {
 
     /** 每个分区名下面那一行状态照现在的设置重写。 */
     void refreshStatus() {
+        refreshCount++;
         PreferenceScreen screen = getPreferenceScreen();
         if (screen == null || getContext() == null) {
             return;

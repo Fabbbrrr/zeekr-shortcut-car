@@ -200,8 +200,8 @@ public final class SettingsRegistry {
 
     /**
      * 模拟声浪的听感（试验性）：车外（站在车旁）或车内（隔着防火墙、车身）。只有「美式 V8」分两种，另两种本来就按车内做的。
-     * 项目所有者 2026-11-12：对所有人固定为车内（默认由车外改成车内），车外只在开发者选项「声音」一组里选得到
-     * （{@code AppConfig.DEVELOPER_KEYS}）。
+     * 项目所有者 2026-11-13：这一行连同转速变化方式、变速箱放回「通用 → 模拟声浪」，所有人都选得到（4.0 收进开发者选项那一次）；
+     * 默认值留在车内。谁能看到这一行由 {@code SettingsShotsTest#driveSoundRowsAreThereForEveryone} 钉住 —— 以测试为准。
      */
     public static final SettingSpec DRIVE_SOUND_VIEW = SettingSpec.of(
             "drive_sound_view", "听感", com.kooo.evcam.AppConfig.DRIVE_SOUND_VIEW_CABIN,

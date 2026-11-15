@@ -7,6 +7,7 @@
 
 package com.kooo.evcam.settings;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
@@ -487,20 +488,27 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         pref.setValue(getString(R.string.info_reading));
         final Context context = getContext().getApplicationContext();
         final boolean on = appConfig.isFootageLockEnabled();
+        // Activity 在主线程上拿住再交给后台线程：线程跑回来时这里可能已经被换掉（SettingsShellFragment.showSection），
+        // 到那时 requireActivity() 会抛 IllegalStateException。isAdded() 也挪回主线程的那一趟里判。
+        final Activity activity = getActivity();
+        if (activity == null) {
+            return;
+        }
         new Thread(() -> {
             com.kooo.evcam.storage.FootageLocks.Usage videos =
                     com.kooo.evcam.storage.FootageLocks.usage(StorageHelper.getVideoDir(context));
             com.kooo.evcam.storage.FootageLocks.Usage photos =
                     com.kooo.evcam.storage.FootageLocks.usage(StorageHelper.getPhotoDir(context));
-            if (!isAdded()) {
-                return;
-            }
             int files = videos.files + photos.files;
             String size = StorageHelper.formatSize(videos.bytes + photos.bytes);
-            final String result = files == 0 ? getString(R.string.set_footage_locked_none)
-                    : on ? getString(R.string.set_footage_locked_value, files, size)
-                    : getString(R.string.set_footage_locked_value_unprotected, files, size);
-            requireActivity().runOnUiThread(() -> pref.setValue(result));
+            activity.runOnUiThread(() -> {
+                if (!isAdded()) {
+                    return;
+                }
+                pref.setValue(files == 0 ? getString(R.string.set_footage_locked_none)
+                        : on ? getString(R.string.set_footage_locked_value, files, size)
+                        : getString(R.string.set_footage_locked_value_unprotected, files, size));
+            });
         }, "footage-locked").start();
     }
 

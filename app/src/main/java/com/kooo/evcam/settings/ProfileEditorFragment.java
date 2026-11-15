@@ -13,6 +13,8 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Size;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -49,6 +51,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 视频流配置编辑：哪几路相机、每一路的三条流、以及拆出来的每一格怎么摆。
@@ -96,6 +101,15 @@ public class ProfileEditorFragment extends Fragment {
      */
     private java.util.Map<String, String> base;
     private CameraManager cameraManager;
+    /**
+     * 相机能力：cameraId → {@link CameraCharacteristics}，这一页活着期间问一次。
+     *
+     * <p>渲染路径上每一次都要它（问题行、尺寸列表），以前是每重搭一次就问一遍相机服务。</p>
+     */
+    private final Map<String, CameraCharacteristics> characteristicsByCamera = new ConcurrentHashMap<>();
+    /** 已经派线程去问的相机，防止排着队问同一台。 */
+    private final Set<String> characteristicsRequested = ConcurrentHashMap.newKeySet();
+    private final Handler main = new Handler(Looper.getMainLooper());
     private LinearLayout presetRow;
     private LinearLayout cameraRow;
     private LinearLayout detailBox;
@@ -585,8 +599,14 @@ public class ProfileEditorFragment extends Fragment {
         return budget().estimatedBitrate(camera, fps, bitrate);
     }
 
+    /**
+     * 还能录多久用的剩余空间：读状态栏那份快照，不在渲染路径上碰盘。
+     *
+     * <p>快照是存储线程维护的（{@code StorageState}），最多晚一轮定时；{@code -1} 是还没探测过，
+     * 和没插盘一样落不到小时数上 —— 算不出来就不编一个数。</p>
+     */
     private long freeBytes() {
-        return budget().freeBytes();
+        return com.kooo.evcam.storage.StorageState.current().freeBytes;
     }
 
     private int dp(int value) {
@@ -894,30 +914,66 @@ public class ProfileEditorFragment extends Fragment {
         return budget().splitsFor(role);
     }
 
+    /**
+     * 这一路声明的 JPEG 尺寸，读缓存。
+     *
+     * <p>缓存冷的那一次先按「不知道」画 —— 问相机这一眼丢给后台，结果到了走 {@link #refresh()}
+     * 再搭一次。没有这一路、或者问不到，照旧返回空：界面照画，不下结论。</p>
+     */
     private List<int[]> declaredSizes(String role) {
-        List<int[]> out = new ArrayList<>();
         String cameraId = cameraIdFor(role);
         if (cameraId == null || cameraManager == null) {
+            return new ArrayList<>();
+        }
+        CameraCharacteristics characteristics = characteristicsByCamera.get(cameraId);
+        if (characteristics == null) {
+            fillCharacteristics(cameraId);
+            return new ArrayList<>();
+        }
+        return jpegSizes(characteristics);
+    }
+
+    /** 后台问一次这台相机，存进缓存，回主线程重搭一次。问不到就不存，下次重搭再问。 */
+    private void fillCharacteristics(String cameraId) {
+        if (!characteristicsRequested.add(cameraId)) {
+            return;
+        }
+        final CameraManager manager = cameraManager;
+        new Thread(() -> {
+            CameraCharacteristics characteristics;
+            try {
+                characteristics = manager.getCameraCharacteristics(cameraId);
+            } catch (Exception e) {
+                AppLog.w(TAG, "读不到相机 " + cameraId + " 的能力: " + e);
+                characteristicsRequested.remove(cameraId);
+                return;
+            }
+            if (characteristics == null) {
+                characteristicsRequested.remove(cameraId);
+                return;
+            }
+            characteristicsByCamera.put(cameraId, characteristics);
+            main.post(this::refresh);
+        }).start();
+    }
+
+    /** 能力里 JPEG 那一份声明的尺寸，从大到小。 */
+    private static List<int[]> jpegSizes(CameraCharacteristics characteristics) {
+        List<int[]> out = new ArrayList<>();
+        StreamConfigurationMap map =
+                characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+        if (map == null) {
             return out;
         }
-        try {
-            StreamConfigurationMap map = cameraManager.getCameraCharacteristics(cameraId)
-                    .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-            if (map == null) {
-                return out;
-            }
-            Size[] sizes = map.getOutputSizes(ImageFormat.JPEG);
-            if (sizes == null) {
-                return out;
-            }
-            for (Size size : sizes) {
-                out.add(new int[]{size.getWidth(), size.getHeight()});
-            }
-            Collections.sort(out, (a, b) -> Long.compare(
-                    (long) b[0] * b[1], (long) a[0] * a[1]));
-        } catch (Exception e) {
-            AppLog.w(TAG, "读不到 " + role + " 的尺寸列表: " + e);
+        Size[] sizes = map.getOutputSizes(ImageFormat.JPEG);
+        if (sizes == null) {
+            return out;
         }
+        for (Size size : sizes) {
+            out.add(new int[]{size.getWidth(), size.getHeight()});
+        }
+        Collections.sort(out, (a, b) -> Long.compare(
+                (long) b[0] * b[1], (long) a[0] * a[1]));
         return out;
     }
 
