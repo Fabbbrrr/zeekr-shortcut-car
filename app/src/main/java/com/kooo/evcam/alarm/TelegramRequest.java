@@ -1,6 +1,7 @@
 /*
  * Zeekr Shortcut - https://github.com/dts88/zeekr-shortcut-car
  * Copyright (C) 2026 dts88
+ * Portions Copyright (C) 2026 Fab (Fabbbrrr) - https://github.com/Fabbbrrr
  * SPDX-License-Identifier: GPL-3.0-only
  * Additional terms under GPL-3.0 section 7 apply to dts88's code; see NOTICE.md.
  */
@@ -196,6 +197,81 @@ public final class TelegramRequest {
         return "{\"keyboard\":[[{\"text\":\"pic\"},{\"text\":\"status\"}]],"
                 + "\"resize_keyboard\":true,\"is_persistent\":true,"
                 + "\"input_field_placeholder\":\"pic / status\"}";
+    }
+
+    /**
+     * 一条消息下面那排能回话的按钮（Telegram 的 inline keyboard）。
+     *
+     * <p>和 {@link #keyboardMarkup()} 不是一回事：那排是把文字发回来，这排是 {@code callback_query}，
+     * 按下去不进聊天记录，也不经过命令解析。所以每一颗必须带上这一次提醒的号
+     * （{@code alarm.GuardToken}），否则一周前的按钮按下去也算数。</p>
+     *
+     * <p>手写 JSON 而不是用 {@code org.json}：这里只要可预期的字节，JVM 单测也不用 Robolectric。
+     * 按钮上的字来自 {@code strings.xml}，可能带引号，所以两个值都要转义。</p>
+     *
+     * <p>The row of buttons that can answer back under one message (Telegram's inline keyboard).
+     * Unlike {@link #keyboardMarkup()} these arrive as a {@code callback_query}: nothing is written into
+     * the chat and no command parser sees them, so each button must carry this reminder's token.
+     * JSON is written by hand for predictable bytes and a JVM-testable unit, and both values are
+     * escaped because the label comes from {@code strings.xml}.</p>
+     *
+     * @param labels 按钮上的字，从左到右
+     * @param datas  {@code callback_data}，和 {@code labels} 一一对应
+     * @return {@code reply_markup} 的值；两个数组不配对时是空串（宁可没有按钮，也不要一排按不动的）
+     */
+    public static String inlineKeyboard(String[] labels, String[] datas) {
+        if (labels == null || datas == null || labels.length == 0
+                || labels.length != datas.length) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder("{\"inline_keyboard\":[[");
+        for (int i = 0; i < labels.length; i++) {
+            if (labels[i] == null || datas[i] == null || datas[i].isEmpty()) {
+                return "";
+            }
+            if (i > 0) {
+                out.append(',');
+            }
+            out.append("{\"text\":\"").append(jsonEscape(labels[i]))
+                    .append("\",\"callback_data\":\"").append(jsonEscape(datas[i])).append("\"}");
+        }
+        return out.append("]]}").toString();
+    }
+
+    /** JSON 字符串里的那两个字符。The two characters that matter inside a JSON string. */
+    static String jsonEscape(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder out = new StringBuilder(value.length() + 8);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"':
+                    out.append("\\\"");
+                    break;
+                case '\\':
+                    out.append("\\\\");
+                    break;
+                case '\n':
+                    out.append("\\n");
+                    break;
+                case '\r':
+                    out.append("\\r");
+                    break;
+                case '\t':
+                    out.append("\\t");
+                    break;
+                default:
+                    if (c < 0x20) {
+                        out.append(String.format(java.util.Locale.US, "\\u%04x", (int) c));
+                    } else {
+                        out.append(c);
+                    }
+                    break;
+            }
+        }
+        return out.toString();
     }
 
     /**

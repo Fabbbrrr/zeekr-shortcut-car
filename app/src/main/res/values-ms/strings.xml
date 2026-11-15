@@ -116,6 +116,37 @@
     <string name="alert_cmd_no_sentry">Mod Sentri mati, jadi kepala unit akan tidur dan tiada gambar boleh diambil</string>
     <string name="alert_cmd_not_parked">Kereta tidak diletakkan, jadi tiada gambar diambil</string>
     <string name="alert_cmd_too_soon">Tunggu %1$d saat sebelum minta lagi</string>
+    <!-- Lupa Mod Sentri: kereta ditinggal dengan Mod Sentri tutup, jadi ia bertanya atau menghidupkannya sendiri -->
+    <string name="set_alerts_guard_title">Kalau saya lupa Mod Sentri</string>
+    <string name="set_alerts_guard_mode_off">Tutup</string>
+    <string name="set_alerts_guard_mode_ask">Tanya saya dulu</string>
+    <string name="set_alerts_guard_mode_ask_then_on">Tanya, kemudian hidupkan selepas seminit</string>
+    <string name="set_alerts_guard_mode_on">Hidupkan tanpa bertanya</string>
+    <string name="set_alerts_guard_home_title">Guna lokasi ini sebagai rumah</string>
+    <string name="set_alerts_guard_home_set">Disimpan, dalam kereta ini sahaja. Tidak dihantar ke mana-mana</string>
+    <string name="set_alerts_guard_home_missing">Kereta tiada lokasi sekarang. Pandu sehingga bar maklumat menunjukkan lokasi</string>
+    <string name="set_alerts_guard_home_none">Lokasi rumah dilupakan</string>
+    <string name="alert_guard_ask">Mod Sentri tidak dihidupkan.
+Berhenti pada %1$s. Akan dihidupkan dalam %2$d saat melainkan anda kata tidak.
+Kereta hanya menjawab beberapa minit, selepas itu ia tidur</string>
+    <string name="alert_guard_btn_on">Hidupkan sekarang</string>
+    <string name="alert_guard_btn_no">Biarkan tutup</string>
+    <string name="alert_guard_btn_off">Tutupkan</string>
+    <string name="alert_guard_btn_state">Status</string>
+    <string name="alert_guard_on">%1$s
+Ini bacaan kereta</string>
+    <string name="alert_guard_off">%1$s
+Ini bacaan kereta</string>
+    <string name="alert_guard_off_armed">Kereta sudah berjaga, jadi tidak boleh ditutup. Buka kunci sekali, kemudian cuba lagi</string>
+    <string name="alert_guard_late">Terlambat: kereta sudah tidur dan tidak boleh menghidupkan apa-apa. Ia menjawab semula apabila pintu dibuka</string>
+    <string name="alert_guard_veto">Baik, Mod Sentri dibiarkan tutup</string>
+    <string name="alert_guard_already_on">Sudah dihidupkan untuk parkir ini</string>
+    <string name="alert_guard_report">%1$s
+Dari rumah: %2$s
+Kalau lupa: %3$s</string>
+    <string name="alert_guard_where_home">di rumah</string>
+    <string name="alert_guard_where_away">di luar rumah</string>
+    <string name="alert_guard_where_unknown">lokasi tidak diketahui</string>
     <string name="alert_status_gear">Gear: %1$s</string>
     <string name="set_alerts_commands_title">Jawab arahan</string>
     <string name="set_alerts_commands_summary">Hantar pic untuk gambar, status untuk satu baris. Hanya anda, dan hanya semasa Mod Sentri hidup</string>
@@ -1313,4 +1344,58 @@
     <string name="set_group_alerts_clip">Video pendek</string>
     <string name="set_group_alerts_checks">Semakan</string>
     <string name="set_alerts_cameras_none">Tiada yang ditanda, jadi semua empat dihantar</string>
+
+    <!-- ntfy (eksperimen, hanya di bawah pilihan pembangun; lihat docs/ntfy/) -->
+    <string name="set_group_alerts_ntfy">ntfy (eksperimen)</string>
+    <string name="set_alerts_channel_status_title">Amaran dihantar ke</string>
+    <string name="set_alerts_channel_status_telegram">Amaran dihantar ke: Telegram</string>
+    <string name="set_alerts_channel_status_ntfy_public">Amaran dihantar ke: ntfy (topik awam)</string>
+    <string name="set_alerts_channel_status_ntfy_protected">Amaran dihantar ke: ntfy (terlindung)</string>
+    <string name="set_alerts_telegram_inactive">Tidak digunakan: amaran ke ntfy. Tetapan ini disimpan.</string>
+    <string name="set_alerts_ntfy_inactive">Tidak digunakan: amaran ke Telegram. Tetapan ini disimpan.</string>
+    <string name="set_alerts_ntfy_setup_title">Sediakan ntfy</string>
+    <string name="set_alerts_ntfy_setup_summary">Buat topik, imbas, sahkan satu sampai</string>
+    <string name="set_alerts_ntfy_topic_title">Topik</string>
+    <string name="set_alerts_ntfy_topic_empty">Belum disediakan</string>
+    <string name="set_alerts_ntfy_topic_set">Sudah disediakan (akhir %1$s)</string>
+    <string name="set_alerts_ntfy_paid_title">Akaun ntfy saya pelan berbayar</string>
+    <string name="set_alerts_ntfy_paid_summary">Pelan percuma boleh; pelan berbayar menerima gambar lebih besar dan boleh melindungi topik</string>
+    <string name="set_alerts_ntfy_token_title">Token akses</string>
+    <string name="set_alerts_ntfy_token_summary">Pelan berbayar sahaja: buat di ntfy.sh bawah Account → Access tokens</string>
+    <string name="set_alerts_ntfy_token_empty">Kosong (tidak perlu pada pelan percuma)</string>
+    <string name="set_alerts_ntfy_token_set">Sudah diisi (akhir %1$s)</string>
+    <string name="set_alerts_channel_status_ntfy_paid">Amaran dihantar ke: ntfy (pelan berbayar)</string>
+    <string name="set_alerts_ntfy_server_title">Pelayan</string>
+    <string name="set_alerts_ntfy_server_summary">Ubah hanya untuk pelayan sendiri; selain itu kekalkan ntfy.sh</string>
+    <string name="set_dev_alerts_ntfy_title">Amaran melalui ntfy (eksperimen)</string>
+    <string name="set_dev_alerts_ntfy_off">Sedang menghantar ke Telegram. Hidupkan untuk guna ntfy.</string>
+    <string name="set_dev_alerts_ntfy_on">Sedang menghantar ke ntfy. Matikan untuk kembali ke Telegram; kedua-dua tetapan disimpan.</string>
+    <string name="set_dev_alerts_ntfy_needs_setup">ntfy belum disediakan. Menghidupkan suis ini akan membimbing anda dahulu.</string>
+    <string name="alert_ntfy_not_acknowledged">Amaran pelan percuma belum disahkan. Tetapan → Amaran → Sediakan ntfy.</string>
+    <string name="alert_ntfy_no_topic">ntfy belum ada topik. Tetapan → Amaran → Sediakan ntfy.</string>
+    <string name="set_alerts_ntfy_no_topic">ntfy belum ada topik</string>
+    <string name="set_alerts_ntfy_rejected">Topik ini menolak hantaran. Nama atau token mungkin salah.</string>
+    <string name="set_alerts_ntfy_too_big">Gambar ini terlalu besar untuk pelan ini.</string>
+    <string name="set_alerts_ntfy_rate">Terlalu kerap menghantar. Tunggu sebentar.</string>
+    <string name="set_alerts_ntfy_risk_title">Pelan percuma: nama ini terbuka</string>
+    <string name="set_alerts_ntfy_risk_intro">Pada pelan percuma semua ini benar, bukan mainan:</string>
+    <string name="set_alerts_ntfy_risk_r1">Sesiapa yang tahu nama ini boleh lihat gambar dari kereta.</string>
+    <string name="set_alerts_ntfy_risk_r2">Sesiapa yang tahu nama ini juga boleh hantar amaran palsu yang nampak asli.</string>
+    <string name="set_alerts_ntfy_risk_r3">Nama itu muncul pada skrin kunci telefon dan dalam app ntfy.</string>
+    <string name="set_alerts_ntfy_risk_r4">Gambar meninggalkan kereta dan melalui ntfy.sh serta perkhidmatan tolakannya. Kami tidak mengawal pelayan itu.</string>
+    <string name="set_alerts_ntfy_risk_r5">Pada pelan percuma pelayan menyimpan mesej 12 jam dan gambar 3 jam. Jika telefon tidak memuat turun, ia hilang.</string>
+    <string name="set_alerts_ntfy_risk_r6">Jika berlaku sesuatu, tiada siapa boleh buktikan siapa yang menghantar amaran itu.</string>
+    <string name="set_alerts_ntfy_risk_accept">Saya faham, risiko saya tanggung, guna juga</string>
+    <string name="set_alerts_ntfy_risk_decline">Guna akaun saya</string>
+    <string name="set_alerts_ntfy_qr_title">Dapatkan amaran di telefon</string>
+    <string name="set_alerts_ntfy_qr_body">1. Pasang "ntfy" di telefon: cari di gedung app, atau imbas kod di atas\n2. Halakan kamera telefon pada kod ini\n3. Tekan di bawah bila ia sudah ada dalam app</string>
+    <string name="set_alerts_ntfy_qr_open">Sudah dipasang</string>
+    <string name="set_alerts_ntfy_code_title">Adakah notifikasi sampai?</string>
+    <string name="set_alerts_ntfy_code_body">Saya baru hantar satu. Ada empat nombor di dalamnya. Taip di sini supaya saya tahu ia berjaya.</string>
+    <string name="set_alerts_ntfy_code_hint">Empat nombor</string>
+    <string name="set_alerts_ntfy_code_ok">Berjaya. Amaran akan datang ke sini mulai sekarang.</string>
+    <string name="set_alerts_ntfy_code_wrong">Empat nombor itu tidak sepadan. Ada nombor lain dalam notifikasi itu?</string>
+    <string name="set_alerts_ntfy_code_none">Tiada? Buka app ntfy di telefon, pastikan topik itu ada, kemudian tekan "Hantar lagi".</string>
+    <string name="set_alerts_ntfy_resend">Hantar lagi</string>
+    <string name="set_alerts_ntfy_need_topic">Buat topik dalam tetapan dahulu</string>
 </resources>

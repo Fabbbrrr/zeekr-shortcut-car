@@ -116,6 +116,37 @@
     <string name="alert_cmd_no_sentry">Sentry Mode is off, so the head unit is going to sleep and nothing can be taken</string>
     <string name="alert_cmd_not_parked">The car is not parked, so nothing was taken</string>
     <string name="alert_cmd_too_soon">Wait %1$d s before asking again</string>
+    <!-- Forgot Sentry: the car was left with Sentry Mode off, so it asks, or switches it on itself -->
+    <string name="set_alerts_guard_title">If I forget Sentry Mode</string>
+    <string name="set_alerts_guard_mode_off">Off</string>
+    <string name="set_alerts_guard_mode_ask">Ask me first</string>
+    <string name="set_alerts_guard_mode_ask_then_on">Ask, then switch it on after a minute</string>
+    <string name="set_alerts_guard_mode_on">Switch it on without asking</string>
+    <string name="set_alerts_guard_home_title">Use this position as home</string>
+    <string name="set_alerts_guard_home_set">Saved, on this car only. It is never sent anywhere</string>
+    <string name="set_alerts_guard_home_missing">The car has no position right now. Drive until the info bar shows one, then try again</string>
+    <string name="set_alerts_guard_home_none">Home forgotten</string>
+    <string name="alert_guard_ask">Sentry Mode is off.
+Parked at %1$s. Switching it on in %2$d s unless you say no.
+The car answers for a few minutes only, then it sleeps</string>
+    <string name="alert_guard_btn_on">Turn on now</string>
+    <string name="alert_guard_btn_no">Leave it off</string>
+    <string name="alert_guard_btn_off">Turn it off</string>
+    <string name="alert_guard_btn_state">Status</string>
+    <string name="alert_guard_on">%1$s
+Read back from the car</string>
+    <string name="alert_guard_off">%1$s
+Read back from the car</string>
+    <string name="alert_guard_off_armed">The car is armed, so it will not switch Sentry Mode off. Unlock it once, then try again</string>
+    <string name="alert_guard_late">Too late: the car is asleep and cannot switch anything on. It answers again when a door opens</string>
+    <string name="alert_guard_veto">Leaving Sentry Mode off</string>
+    <string name="alert_guard_already_on">Already on for this park</string>
+    <string name="alert_guard_report">%1$s
+Home: %2$s
+If I forget: %3$s</string>
+    <string name="alert_guard_where_home">at home</string>
+    <string name="alert_guard_where_away">away from home</string>
+    <string name="alert_guard_where_unknown">position unknown</string>
     <string name="alert_status_gear">Gear: %1$s</string>
     <string name="set_alerts_commands_title">Answer commands</string>
     <string name="set_alerts_commands_summary">Send pic for a picture, status for one line. Only you, and only while Sentry Mode is on</string>
@@ -1337,4 +1368,58 @@
     <string name="set_group_alerts_clip">Short video</string>
     <string name="set_group_alerts_checks">Checks</string>
     <string name="set_alerts_cameras_none">Nothing ticked, so all four are sent</string>
+
+    <!-- ntfy (experimental, selectable only under developer options; see docs/ntfy/) -->
+    <string name="set_group_alerts_ntfy">ntfy (experimental)</string>
+    <string name="set_alerts_channel_status_title">Alerts go to</string>
+    <string name="set_alerts_channel_status_telegram">Alerts go to: Telegram</string>
+    <string name="set_alerts_channel_status_ntfy_public">Alerts go to: ntfy (public topic)</string>
+    <string name="set_alerts_channel_status_ntfy_protected">Alerts go to: ntfy (protected)</string>
+    <string name="set_alerts_telegram_inactive">Not in use: alerts go to ntfy. These settings are kept.</string>
+    <string name="set_alerts_ntfy_inactive">Not in use: alerts go to Telegram. These settings are kept.</string>
+    <string name="set_alerts_ntfy_setup_title">Set up ntfy</string>
+    <string name="set_alerts_ntfy_setup_summary">Make a topic, scan it, confirm one arrived</string>
+    <string name="set_alerts_ntfy_topic_title">Topic</string>
+    <string name="set_alerts_ntfy_topic_empty">Not set up yet</string>
+    <string name="set_alerts_ntfy_topic_set">Set up (ends in %1$s)</string>
+    <string name="set_alerts_ntfy_paid_title">My ntfy account is on a paid plan</string>
+    <string name="set_alerts_ntfy_paid_summary">The free plan works; a paid one takes bigger pictures and can protect the topic</string>
+    <string name="set_alerts_ntfy_token_title">Access token</string>
+    <string name="set_alerts_ntfy_token_summary">Paid plans only: make one on ntfy.sh under Account → Access tokens</string>
+    <string name="set_alerts_ntfy_token_empty">Empty (not needed on the free plan)</string>
+    <string name="set_alerts_ntfy_token_set">Filled in (ends in %1$s)</string>
+    <string name="set_alerts_channel_status_ntfy_paid">Alerts go to: ntfy (paid plan)</string>
+    <string name="set_alerts_ntfy_server_title">Server</string>
+    <string name="set_alerts_ntfy_server_summary">Only change this for your own server; otherwise keep ntfy.sh</string>
+    <string name="set_dev_alerts_ntfy_title">Alerts via ntfy (experimental)</string>
+    <string name="set_dev_alerts_ntfy_off">Sending to Telegram now. Turn on to use ntfy.</string>
+    <string name="set_dev_alerts_ntfy_on">Sending to ntfy now. Turning it off goes back to Telegram; both sides keep their settings.</string>
+    <string name="set_dev_alerts_ntfy_needs_setup">ntfy is not set up yet. Turning this on walks you through it first.</string>
+    <string name="alert_ntfy_not_acknowledged">The free-plan warning has not been confirmed. Settings → Alerts → Set up ntfy.</string>
+    <string name="alert_ntfy_no_topic">ntfy has no topic yet. Settings → Alerts → Set up ntfy.</string>
+    <string name="set_alerts_ntfy_no_topic">ntfy has no topic yet</string>
+    <string name="set_alerts_ntfy_rejected">This topic refuses posts. The name or the token may be wrong.</string>
+    <string name="set_alerts_ntfy_too_big">This picture is too large for this plan.</string>
+    <string name="set_alerts_ntfy_rate">Sending too often. Wait a moment and try again.</string>
+    <string name="set_alerts_ntfy_risk_title">Free plan: this name is public</string>
+    <string name="set_alerts_ntfy_risk_intro">On the free plan all of this is true, and it is not a figure of speech:</string>
+    <string name="set_alerts_ntfy_risk_r1">Anyone who learns this name can see the photos sent from the car.</string>
+    <string name="set_alerts_ntfy_risk_r2">Anyone who learns this name can also post fake alerts that look real.</string>
+    <string name="set_alerts_ntfy_risk_r3">The name appears on your phone\'s lock screen and inside the ntfy app.</string>
+    <string name="set_alerts_ntfy_risk_r4">The photos leave the car and pass through ntfy.sh and its push service. We do not control those servers.</string>
+    <string name="set_alerts_ntfy_risk_r5">On the free plan the server keeps messages 12 hours and pictures 3 hours. If your phone does not fetch a picture, it is gone.</string>
+    <string name="set_alerts_ntfy_risk_r6">If something happens, nobody can prove who posted an alert.</string>
+    <string name="set_alerts_ntfy_risk_accept">I understand, the risk is mine, use it anyway</string>
+    <string name="set_alerts_ntfy_risk_decline">Use my account instead</string>
+    <string name="set_alerts_ntfy_qr_title">Get alerts on your phone</string>
+    <string name="set_alerts_ntfy_qr_body">1. Install "ntfy" on your phone: search your app store, or scan the code above\n2. Point your phone camera at this code\n3. Tap below when it is in the app</string>
+    <string name="set_alerts_ntfy_qr_open">It is installed</string>
+    <string name="set_alerts_ntfy_code_title">Did a notification arrive?</string>
+    <string name="set_alerts_ntfy_code_body">I just sent one. It has four numbers in it. Type them here and I know the path works.</string>
+    <string name="set_alerts_ntfy_code_hint">Four numbers</string>
+    <string name="set_alerts_ntfy_code_ok">That is it. Alerts will come here from now on.</string>
+    <string name="set_alerts_ntfy_code_wrong">Those four numbers do not match. Is there another set of numbers in the notification?</string>
+    <string name="set_alerts_ntfy_code_none">Nothing? Open the ntfy app on your phone, check the topic is there, then tap "Send again".</string>
+    <string name="set_alerts_ntfy_resend">Send again</string>
+    <string name="set_alerts_ntfy_need_topic">Make a topic in the settings first</string>
 </resources>

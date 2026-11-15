@@ -1,6 +1,7 @@
 /*
  * Zeekr Shortcut - https://github.com/dts88/zeekr-shortcut-car
  * Copyright (C) 2026 dts88
+ * Portions Copyright (C) 2026 Fab (Fabbbrrr) - https://github.com/Fabbbrrr
  * SPDX-License-Identifier: GPL-3.0-only
  * Additional terms under GPL-3.0 section 7 apply to dts88's code; see NOTICE.md.
  */
@@ -172,6 +173,14 @@ public final class SentryAlerts implements Telemetry.Listener {
     private Boolean lastScreenOn;
     private volatile long failureNotifiedAt;
     /**
+     * 上一次「发不出去」的原因（{@code 出口:原因}）。同一个原因只闹一次，换了原因才再闹。
+     *
+     * The last reason nothing could be sent ({@code channel:kind}). One noise per reason, and again
+     * only when the reason changes.
+     */
+    private volatile String lastBlockedState;
+
+    /**
      * 画面里的移动：编码器把小图送到这里，这里只管算不算一条警报。
      *
      * Motion in the frame: the encoder sends the small image here, and this code only decides whether it counts as an alert.
@@ -190,6 +199,43 @@ public final class SentryAlerts implements Telemetry.Listener {
      * Rate limit for photo requests made from Telegram (separate from the alert limits).
      */
     private final RequestPolicy requests = new RequestPolicy();
+
+    // ---- 忘了开哨兵 / Forgot Sentry ----
+
+    /**
+     * 超时自己开那一刻用的定时器。单独一条线程：发送那条是单线程队列，睡 60 秒会把后面的消息全堵住。
+     *
+     * The timer that switches sentry on when nobody answered. Its own thread: the send queue is a
+     * single thread, and sleeping 60 s there would block every message behind it.
+     */
+    private final java.util.concurrent.ScheduledExecutorService guardDelay =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "alert-guard-delay");
+                thread.setDaemon(true);
+                return thread;
+            });
+    /** 车主离开那一刻（{@code elapsedRealtime}）；0 = 这一趟还没判到离开。 */
+    private volatile long guardLeftAtMs;
+    /** 这一趟问出去的时倒；0 = 没问过。 */
+    private volatile long guardAskedAtMs;
+    /** 这一次提醒的号（{@link GuardToken}）：按钮带着它，换一趟就换一个。 */
+    private volatile String guardToken = "";
+    /** 车主按了「别开」：这一趟不再自己开。 */
+    private volatile boolean guardVetoed;
+    /** 这一趟已经开过了（超时或者按钮）。 */
+    private volatile boolean guardActed;
+    /** 延后的那一下（可以取消）。 */
+    private volatile java.util.concurrent.ScheduledFuture<?> guardPending;
+    /** 上一次屏幕亮着没有：判「亮 → 黑」那一条边。 */
+    private Boolean lastScreenLit;
+    /** 上一次主驾有人没有：第二条边，车主坐进去又下来也算离开。 */
+    private Boolean lastSeatOccupied;
+    /** 上一次停车之后真的开过车？没有的话，停在车库里没动过也会被当成「停好了」。 */
+    private boolean guardDroveSincePark;
+    /** 最近一次定位变的时刻（{@code elapsedRealtime}）；0 = 还没见过定位。 */
+    private long guardFixAtMs;
+    private Double guardFixLat;
+    private Double guardFixLon;
     /**
      * 发照片、发文字都排这一条线程：一条一条来，不并发（Telegram 有频率限制），
      * 也不为每条消息各起一个没人管的线程。
@@ -400,6 +446,7 @@ public final class SentryAlerts implements Telemetry.Listener {
             motion.setWanted(false);
             motion.forget();
             BlackBox.note("alerts: no longer watching car signals");
+            guardForget();
         }
         syncPoller();
     }
@@ -443,8 +490,10 @@ public final class SentryAlerts implements Telemetry.Listener {
      * As long as the process is alive and settings are on, there is no reason not to ask.</p>
      */
     private void syncPoller() {
+        // 命令是 Telegram 的功能：ntfy 这条路没有入口（开发者选项里先只做警报）。
+        // Commands belong to Telegram: the ntfy route has no entry point (alerts only, for now).
         boolean want = config.isAlertsEnabled() && config.hasAlertsTelegramConfig()
-                && config.isAlertsCommands();
+                && config.isAlertsCommands() && !config.isAlertsNtfy();
         if (want == pollerWanted) {
             return;
         }
@@ -474,12 +523,20 @@ public final class SentryAlerts implements Telemetry.Listener {
 
                     @Override
                     public void onHelp() {
-                        String token = config.getAlertsTelegramToken();
-                        String chatId = config.getAlertsTelegramChatId();
-                        if (TelegramRequest.looksLikeToken(token)
-                                && TelegramRequest.looksLikeChatId(chatId)) {
-                            deliverText(token, chatId, app.getString(R.string.alert_cmd_help));
+                        AlertChannel channel = channel();
+                        if (channel.ready()) {
+                            deliverText(channel, app.getString(R.string.alert_cmd_help));
                         }
+                    }
+
+                    @Override
+                    public void onButton(String data, long pressedAt) {
+                        onGuardButton(data, pressedAt);
+                    }
+
+                    @Override
+                    public void onGuard(TelegramCommand.GuardAction action, long requestedAt) {
+                        onGuardCommand(action, requestedAt);
                     }
                 });
                 poller.start();
@@ -512,20 +569,20 @@ public final class SentryAlerts implements Telemetry.Listener {
     }
 
     private void requestPictureInner(int lane, long requestedAt) {
-        String token = config.getAlertsTelegramToken();
-        String chatId = config.getAlertsTelegramChatId();
-        if (!TelegramRequest.looksLikeToken(token) || !TelegramRequest.looksLikeChatId(chatId)) {
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
             return;
         }
         long now = SystemClock.elapsedRealtime();
         VehicleState state = Telemetry.get().latest();
         if (!parkedNow(state)) {
-            deliverText(token, chatId, app.getString(R.string.alert_cmd_not_parked));
+            deliverText(channel, app.getString(R.string.alert_cmd_not_parked));
             return;
         }
         if (!requests.allows(now)) {
             long wait = Math.max(1, requests.cooldownLeftMs(now) / 1000);
-            deliverText(token, chatId, app.getString(R.string.alert_cmd_too_soon, wait));
+            deliverText(channel, app.getString(R.string.alert_cmd_too_soon, wait));
             return;
         }
         requests.noteSent(now);
@@ -536,12 +593,12 @@ public final class SentryAlerts implements Telemetry.Listener {
         SnapshotTaker.take(app, new SnapshotTaker.Callback() {
             @Override
             public void onPicture(Bitmap grid) {
-                deliver(token, chatId, grid, caption, lane, null, null);
+                deliver(channel, grid, caption, lane, null, null);
             }
 
             @Override
             public void onFailed(String reason) {
-                deliverText(token, chatId, app.getString(R.string.set_alerts_failed, reason));
+                deliverText(channel, app.getString(R.string.set_alerts_failed, reason));
             }
         });
     }
@@ -552,28 +609,28 @@ public final class SentryAlerts implements Telemetry.Listener {
      * The owner asks for status: reply with one line, take no photo.
      */
     private void requestStatus() {
-        String token = config.getAlertsTelegramToken();
-        String chatId = config.getAlertsTelegramChatId();
-        if (!TelegramRequest.looksLikeToken(token) || !TelegramRequest.looksLikeChatId(chatId)) {
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
             return;
         }
         try {
-            requestStatusInner(token, chatId);
+            requestStatusInner(channel);
         } catch (RuntimeException | OutOfMemoryError e) {
             // 不要报一句“状态”就没了下文：把原因回过去（已擦令牌）
             // Do not leave the user with a bare "status" and no follow-up: send the reason back (token already redacted)
             BlackBox.note("alerts: status reply failed (" + TelegramRequest.redact(String.valueOf(e)) + ")");
-            deliverText(token, chatId, app.getString(R.string.set_alerts_failed,
+            deliverText(channel, app.getString(R.string.set_alerts_failed,
                     TelegramRequest.redact(String.valueOf(e))));
         }
     }
 
-    private void requestStatusInner(String token, String chatId) {
+    private void requestStatusInner(AlertChannel channel) {
         VehicleState state = Telemetry.get().latest();
         String gear = state == null || state.gear == null ? "?" : state.gear;
         String text = sentryLine(sentryValue()) + "\n"
                 + app.getString(R.string.alert_status_gear, gear);
-        deliverText(token, chatId, text);
+        deliverText(channel, text);
     }
 
     // ------------------------------------------------------------------ 设置里的两个动作
@@ -592,14 +649,9 @@ public final class SentryAlerts implements Telemetry.Listener {
      * will say which step failed.</p>
      */
     public void sendTestPicture(Callback callback) {
-        String token = config.getAlertsTelegramToken();
-        String chatId = config.getAlertsTelegramChatId();
-        if (!TelegramRequest.looksLikeToken(token)) {
-            callback.onResult(false, app.getString(R.string.set_alerts_need_token));
-            return;
-        }
-        if (!TelegramRequest.looksLikeChatId(chatId)) {
-            callback.onResult(false, app.getString(R.string.set_alerts_need_chat));
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            callback.onResult(false, blockedText(channel.blockedReason()));
             return;
         }
         String caption = TelegramRequest.caption(
@@ -609,7 +661,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         SnapshotTaker.take(app, new SnapshotTaker.Callback() {
             @Override
             public void onPicture(Bitmap grid) {
-                deliver(token, chatId, grid, caption, TelegramCommand.ANY_LANE, callback, null);
+                deliver(channel, grid, caption, TelegramCommand.ANY_LANE, callback, null);
             }
 
             @Override
@@ -961,6 +1013,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         boolean screenRising = SentryFacts.rising(screenOn, lastScreenOn);
 
         heartbeatIfDue();
+        watchForForgottenSentry(readings, state, sentry, parked, screenOn);
 
         // 取样的条件比“发警报”宽一点：停着、哨兵开着就取。
         // 为什么不要求已布防：车主拿着钥匙走过去时车会解锁，哨兵从 2 退到 1，
@@ -1236,9 +1289,9 @@ public final class SentryAlerts implements Telemetry.Listener {
     // ------------------------------------------------------------------ photo and send
 
     private void fire(String headline, Runnable onDelivered) {
-        String token = config.getAlertsTelegramToken();
-        String chatId = config.getAlertsTelegramChatId();
-        if (!TelegramRequest.looksLikeToken(token) || !TelegramRequest.looksLikeChatId(chatId)) {
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
             return;
         }
         String caption = TelegramRequest.caption(headline, sentryLine(sentryValue()),
@@ -1246,7 +1299,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         SnapshotTaker.take(app, new SnapshotTaker.Callback() {
             @Override
             public void onPicture(Bitmap grid) {
-                deliver(token, chatId, grid, caption, TelegramCommand.ANY_LANE, null, onDelivered);
+                deliver(channel, grid, caption, TelegramCommand.ANY_LANE, null, onDelivered);
             }
 
             @Override
@@ -1255,9 +1308,59 @@ public final class SentryAlerts implements Telemetry.Listener {
                 // Photo not taken, still send text: the owner should at least know "someone just touched the car".
                 BlackBox.note("alerts: no picture (" + reason + "), text only");
                 notifyFailure(app.getString(R.string.alert_no_storage));
-                deliverText(token, chatId, caption + "\n" + app.getString(R.string.alert_no_storage));
+                deliverText(channel, caption + "\n" + app.getString(R.string.alert_no_storage));
             }
         });
+    }
+
+    /**
+     * 现在该走哪条出口。
+     *
+     * <p>两条规矩都在这里，且只在这里：开发者选项关着就是 Telegram，存着 ntfy 也一样
+     * （{@link NtfyGate}）—— 藏起来的功能不能变成「悄悄不发了」；ntfy 免费话题的风险提示没被接受，
+     * 就返回一个永远发不出去的出口（{@link NtfyRisk}），由 {@link #blockedChannel} 说清楚。</p>
+     *
+     * Which exit to use now. Both rules live here and only here: developer options closed means
+     * Telegram even when ntfy is stored (a hidden feature must not turn into silence), and an
+     * unaccepted free-topic warning yields an exit that never sends, explained by
+     * {@link #blockedChannel}.
+     */
+    private AlertChannel channel() {
+        if (config.isAlertsNtfy()) {
+            return NtfyChannel.of(config);
+        }
+        return new TelegramChannel(config.getAlertsTelegramToken(), config.getAlertsTelegramChatId());
+    }
+
+    /**
+     * 发不出去：黑匣子记一行，车主那边闹一次。同一个原因只闹一次。
+     *
+     * <p>宁可吵一下，也不能让车主以为车在盯着而其实一条都没发。</p>
+     *
+     * Nothing could be sent: one blackbox line, one local notification, once per reason — noise is
+     * cheaper than an owner believing the car is watched when nothing is leaving it.
+     */
+    private void blockedChannel(AlertChannel channel) {
+        AlertChannel.Kind why = channel.blockedReason();
+        String state = channel.name() + ":" + why;
+        BlackBox.note("alerts: dropped (" + state + ")");
+        if (state.equals(lastBlockedState)) {
+            return;
+        }
+        lastBlockedState = state;
+        BlackBox.noteImportant("alerts: not sending (" + state + ")");
+        notifyFailure(blockedText(why));
+    }
+
+    /** 发不出去的原因，翻成一句话。The reason, as one sentence. */
+    private String blockedText(AlertChannel.Kind why) {
+        if (why == AlertChannel.Kind.NOT_ACKNOWLEDGED) {
+            return app.getString(R.string.alert_ntfy_not_acknowledged);
+        }
+        if (why == AlertChannel.Kind.NOT_CONFIGURED && config.isAlertsNtfy()) {
+            return app.getString(R.string.alert_ntfy_no_topic);
+        }
+        return app.getString(R.string.set_alerts_need_token);
     }
 
     /**
@@ -1274,7 +1377,7 @@ public final class SentryAlerts implements Telemetry.Listener {
      * time, so as not to hit Telegram's rate limits), then recycles bitmaps; this path can run
      * several times a night and must not leak memory.</p>
      */
-    private void deliver(String token, String chatId, Bitmap grid, String caption, int onlyLane,
+    private void deliver(AlertChannel channel, Bitmap grid, String caption, int onlyLane,
                          Callback callback, Runnable onDelivered) {
         sender.execute(() -> {
             // 掰直、切图、压缩都在这一条线程上：一张 2×2 的校正要翻一百六十万像素，
@@ -1300,7 +1403,7 @@ public final class SentryAlerts implements Telemetry.Listener {
                         cell.recycle();
                         if (jpeg != null && jpeg.length > 0) {
                             photos.add(jpeg);
-                            captions.add(CameraNames.ofLane(app, lane) + "'+bs+'n" + caption);
+                            captions.add(CameraNames.ofLane(app, lane) + "\n" + caption);
                         }
                     }
                 } else {
@@ -1338,38 +1441,43 @@ public final class SentryAlerts implements Telemetry.Listener {
                 return;
             }
 
-            TelegramSender.Result last = TelegramSender.Result.fail("nothing sent", 0);
-            String markup = TelegramRequest.keyboardMarkup();
+            AlertChannel.Result last = AlertChannel.Result.fail(
+                    AlertChannel.Kind.NETWORK, 0, "nothing sent");
             for (int i = 0; i < photos.size(); i++) {
-                last = TelegramSender.sendPhoto(token, chatId, photos.get(i), captions.get(i), markup);
+                last = channel.sendPhoto(photos.get(i), captions.get(i));
                 if (!last.ok) {
                     break;
                 }
             }
-            final TelegramSender.Result outcome = last;
+            final AlertChannel.Result outcome = last;
             if (outcome.ok && onDelivered != null) {
                 onDelivered.run();
             }
-            if (outcome.ok) {
-                sendClip(token, chatId, caption, markup);
+            if (outcome.ok && channel.supportsClips()) {
+                sendClip(config.getAlertsTelegramToken(), config.getAlertsTelegramChatId(), caption,
+                        TelegramRequest.keyboardMarkup());
             }
             if (!outcome.ok) {
-                BlackBox.note("alerts: send failed (" + outcome.display() + ")");
-                notifyFailure(outcome.display());
+                BlackBox.note("alerts: send failed via " + channel.name() + " ("
+                        + outcome.kind + " " + outcome.display() + ")");
+                notifyFailure(failureText(outcome));
             }
             if (callback != null) {
                 String message;
                 if (outcome.ok) {
                     message = app.getString(R.string.set_alerts_sent);
-                    if (!config.isAlertsEnabled()) {
+                    if (config.isAlertsNtfy() && !NtfyRisk.accepted(config.getAlertsNtfyTopic(),
+                            config.getAlertsNtfyRiskAck())) {
+                        // 发得出去不等于风险提示已经被接受
+                        // Being able to send does not mean the warning was accepted
+                        message = message + "\n" + app.getString(R.string.alert_ntfy_not_acknowledged);
+                    } else if (!config.isAlertsEnabled()) {
                         // 发得出去不等于警报开着
                         // Being able to send does not mean alerts are on
                         message = message + "\n" + app.getString(R.string.set_alerts_test_switch_off);
                     }
-                } else if (outcome.rejected) {
-                    message = app.getString(R.string.set_alerts_token_rejected);
                 } else {
-                    message = app.getString(R.string.set_alerts_failed, outcome.display());
+                    message = failureText(outcome);
                 }
                 final String reply = message;
                 app.getMainExecutor().execute(() -> callback.onResult(outcome.ok, reply));
@@ -1400,15 +1508,43 @@ public final class SentryAlerts implements Telemetry.Listener {
      *
      * When there is no photo, send only one line (Telegram's sendMessage).
      */
-    private void deliverText(String token, String chatId, String text) {
+    private void deliverText(AlertChannel channel, String text) {
         sender.execute(() -> {
-            TelegramSender.Result result = TelegramSender.sendMessage(token, chatId, text,
-                    TelegramRequest.keyboardMarkup());
+            AlertChannel.Result result = channel.sendText(text);
             if (!result.ok) {
-                BlackBox.note("alerts: text send failed (" + result.display() + ")");
-                notifyFailure(result.display());
+                BlackBox.note("alerts: text send failed via " + channel.name() + " ("
+                        + result.kind + " " + result.display() + ")");
+                notifyFailure(failureText(result));
             }
         });
+    }
+
+    /**
+     * 一次失败的说明：先说「哪一步不对」，再说细节。
+     *
+     * <p>「什么没配好」「图太大」「免费方案的提醒没接受」是三件不同的事，车主能做的也是三件不同的事。</p>
+     *
+     * The explanation for one failure: what is wrong, then the detail. "Not set up", "picture too
+     * large" and "free-plan warning not accepted" are three things the owner fixes three ways.
+     */
+    private String failureText(AlertChannel.Result result) {
+        boolean ntfy = config.isAlertsNtfy();
+        switch (result.kind) {
+            case NOT_CONFIGURED:
+                return app.getString(ntfy
+                        ? R.string.set_alerts_ntfy_no_topic : R.string.set_alerts_need_token);
+            case NOT_ACKNOWLEDGED:
+                return app.getString(R.string.alert_ntfy_not_acknowledged);
+            case REJECTED:
+                return app.getString(ntfy
+                        ? R.string.set_alerts_ntfy_rejected : R.string.set_alerts_token_rejected);
+            case TOO_LARGE:
+                return app.getString(R.string.set_alerts_ntfy_too_big);
+            case RATE_LIMITED:
+                return app.getString(R.string.set_alerts_ntfy_rate);
+            default:
+                return app.getString(R.string.set_alerts_failed, result.display());
+        }
     }
 
     private Integer sentryValue() {
@@ -1513,7 +1649,7 @@ public final class SentryAlerts implements Telemetry.Listener {
                 BlackBox.note("alerts: no clip (ring holds too little video)");
                 return;
             }
-            String clipCaption = caption + "'+bs+'n"
+            String clipCaption = caption + "\n"
                     + app.getString(seconds == 5 ? R.string.opt_alerts_clip_5 : R.string.opt_alerts_clip_10);
             sender.execute(() -> {
                 TelegramSender.Result result = TelegramSender.sendVideo(token, chatId, file, clipCaption, markup);
@@ -1550,6 +1686,410 @@ public final class SentryAlerts implements Telemetry.Listener {
         }
         text = text.trim();
         return text.length() <= 90 ? text : text.substring(0, 90);
+    }
+
+    // ================================================================= 忘了开哨兵 (Forgot Sentry)
+
+    /**
+     * 车主走了、哨兵没开：发一条提醒，问一句，或者自己开。
+     *
+     * <h3>为什么挂在「离开的那一条边」</h3>
+     *
+     * <p>哨兵没开时车机在车主离车四到六分钟后下电，进程再活三到五秒。晚一点发出去的消息，
+     * 车主按得再快也来不及 —— 所以判断就在屏幕灭、或者主驾空出来那一下。</p>
+     *
+     * <h3>这一路不是警报</h3>
+     *
+     * <p>不走 {@link AlertPolicy}：那条要布防、要冷却、要每小时上限，判的是「有人动了车」。
+     * 这里判的是「车没人守」。静默时段也不管用 —— 夜里在外面忘了开哨兵，恰恰是最该问的时候。</p>
+     *
+     * <h3>The leaving edge, not a timer</h3>
+     *
+     * <p>The head unit is gone four to six minutes after the owner walks away, so the decision is taken
+     * on the screen-off edge (or the driver seat emptying), while the car can still be written to. It is
+     * not an alert: no armed gate, no cooldown, and quiet hours do not apply, because a car left
+     * unguarded at night is exactly when the question matters.</p>
+     */
+
+    /** 屏幕亮 → 灭，或者主驾有人 → 没人：车主走了。 */
+    private void watchForForgottenSentry(Readings readings, VehicleState state, Integer sentry,
+                                         boolean parked, Boolean screenOn) {
+        // 按钮是 Telegram 的回程，别的出口没有：这一项在 ntfy 下整段不做（DECISIONS.md D8）。
+        // The buttons are Telegram's return path and the other exit has none, so under ntfy this whole
+        // block stands down (DECISIONS.md D8).
+        if (config.isAlertsNtfy()) {
+            return;
+        }
+        if (!parked) {
+            // 开着车：记着「真的动过」，回来停车时才不会被当成停在车库没动的车
+            guardDroveSincePark = true;
+        }
+        Boolean seatOccupied = readings.bool(Signal.SEAT_DRIVER);
+        boolean screenWentBlack = Boolean.TRUE.equals(lastScreenLit) && Boolean.FALSE.equals(screenOn);
+        boolean seatEmptied = Boolean.TRUE.equals(lastSeatOccupied)
+                && Boolean.FALSE.equals(seatOccupied);
+        lastScreenLit = screenOn;
+        lastSeatOccupied = seatOccupied;
+        guardRememberFix(state);
+        if (!parked || (!screenWentBlack && !seatEmptied)) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        boolean afterDrive = guardDroveSincePark;
+        guardDroveSincePark = false;
+        // 这一趟从头算：号换了，旧按钮就作废（GuardToken）
+        guardLeftAtMs = now;
+        guardAskedAtMs = 0;
+        guardVetoed = false;
+        guardActed = false;
+        guardToken = "";
+        cancelGuardPending();
+        GuardPolicy.Mode mode = config.getAlertsGuardMode();
+        GuardPolicy.Verdict verdict = GuardPolicy.decide(mode, sentry, parked, afterDrive,
+                guardWhere(), now, 0L, now);
+        if (verdict == GuardPolicy.Verdict.IGNORE) {
+            return;
+        }
+        if (verdict == GuardPolicy.Verdict.ACT) {
+            BlackBox.note("alerts: forgot sentry, switching it on (" + mode + ")");
+            switchSentryOnByGuard("leaving");
+            return;
+        }
+        BlackBox.note("alerts: forgot sentry, asking (" + mode + ")");
+        guardAsk(now, mode);
+    }
+
+    /** 定位变没变：变了就记下什么时候变的，用来判「这个位置是多久以前的」。 */
+    private void guardRememberFix(VehicleState state) {
+        Double lat = state == null ? null : state.latitude;
+        Double lon = state == null ? null : state.longitude;
+        if (lat == null || lon == null) {
+            return;
+        }
+        if (!lat.equals(guardFixLat) || !lon.equals(guardFixLon)) {
+            guardFixLat = lat;
+            guardFixLon = lon;
+            guardFixAtMs = SystemClock.elapsedRealtime();
+        }
+    }
+
+    /** 离家远不远。没定位、没设家、定位一直没变过（没法判多旧）都是 UNKNOWN。 */
+    private GuardHome.Where guardWhere() {
+        long age = guardFixAtMs == 0 ? -1 : SystemClock.elapsedRealtime() - guardFixAtMs;
+        return GuardHome.classify(GuardHome.parse(config.getAlertsGuardHome()),
+                guardFixLat, guardFixLon, age);
+    }
+
+    private boolean guardHomeConfigured() {
+        return GuardHome.parse(config.getAlertsGuardHome()) != null;
+    }
+
+    /** 问一句，带两颗按钮。 */
+    private void guardAsk(long nowMs, GuardPolicy.Mode mode) {
+        guardToken = GuardToken.mint(nowMs);
+        guardAskedAtMs = nowMs;
+        String markup = TelegramRequest.inlineKeyboard(
+                new String[]{app.getString(R.string.alert_guard_btn_on),
+                        app.getString(R.string.alert_guard_btn_no)},
+                new String[]{GuardToken.data(GuardToken.ACTION_ON, guardToken),
+                        GuardToken.data(GuardToken.ACTION_NO, guardToken)});
+        guardSend(app.getString(R.string.alert_guard_ask, time(),
+                GuardPolicy.AUTO_ON_MS / 1000), markup);
+        if (mode == GuardPolicy.Mode.ASK_THEN_ON) {
+            scheduleGuardAutoOn();
+        }
+    }
+
+    /** 60 秒没人否决就自己开。到点还要再判一次，别把车主按过的「别开」覆盖掉。 */
+    private void scheduleGuardAutoOn() {
+        cancelGuardPending();
+        guardPending = guardDelay.schedule(this::guardAutoOn,
+                GuardPolicy.AUTO_ON_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
+    private void cancelGuardPending() {
+        java.util.concurrent.ScheduledFuture<?> pending = guardPending;
+        guardPending = null;
+        if (pending != null && !pending.isDone()) {
+            pending.cancel(false);
+        }
+    }
+
+    /** 定时器上叫（不是主线程）：再判一次，够格就开。 */
+    private void guardAutoOn() {
+        try {
+            if (guardVetoed || guardActed) {
+                return;
+            }
+            long now = SystemClock.elapsedRealtime();
+            if (!GuardPolicy.stillActionable(guardLeftAtMs, now)) {
+                BlackBox.note("alerts: forgot sentry, too late to switch it on");
+                return;
+            }
+            if (!GuardPolicy.maySwitchOnItself(guardWhere(), guardHomeConfigured())) {
+                BlackBox.note("alerts: forgot sentry, at home or still unsure of where it is");
+                return;
+            }
+            VehicleState state = Telemetry.get().latest();
+            Integer sentry = state == null ? null : state.sentry;
+            boolean parked = parkedNow(state);
+            GuardPolicy.Verdict again = GuardPolicy.decide(GuardPolicy.Mode.ON, sentry, parked, true,
+                    guardWhere(), guardLeftAtMs, 0L, now);
+            if (again != GuardPolicy.Verdict.ACT) {
+                return;
+            }
+            BlackBox.note("alerts: forgot sentry, nobody answered, switching it on");
+            switchSentryOnByGuard("timeout");
+        } catch (RuntimeException e) {
+            AppLog.w(TAG, "guard auto-on failed: " + TelegramRequest.redact(String.valueOf(e)));
+        }
+    }
+
+    /**
+     * 真的去开。
+     *
+     * <p>回执里的那句话是「已经读回来了」换来的：{@code SentryRemote} 只在车写回的值确实变了之后才回
+     * {@code DONE}，所以这里说「开」是有依据的。不拿 {@code sentryValue()} 再说一遍 —— 车辆信号的快照
+     * 可能还是上一秒的，读出来会把一句好消息写成「哨兵模式：关」。</p>
+     *
+     * <p>{@code guardActed} 在没做成时不置真：车主再按一次还得能重试。</p>
+     *
+     * <p>The receipt says "on" because {@code DONE} means the car's own read-back matched. The telemetry
+     * snapshot is not quoted here: it may still be a second old, which would turn good news into
+     * "Sentry Mode: off". A refused write leaves {@code guardActed} false so a second press can retry.</p>
+     */
+    private void switchSentryOnByGuard(String why) {
+        cancelGuardPending();
+        com.kooo.evcam.button.SentryRemote.on(app, outcome -> {
+            if (outcome == com.kooo.evcam.button.SentryRemote.Outcome.DONE) {
+                guardActed = true;
+                BlackBox.note("alerts: sentry on after " + why + ", the car read it back (telemetry "
+                        + sentryValue() + ")");
+                guardSend(app.getString(R.string.alert_guard_on,
+                        app.getString(R.string.alert_sentry_on)), guardReceiptMarkup(true));
+                return;
+            }
+            guardActed = false;
+            BlackBox.note("alerts: sentry on was refused (" + outcome + ")");
+            guardSend(com.kooo.evcam.button.SentryRemote.failureText(app, outcome), "");
+        });
+    }
+
+    /** 回执下面那两颗：开了给「关掉」，关了给「打开」。 */
+    private String guardReceiptMarkup(boolean nowOn) {
+        if (guardToken.isEmpty()) {
+            return "";
+        }
+        String onOff = nowOn ? GuardToken.ACTION_OFF : GuardToken.ACTION_ON;
+        String onOffLabel = app.getString(nowOn ? R.string.alert_guard_btn_off
+                : R.string.alert_guard_btn_on);
+        return TelegramRequest.inlineKeyboard(
+                new String[]{onOffLabel, app.getString(R.string.alert_guard_btn_state)},
+                new String[]{GuardToken.data(onOff, guardToken),
+                        GuardToken.data(GuardToken.ACTION_STATE, guardToken)});
+    }
+
+    /** 关掉。布防（2）时车机不受理，那是车的规矩，直接说清楚。 */
+    private void switchSentryOffByGuard() {
+        Integer sentry = sentryValue();
+        if (sentry != null && SentryFacts.armed(sentry)) {
+            guardSend(app.getString(R.string.alert_guard_off_armed), "");
+            return;
+        }
+        com.kooo.evcam.button.SentryRemote.off(app, outcome -> {
+            if (outcome == com.kooo.evcam.button.SentryRemote.Outcome.DONE) {
+                guardActed = false;
+                guardSend(app.getString(R.string.alert_guard_off,
+                        app.getString(R.string.alert_sentry_off)), guardReceiptMarkup(false));
+                return;
+            }
+            BlackBox.note("alerts: sentry off was refused (" + outcome + ")");
+            guardSend(com.kooo.evcam.button.SentryRemote.failureText(app, outcome), "");
+        });
+    }
+
+    /**
+     * 一颗按钮按下了（{@code callback_query}，在轮询那条线程上叫）。
+     *
+     * <p>号码不对就不是这一次提醒的；太晚就直接说太晚 —— 车已经睡了，装没看见比说实话更糟。</p>
+     */
+    void onGuardButton(String data, long pressedAtMs) {
+        String action = GuardToken.actionFor(data, guardToken);
+        if (action == null) {
+            BlackBox.note("alerts: a button from an older reminder, ignored");
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (!GuardPolicy.stillActionable(guardLeftAtMs, now)) {
+            BlackBox.note("alerts: button pressed after the window ("
+                    + (now - guardLeftAtMs) / 1000 + " s)");
+            guardSend(app.getString(R.string.alert_guard_late), "");
+            return;
+        }
+        if (GuardToken.ACTION_NO.equals(action)) {
+            guardVetoed = true;
+            cancelGuardPending();
+            BlackBox.note("alerts: the owner said no, sentry stays off");
+            guardSend(app.getString(R.string.alert_guard_veto), "");
+            return;
+        }
+        if (GuardToken.ACTION_STATE.equals(action)) {
+            guardSend(guardReport(), "");
+            return;
+        }
+        if (GuardToken.ACTION_OFF.equals(action)) {
+            switchSentryOffByGuard();
+            return;
+        }
+        if (guardActed) {
+            guardSend(app.getString(R.string.alert_guard_already_on), "");
+            return;
+        }
+        switchSentryOnByGuard("button");
+    }
+
+    /** 文字命令 {@code /guard …}（轮询那条线程上叫）。 */
+    void onGuardCommand(TelegramCommand.GuardAction action, long requestedAtMs) {
+        if (action == null) {
+            guardSend(guardReport(), "");
+            return;
+        }
+        switch (action) {
+            case ON:
+                if (!GuardPolicy.stillActionable(guardLeftAtMs, SystemClock.elapsedRealtime())) {
+                    guardSend(app.getString(R.string.alert_guard_late), "");
+                    return;
+                }
+                if (guardActed) {
+                    guardSend(app.getString(R.string.alert_guard_already_on), "");
+                    return;
+                }
+                switchSentryOnByGuard("command");
+                return;
+            case OFF:
+                switchSentryOffByGuard();
+                return;
+            case HOME_SET:
+                setGuardHomeFromCar();
+                return;
+            case HOME_CLEAR:
+                config.clearAlertsGuardHome();
+                BlackBox.note("alerts: home point cleared");
+                guardSend(app.getString(R.string.set_alerts_guard_home_none), "");
+                return;
+            case AUTO_OFF:
+            case AUTO_ASK:
+            case AUTO_ASK_THEN_ON:
+            case AUTO_ON:
+                GuardPolicy.Mode mode = action == TelegramCommand.GuardAction.AUTO_OFF
+                        ? GuardPolicy.Mode.OFF
+                        : action == TelegramCommand.GuardAction.AUTO_ASK
+                        ? GuardPolicy.Mode.ASK
+                        : action == TelegramCommand.GuardAction.AUTO_ASK_THEN_ON
+                        ? GuardPolicy.Mode.ASK_THEN_ON : GuardPolicy.Mode.ON;
+                config.setAlertsGuardMode(mode);
+                BlackBox.note("alerts: forgot sentry mode is now " + mode);
+                guardSend(guardReport(), "");
+                return;
+            case REPORT:
+            default:
+                guardSend(guardReport(), "");
+        }
+    }
+
+    /** 把车此刻的位置记成家。定位太旧、没有定位都不收。 */
+    private void setGuardHomeFromCar() {
+        VehicleState state = Telemetry.get().latest();
+        Double lat = state == null ? null : state.latitude;
+        Double lon = state == null ? null : state.longitude;
+        long age = guardFixAtMs == 0 ? -1 : SystemClock.elapsedRealtime() - guardFixAtMs;
+        if (lat == null || lon == null || age < 0 || age > GuardHome.FIX_MAX_AGE_MS
+                || !config.setAlertsGuardHome(lat, lon)) {
+            guardSend(app.getString(R.string.set_alerts_guard_home_missing), "");
+            return;
+        }
+        BlackBox.note("alerts: home point set from the car");
+        guardSend(app.getString(R.string.set_alerts_guard_home_set), "");
+    }
+
+    /** 设置里那一行：把车此刻的位置记成家，结果回到主线程给界面用。 */
+    public void setGuardHomeHere(Callback callback) {
+        VehicleState state = Telemetry.get().latest();
+        Double lat = state == null ? null : state.latitude;
+        Double lon = state == null ? null : state.longitude;
+        long age = guardFixAtMs == 0 ? -1 : SystemClock.elapsedRealtime() - guardFixAtMs;
+        boolean ok = lat != null && lon != null && age >= 0 && age <= GuardHome.FIX_MAX_AGE_MS
+                && config.setAlertsGuardHome(lat, lon);
+        if (ok) {
+            BlackBox.note("alerts: home point set from the settings screen");
+        }
+        if (callback != null) {
+            String message = app.getString(ok ? R.string.set_alerts_guard_home_set
+                    : R.string.set_alerts_guard_home_missing);
+            app.getMainExecutor().execute(() -> callback.onResult(ok, message));
+        }
+    }
+
+    /** 一句话：哨兵什么状态、离家远不远、这一项哪一档。 */
+    private String guardReport() {
+        Integer sentry = sentryValue();
+        GuardHome.Where where = guardWhere();
+        int whereId = where == GuardHome.Where.HOME ? R.string.alert_guard_where_home
+                : where == GuardHome.Where.AWAY ? R.string.alert_guard_where_away
+                : R.string.alert_guard_where_unknown;
+        return app.getString(R.string.alert_guard_report,
+                sentryLine(sentry), app.getString(whereId),
+                guardModeWord(config.getAlertsGuardMode()));
+    }
+
+    private String guardModeWord(GuardPolicy.Mode mode) {
+        switch (mode) {
+            case ASK:
+                return app.getString(R.string.set_alerts_guard_mode_ask);
+            case ASK_THEN_ON:
+                return app.getString(R.string.set_alerts_guard_mode_ask_then_on);
+            case ON:
+                return app.getString(R.string.set_alerts_guard_mode_on);
+            case OFF:
+            default:
+                return app.getString(R.string.set_alerts_guard_mode_off);
+        }
+    }
+
+    /**
+     * 发一条带按钮的话。走发送那条线程；失败只在黑匣子里留一行 ——
+     * 一条提醒发不出去，不值得在本地弹窗打扰正在开车的人。
+     */
+    private void guardSend(String text, String markup) {
+        if (text == null || text.trim().isEmpty()) {
+            return;
+        }
+        String token = config.getAlertsTelegramToken();
+        String chatId = config.getAlertsTelegramChatId();
+        if (!TelegramRequest.looksLikeToken(token) || !TelegramRequest.looksLikeChatId(chatId)) {
+            return;
+        }
+        sender.execute(() -> {
+            TelegramSender.Result result = TelegramSender.sendMessage(token, chatId, text,
+                    markup == null || markup.isEmpty() ? TelegramRequest.keyboardMarkup() : markup);
+            if (!result.ok) {
+                BlackBox.note("alerts: guard send failed (" + result.display() + ")");
+            }
+        });
+    }
+
+    /** 这一项关掉、或者不再监听：定时器、号、状态一起清干净。 */
+    private void guardForget() {
+        cancelGuardPending();
+        guardLeftAtMs = 0;
+        guardAskedAtMs = 0;
+        guardVetoed = false;
+        guardActed = false;
+        guardToken = "";
+        guardDroveSincePark = false;
+        guardFixAtMs = 0;
+        guardFixLat = null;
+        guardFixLon = null;
     }
 
     private void notifyFailure(String why) {
