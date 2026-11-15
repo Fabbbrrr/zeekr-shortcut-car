@@ -66,8 +66,8 @@ public class DeveloperSettingsTest {
         ROWS.put("pref_permissions", NONE);
         // 停车警报调试（开发者选项）：只是一个入口，不存设置
         ROWS.put("pref_alerts_debug", NONE);
-        // ntfy 警报的出口开关（2026-11-15）：关着开发者选项就按 telegram 算（docs/ntfy/DECISIONS.md D14）
-        ROWS.put("pref_dev_alerts_ntfy", Arrays.asList("alerts_transport"));
+        // ntfy 那一行 2026-11-15 搬进「停车警报」了（事件清单 + 发到哪儿），开发者区不再有它。
+        // The ntfy row moved into the alerts section on 2026-11-15; the developer area no longer has it.
         // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）
         ROWS.put("pref_update_fork", Arrays.asList("update_from_fork"));
         ROWS.put("pref_raw_frame_dump", Arrays.asList("raw_frame_dump"));
