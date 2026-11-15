@@ -166,35 +166,44 @@ too, and show only the last 4 characters in the settings row, exactly like the c
 **Cost.** Any new key added to `app_config` would leak through `SettingsBackup.snapshot`, which
 exports every unknown key by default. That is why this is a decision and not a preference.
 
-## D11 — What the settings page looks like (same shape as Telegram, one extra choice)
+## D11 — What the settings page looks like (one toggle, one status line, nothing hidden that isn't dev)
 
-New group `cat_alerts_channel` above the existing Telegram group:
+There is no "where should alerts go?" chooser for owners. There is one **developer toggle** between
+the two transports, and one **status line** that is always visible:
 
-| Row | Free path | Paid path |
+| Row | Where | What it does |
 |---|---|---|
-| `pref_alerts_channel` | "Where alerts go: Telegram / ntfy (free) / ntfy (my account)" | same |
-| `pref_alerts_ntfy_setup` | "Set up ntfy" → wizard | same |
-| `pref_alerts_ntfy_topic` | shows `…aB3d` (last 4) | same |
-| `pref_alerts_ntfy_account` | hidden | shows the tier, e.g. "Supporter — 3 reserved topics" |
-| `pref_alerts_ntfy_token` | hidden (no token needed) | "Access token", last 4 shown |
-| `pref_alerts_ntfy_server` | hidden unless "advanced" | same |
-| `pref_alerts_test` | existing row, now sends over the selected channel | same |
+| `pref_alerts_channel_status` | alerts section, visible to everyone, not a control | "Alerts go to: Telegram" / "Alerts go to: ntfy (public topic)" — reads the *effective* transport, D14 |
+| `pref_dev_alerts_ntfy` | developer section, only when developer mode is unlocked | switch: off = Telegram, on = ntfy. Writes `alerts_transport` (D14) |
+| `pref_alerts_ntfy_setup` | alerts section, gate open only | "Set up ntfy" → wizard |
+| `pref_alerts_ntfy_topic` | gate open only | shows `…aB3d` (last 4) |
+| `pref_alerts_ntfy_account` | gate open, paid path only | tier, e.g. "Supporter — 3 reserved topics" |
+| `pref_alerts_ntfy_token` | gate open, paid path only | "Access token", last 4 shown |
+| `pref_alerts_ntfy_server` | gate open, advanced only | server address |
+| `pref_alerts_test` | existing row, unchanged | sends over whichever channel is effective, and says which |
 
-Rows appear only for the selected channel — the rule the settings page already follows (ui-spec §3:
-visibility decided in one place).
+Group headers get a one-line subtitle for the side that is not in use — "not in use: alerts go to
+ntfy" on the Telegram group, the reverse on the ntfy group. Rows of the inactive side stay reachable
+and editable: nothing here is deleted by switching, and a row that exists but cannot be edited is how
+people lose settings.
 
-**Cost.** `showAlertsRows()` (line 1108) and `preferences.xml` (~line 180) are shared files; the
-Telegram rows must not move or rename, because a current owner's settings must survive the update.
-The transport chooser defaults to Telegram whenever a Telegram token exists.
+**Cost.** `showAlertsRows()` (line 1108) and `preferences.xml` (~line 180) are shared files; the four
+existing Telegram rows must keep their keys and order, because a current owner's settings must survive
+the update. The status row is the only new always-visible row, and it must never lie about which
+channel is sending — it reads the same derived value the sender uses, not the stored one.
 
 ## D12 — Nothing is deleted, nothing migrates on its own
 
-An existing install keeps sending to Telegram after the update. The chooser starts on Telegram, the
-ntfy rows start hidden. If the owner switches, the Telegram token stays stored so switching back
-costs nothing.
+An existing install keeps sending to Telegram after the update: `alerts_transport` defaults to
+`telegram` and, while developer mode is closed, it reads as `telegram` no matter what is stored (D14).
+Both sides keep their configuration permanently — the Telegram token and chat id, the ntfy topic,
+token, server, tier and acknowledgement. **Switching transports writes exactly one key and deletes
+nothing**; switching back restores the previous side exactly as it was, including not re-asking the
+free-plan warning for a topic that was already accepted.
 
-**Cost.** Two configurations can be present at once; only the selected one sends. The test button
-says which channel it used ("sent via ntfy"), so nobody has to guess.
+**Cost.** Two complete configurations can be present at once; only the effective one sends. The test
+button says which channel it used ("sent via ntfy"), and the status row says which one is live, so
+nobody has to guess from storage.
 
 ## D13 — The free-topic risk is disclosed in red and accepted before the first alert
 
@@ -237,6 +246,61 @@ intent, not a bug.
 **Sending stays the owner's responsibility afterwards.** The dialog is a gate, not a guarantee: it
 does not encrypt anything, does not hide the topic from the lock screen, and cannot stop a fake alert
 arriving. The paid path is the only thing that closes the hole (D4).
+
+## D14 — ntfy is a developer toggle, and switching transports erases nothing (decided 2026-11-15)
+
+The transport ships dormant and selectable by a developer, with one rule that carries the weight:
+**the toggle chooses which side is active; it never clears either side.**
+
+**One key does the whole gate.** `alerts_transport` ∈ `{"telegram", "ntfy"}`, default `"telegram"`,
+listed in `AppConfig.DEVELOPER_KEYS`. That single fact gives three things at once:
+
+- while developer mode is locked, the key **reads as unset** → the effective transport is Telegram,
+  whatever is stored (this is the existing `readsAsUnset`/`readEnum` mechanism, not new code)
+- while developer mode is unlocked, one switch in `screen_developer` flips it: off = Telegram, on =
+  ntfy. It is the transport selector *and* the feature flag; there is no second boolean to keep in
+  sync and no half-configured state to invent names for
+- switching is a one-key write. The Telegram token and chat id, the ntfy topic, token, server, tier
+  and the free-plan acknowledgement all stay where they are. Flipping back restores the previous side
+  exactly, and does not re-ask a warning that topic already accepted
+
+`DeveloperSettingsTest` walks `screen_developer` row by row, so the toggle row gets its parity test
+from the existing harness. No `BuildConfig.DEBUG` check, no build constant: the release APK that ships
+is the one you test on the car.
+
+**What the gate hides.** With `alerts_transport` reading as `telegram`, the ntfy rows, the wizard, the
+QR step, the code step and the red free-plan warning are all unreachable, and the transport has no
+ntfy option to select. The status row still works and says "Alerts go to: Telegram".
+
+**Turning the toggle on with no ntfy configuration** runs the wizard immediately (red warning → QR →
+code). If the owner backs out before a topic is stored, the switch returns to off — there is no state
+where ntfy is selected but not set up.
+
+**Turning it off** needs nothing from the ntfy side: telegram is now the effective transport. If there
+is no Telegram token, the existing "token not filled in" messages do the explaining (the same ones a
+fresh install already gets); nothing is guessed or auto-created.
+
+| stored | developer mode | what actually sends | what the status row says |
+|---|---|---|---|
+| telegram | locked or unlocked | Telegram | "Alerts go to: Telegram" |
+| ntfy | unlocked | ntfy | "Alerts go to: ntfy (public topic)" / "(protected topic)" |
+| ntfy | locked | **Telegram** | "Alerts go to: Telegram" |
+
+The third row is the whole reason for using `DEVELOPER_KEYS`: a hidden feature must never leave an
+owner silently un-alerted, and the status line must never say ntfy when Telegram is the one sending.
+
+**The free-plan warning is not bypassed in dev.** The gate you test is the gate that ships — six
+reasons, red button — at the cost of one extra tap per regenerated topic.
+
+**Cost.** One switch that does two jobs ("which transport" and "is the experiment available") is
+honest here only because the two job descriptions are the same thing; if a third transport ever
+arrives, this becomes a chooser again and the toggle retires. A dormant topic and access token stay in
+the secrets file while the toggle is off — not a leak (that file never leaves the device), but "off"
+is not "forgotten", and the docs must keep saying so.
+
+**Graduating out of dev.** Remove the row, remove `alerts_transport` from `DEVELOPER_KEYS`, and the
+same key becomes the owner-facing chooser it already stores the value for. Nothing about a car's
+stored configuration changes on that day.
 
 ## Open questions for the owner
 

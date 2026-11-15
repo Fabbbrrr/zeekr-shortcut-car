@@ -127,6 +127,33 @@ The stored acknowledgement is `<warning-version>|<last 8 of topic>`. A new topic
 new wording version all mean a new dialog — a settings backup restored onto another car therefore
 does not carry consent with it, deliberately.
 
+## The developer toggle and the status line (D14)
+
+The word "ntfy" is allowed here — this is a developer row, read by someone who already knows what they
+are looking for. Everything above this point stays plain.
+
+| key | zh | en | ms |
+|---|---|---|---|
+| `set_dev_alerts_ntfy_title` | 警报走 ntfy（实验） | Alerts via ntfy (experimental) | Amaran melalui ntfy (eksperimen) |
+| `set_dev_alerts_ntfy_on` | 现在发到 ntfy。关掉就回到 Telegram，两边的设置都留着。 | Sending to ntfy now. Turning it off goes back to Telegram; both sides keep their settings. | Sedang menghantar ke ntfy. Matikan untuk kembali ke Telegram; kedua-dua tetapan disimpan. |
+| `set_dev_alerts_ntfy_off` | 现在发到 Telegram。打开就换到 ntfy。 | Sending to Telegram now. Turn on to use ntfy. | Sedang menghantar ke Telegram. Hidupkan untuk guna ntfy. |
+| `set_alerts_channel_status_telegram` | 警报发到：Telegram | Alerts go to: Telegram | Amaran dihantar ke: Telegram |
+| `set_alerts_channel_status_ntfy_public` | 警报发到：ntfy（公开话题） | Alerts go to: ntfy (public topic) | Amaran dihantar ke: ntfy (topik awam) |
+| `set_alerts_channel_status_ntfy_protected` | 警报发到：ntfy（已保护） | Alerts go to: ntfy (protected) | Amaran dihantar ke: ntfy (terlindung) |
+| `set_alerts_telegram_inactive` | 这一组现在没用：警报发到 ntfy。设置留着。 | Not in use: alerts go to ntfy. These settings are kept. | Tidak digunakan: amaran ke ntfy. Tetapan ini disimpan. |
+| `set_alerts_ntfy_inactive` | 这一组现在没用：警报发到 Telegram。设置留着。 | Not in use: alerts go to Telegram. These settings are kept. | Tidak digunakan: amaran ke Telegram. Tetapan ini disimpan. |
+| `set_dev_alerts_ntfy_needs_setup` | ntfy 还没配好。打开开关会先带你配一遍。 | ntfy is not set up yet. Turning the switch on walks you through it first. | ntfy belum disediakan. Menghidupkan suis akan membimbing anda dahulu. |
+
+- The status row is visible to everyone and is **not** a control. It reads the effective transport, so
+  it says Telegram when developer mode is locked even if `ntfy` is what is stored (D14 table).
+- The switch subtitle changes with its own state; it does not use a generic "on/off".
+- Turning the switch on with no topic opens the wizard at its first screen (the red warning), and
+  cancelling puts the switch back to off.
+- Switching does not clear anything, so no string here may sound like a reset ("This will remove…",
+  "Start over"). If a future edit needs such a string, the design has changed, not the wording.
+- Telegram's "not set up" case keeps the existing `set_alerts_need_token` text — do not invent a second
+  sentence for the same missing thing.
+
 ## Status messages, mapped from HTTP codes
 
 `NtfySender` converts every response into one of these before the UI sees it.
@@ -143,5 +170,6 @@ does not carry consent with it, deliberately.
 
 - the ntfy token, even partly, in any message (the settings row shows the last 4 characters on
   purpose; nothing else may)
-- "telegram" on the ntfy path and "ntfy" on the Telegram path, except in the chooser itself
+- "telegram" on the ntfy path and "ntfy" on the Telegram path, except in the developer toggle, the
+  status line and the inactive-group subtitle, where naming the other transport is the point
 - the words "topic", "bearer", "API", "callback", "webhook" on the free path
