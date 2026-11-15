@@ -9,6 +9,10 @@ The free path must be usable by someone who has never heard of ntfy. Rules that 
 - The paid path may say "account" and "access token" — a person with an ntfy.sh account already knows
   those words.
 
+Screen order on the free path: **1 choose → warning gate (red) → 2 scan → 3 code → done.** The gate
+comes before the QR is drawn and before anything is published: consent first, then the topic. Showing
+the code first and asking afterwards would only make the answer easier to get, not more informed.
+
 Key names follow the existing convention in `res/values*/strings.xml`. Chinese is the default
 locale (`values/`), English is `values-en/`, Malay is `values-ms/`.
 
@@ -71,11 +75,57 @@ because the QR was scanned twice, or the app was never opened.
 Protection is verified by an anonymous publish probe: `403` means reserved, `200` means still open
 (`FINDINGS.md` §1.5). The wizard never claims protection it has not observed.
 
-## Free path — the one warning that must be shown once
+## Free path — the warning gate (owner's decision, 2026-11-15)
+
+The free tier keeps the photos. The owner carries the risk. So the app shows the risk twice, in two
+severities, and does not use the free tier until the owner has said yes.
+
+### Yellow: the standing fact, on the settings row and in the wizard
 
 | key | zh | en | ms |
 |---|---|---|---|
-| `set_alerts_ntfy_public_warning` | 免费的话题名就是钥匙：知道这个名字的人也能看到照片、也能发假警报。名字是随机长串，猜不出来。要彻底堵住，用「我有账号」那条路。 | On the free plan the topic name is the key: anyone who learns it can see the photos and post fake alerts. The name is a long random string, so it cannot be guessed. To close that, use "I have an account". | Pada pelan percuma, nama topik ialah kunci: sesiapa yang tahu nama itu boleh lihat gambar dan hantar amaran palsu. Nama itu rawak dan panjang, jadi tidak boleh diteka. Untuk menutupnya, guna "Saya ada akaun". |
+| `set_alerts_ntfy_public_badge` | 公开话题 | Public topic | Topik awam |
+| `set_alerts_ntfy_public_warning` | 免费方案里，这个名字就是钥匙：知道这个名字的人能看到照片，也能发假警报。 | On the free plan this name is the key: anyone who learns it can see the photos and post fake alerts. | Pada pelan percuma, nama ini ialah kunci: sesiapa yang tahu nama ini boleh lihat gambar dan hantar amaran palsu. |
+
+- "topic" is not used on the free path even in the warning; it says "name". The owner's mental model
+  is a name that works like a key, and that model is accurate.
+
+The badge and this line are amber (`R.color.caution`). They stay on screen for as long as the free
+tier is selected — this is not a one-time toast.
+
+### Red: the confirmation dialog, once per topic per wording version
+
+| key | zh | en | ms |
+|---|---|---|---|
+| `set_alerts_ntfy_risk_title` | 免费方案：这个名字是公开的 | Free plan: this name is public | Pelan percuma: nama ini terbuka |
+| `set_alerts_ntfy_risk_intro` | 用免费方案，下面这些是真的，不是吓唬人： | On the free plan all of this is true, and it is not a figure of speech: | Pada pelan percuma semua ini benar, bukan mainan: |
+| `set_alerts_ntfy_risk_r1` | 知道这个名字的人，能看到车上发来的照片。 | Anyone who learns this name can see the photos sent from the car. | Sesiapa yang tahu nama ini boleh lihat gambar dari kereta. |
+| `set_alerts_ntfy_risk_r2` | 知道这个名字的人，也能往这里发假警报，看着和真的一样。 | Anyone who learns this name can also post fake alerts that look real. | Sesiapa yang tahu nama ini juga boleh hantar amaran palsu yang nampak asli. |
+| `set_alerts_ntfy_risk_r3` | 这个名字会出现在手机的锁屏通知上和 ntfy app 里。 | The name appears on your phone's lock screen and inside the ntfy app. | Nama itu muncul pada skrin kunci telefon dan dalam app ntfy. |
+| `set_alerts_ntfy_risk_r4` | 照片会离开车，经过 ntfy.sh 和它的推送服务。我们不控制那些服务器。 | The photos leave the car and pass through ntfy.sh and its push service. We do not control those servers. | Gambar meninggalkan kereta dan melalui ntfy.sh serta perkhidmatan tolakannya. Kami tidak mengawal pelayan itu. |
+| `set_alerts_ntfy_risk_r5` | 免费方案在服务器上只留 12 小时消息、3 小时照片。手机没下载就没了。 | On the free plan the server keeps messages 12 hours and pictures 3 hours. If your phone does not fetch a picture, it is gone. | Pada pelan percuma pelayan menyimpan mesej 12 jam dan gambar 3 jam. Jika telefon tidak memuat turun, ia hilang. |
+| `set_alerts_ntfy_risk_r6` | 出了事，没有人能证明那条警报是谁发的。 | If something happens, nobody can prove who posted an alert. | Jika berlaku sesuatu, tiada siapa boleh buktikan siapa yang menghantar amaran itu. |
+| `set_alerts_ntfy_risk_accept` | 我明白，风险由我承担，还是用 | I understand, the risk is mine, use it anyway | Saya faham, risiko saya tanggung, guna juga |
+| `set_alerts_ntfy_risk_decline` | 改用账号 | Use my account instead | Guna akaun saya |
+
+- The accept button is the **red** primary action (`ui/CamDialogs.showDestructive`, `R.color.recording`
+  red). It is not a neutral "OK": the app already uses red for operations that cannot be undone, and
+  publishing photos to a public topic is one.
+- The decline button opens the paid path with the token field ready, not a dead end.
+- Back / dismiss counts as decline. There is no route to "free tier on" that skips this dialog.
+- The reasons scroll; the button bar does not (the dialog layer already guarantees that).
+
+### Before it is accepted
+
+| key | zh | en | ms |
+|---|---|---|---|
+| `set_alerts_ntfy_risk_pending` | 还没确认免费方案的提醒。确认之前，警报不会发出去。 | The free-plan warning has not been confirmed. Until it is, alerts are not sent. | Amaran pelan percuma belum disahkan. Sehingga itu, amaran tidak dihantar. |
+| `notif_alerts_ntfy_risk_title` | 警报没有发出去 | Alerts are not being sent | Amaran tidak dihantar |
+| `notif_alerts_ntfy_risk_body` | 点这里确认免费方案的提醒，之后警报才会发。 | Tap here to confirm the free-plan warning; alerts resume after that. | Tekan di sini untuk sahkan amaran pelan percuma; amaran disambung selepas itu. |
+
+The stored acknowledgement is `<warning-version>|<last 8 of topic>`. A new topic, a new server, or a
+new wording version all mean a new dialog — a settings backup restored onto another car therefore
+does not carry consent with it, deliberately.
 
 ## Status messages, mapped from HTTP codes
 

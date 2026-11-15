@@ -16,7 +16,7 @@ Yes, and the free path is the interesting one.
 | Account needed | bot token from @BotFather + chat id | **none** | ntfy.sh account + access token |
 | Setup steps for a non-technical owner | install Telegram, message a bot, copy two strings into the car, press "find my chat" | install the app, scan a QR code on the car screen, type a 4-digit code | the above, plus pasting a token; protection needs a trip to the website |
 | Picture per alert | yes, inline, kept forever | yes, attachment, expires 3 h (free) / 24 h (Support) | same, 25 MiB ceiling |
-| Who can post to it | only the bot's chat | **anyone who learns the topic name** | only that account |
+| Who can post to it | only the bot's chat | **anyone who learns the topic name** — disclosed in red, accepted by the owner before use | only that account |
 | Message ceiling | none that matters | 250/day | 2 500/day |
 | Delivery timing | push via Telegram | push via FCM; may be delayed unless the app's "instant delivery" is on | same |
 
@@ -24,6 +24,21 @@ The trade is plain: the free ntfy topic has no account, no signup and no token �
 QR code and four digits — but the topic name *is* the password, so it has to be long and random, and
 anyone who learns it can read the photos and post fake alerts. Six dollars a month removes that.
 Both paths are specified: `DECISIONS.md` D3 and D4.
+
+**Owner's decision 2026-11-15: keep the free tier, photos included, and let the risk sit with the
+owner.** The app's job is then disclosure that cannot be missed and a consent that is recorded, not a
+quiet downgrade to text-only alerts:
+
+- amber "public topic" line on the settings row, for as long as the free tier is on
+- red confirmation dialog before the QR is even drawn, listing the six real failure modes (readable
+  photos, fake alerts, the name on a lock screen, the third-party relay, 12 h / 3 h retention, nobody
+  can prove who posted what), with a red "I understand, the risk is mine, use it anyway"
+- the acceptance is stored per topic and per warning-text version, so a new topic or edited wording
+  asks again, and a settings backup restored onto another car does not carry consent with it
+- until it is accepted the car sends nothing, says so once in a local notification, and records each
+  dropped alert in the blackbox — silence would be worse than a public topic
+
+Details: `DECISIONS.md` D13, the exact words in `WIZARD-COPY.md`, the ticket in `PLAN.md` T6b.
 
 ## Unique topics
 
@@ -89,7 +104,8 @@ python docs/ntfy/tools/ntfy_probe.py check <topic>   # cached count + is it prot
 
 ## Before this becomes a feature
 
-Four questions in `DECISIONS.md` need an owner's answer, and one of them decides the shape of the
-free tier: whether a public topic with readable photos is acceptable at all, or whether the free tier
-should be text-only. Nothing else in the plan changes if that answer is "text only" — one line in
-the wizard, one guard in `NtfySender`.
+Three questions in `DECISIONS.md` still need an owner's answer: per-camera mode on the free tier
+(warn and allow, or force the grid photo), whether commands ship in the same release, and what the
+settings row is called. The fourth — whether a public topic with readable photos is acceptable at all
+— was answered on 2026-11-15: yes, keep it, owner's risk, gated by D13. Nothing in the plan depends
+on that answer being revisited.
