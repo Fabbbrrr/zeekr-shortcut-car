@@ -168,7 +168,11 @@ public final class FootageAudio {
         }
     }
 
+    /** 声音线程：开麦克风、起编码器之前先看一眼 running——从 start() 到这条线程跑起来之间就叫停的，就不去碰麦克风。 */
     private void loop() {
+        if (!running) {
+            return;  // stop() 的 javadoc 说的收尾是「手上这一块读完就走」，这一趟一块都还没读
+        }
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
         AudioRecord record = null;
         MediaCodec codec = null;

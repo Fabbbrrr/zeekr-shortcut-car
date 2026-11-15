@@ -250,9 +250,10 @@ public class CodecVideoRecorder {
     /** 这次录制写出过第一笔数据没有：分段计时、外面的「录制中」都从那一刻起。 */
     private volatile boolean hasFirstWrite = false;
 
-    // 快速恢复：修不好就 5 秒后再试，一直到写不进文件的裁判（下面）报一次、停
+    // 快速恢复：前 6 次 5 秒一次，到顶之后回到正常分段时间隔，慢下来继续试（不停试）
     private static final long RECOVERY_RETRY_INTERVAL_MS = 5000;
-    private int recoveryAttempts = 0;  // 当前重试次数（只进日志）
+    private static final int RECOVERY_FAST_RETRY_LIMIT = 6;  // 快速重试的次数（javadoc 说的「最多 6 次」）
+    private int recoveryAttempts = 0;  // 当前重试次数（决定下一次隔多久，也进日志）
     private Runnable recoveryRunnable;  // 恢复重试任务
 
     // 编码器健康检查
@@ -2304,16 +2305,19 @@ public class CodecVideoRecorder {
             // 成功：调度正常的1分钟定时器
             postForThisRun(this::scheduleNextSegment);
         } else {
-            // 失败：5 秒后再试；一直修不好的话，写不进文件的裁判会在 15 秒时报一次、停
+            // 失败：前 6 次 5 秒一次，之后回到分段时间隔；写不进文件的裁判会在 15 秒时报一次、停
             recoveryAttempts++;
-            AppLog.w(TAG, "Camera " + cameraId + " Segment switch failed, quick retry in "
-                + (RECOVERY_RETRY_INTERVAL_MS / 1000) + "s (attempt " + recoveryAttempts + ")");
+            AppLog.w(TAG, "Camera " + cameraId + " Segment switch failed, retry in "
+                + (recoveryRetryDelayMs() / 1000) + "s (attempt " + recoveryAttempts + ")");
             scheduleRecoveryRetry();
         }
     }
     
     /**
      * 调度快速恢复重试
+     *
+     * <p>前 {@link #RECOVERY_FAST_RETRY_LIMIT} 次按 {@link #RECOVERY_RETRY_INTERVAL_MS} 快速重试，
+     * 到顶之后回到正常的分段时间隔（{@link #segmentDurationMs}），慢下来继续试，不停试。</p>
      */
     private void scheduleRecoveryRetry() {
         // 取消之前的恢复任务
@@ -2330,7 +2334,12 @@ public class CodecVideoRecorder {
             }
         };
         
-        segmentHandler.postDelayed(recoveryRunnable, RECOVERY_RETRY_INTERVAL_MS);
+        segmentHandler.postDelayed(recoveryRunnable, recoveryRetryDelayMs());
+    }
+
+    /** 下一次恢复重试隔多久：前 6 次 5 秒，之后回到正常分段时间隔（调用方已把次数加上，这里看的是刚失败的这一次）。 */
+    private long recoveryRetryDelayMs() {
+        return recoveryAttempts <= RECOVERY_FAST_RETRY_LIMIT ? RECOVERY_RETRY_INTERVAL_MS : segmentDurationMs;
     }
     
     /**
@@ -2381,10 +2390,10 @@ public class CodecVideoRecorder {
             }
             isRecording.set(false);
             
-            // 5 秒后再试；一直修不好的话，写不进文件的裁判会在 15 秒时报一次、停
+            // 前 6 次 5 秒一次，之后回到分段时间隔；写不进文件的裁判会在 15 秒时报一次、停
             recoveryAttempts++;
-            AppLog.w(TAG, "Camera " + cameraId + " Recovery failed, quick retry in "
-                + (RECOVERY_RETRY_INTERVAL_MS / 1000) + "s (attempt " + recoveryAttempts + ")");
+            AppLog.w(TAG, "Camera " + cameraId + " Recovery failed, retry in "
+                + (recoveryRetryDelayMs() / 1000) + "s (attempt " + recoveryAttempts + ")");
             scheduleRecoveryRetry();
         }
     }

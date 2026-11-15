@@ -119,6 +119,13 @@ public class SingleCamera {
      * 主界面按画面比例改了视图尺寸也没人重算，座舱一格就按格子尺寸摆着（缩放、裁剪不对），直到下一次动这一路。</p>
      */
     private java.lang.ref.WeakReference<TextureView> laneWatchedView;
+    /** 视图还没量出尺寸时补一次摆位。同一个 Runnable：重挂前先摘，免得几条轮询叠在一起。 */
+    private final Runnable laneResizeRetry = this::applyLaneTransform;
+    /** 上一条连续补了几次；到 {@link #LANE_RESIZE_RETRY_MAX} 就停，等布局监听来叫（见 {@link #applyLaneTransform}）。 */
+    private int laneResizeRetries;
+    /** 停过就只说一次，别每十次一秒刷一行。 */
+    private boolean laneResizeGaveUp;
+    private static final int LANE_RESIZE_RETRY_MAX = 300;
     /** 主界面点开放大时临时改成「填充」；null 表示按配置里那一格走。 */
     private volatile String fitOverride;
 
@@ -151,13 +158,13 @@ public class SingleCamera {
      * <p>2.10.12 起一直开着、只有开发者能关（{@code AppConfig.isPhotoViaJpegEnabled}）：关着时照片只能
      * 从主界面的预览上截，主界面在后台时没有预览，悬浮按钮怎么拍都拍不到画面。</p>
      */
-    private ImageReader jpegReader;
+    private volatile ImageReader jpegReader;
 
     /** 这次开相机时，拍照通道是否因为会话配不上而被丢掉了。 */
-    private boolean jpegDropped;
+    private volatile boolean jpegDropped;
 
     /** JPEG 通道用的尺寸：这一路声明的最大那个。 */
-    private Size jpegSize;
+    private volatile Size jpegSize;
 
     /** 一次拍照的回调；拿到图或失败之后就清掉。 */
     private volatile JpegCallback pendingJpeg;
@@ -582,9 +589,22 @@ public class SingleCamera {
             if (width <= 0 || height <= 0) {
                 // 还没量出来，等下一帧
                 laneTransformNote = "视图还没有尺寸，等下一帧";
-                view.postDelayed(this::applyLaneTransform, 100);
+                if (laneResizeRetries >= LANE_RESIZE_RETRY_MAX) {
+                    if (!laneResizeGaveUp) {
+                        laneResizeGaveUp = true;
+                        AppLog.w(TAG, "Camera " + cameraId + " 视图等了 " + LANE_RESIZE_RETRY_MAX
+                                + " 次还没量出尺寸，不再补摆，等布局监听到尺寸再算");
+                    }
+                    return;
+                }
+                laneResizeRetries++;
+                // 别处也会调这个方法：先摘掉上一条再挂，别让几条轮询叠在一起
+                view.removeCallbacks(laneResizeRetry);
+                view.postDelayed(laneResizeRetry, 100);
                 return;
             }
+            laneResizeRetries = 0;
+            laneResizeGaveUp = false;
             android.graphics.Matrix matrix = new android.graphics.Matrix();
             android.util.Size buffer = previewSize;
             boolean shaped = LaneSurfaceMatrix.build(matrix, width, height,
@@ -3375,7 +3395,12 @@ public class SingleCamera {
             jpegReader = null;
         }
         jpegSize = null;
+        // 在途的那次拍照：通道都关了，图不会再回来，就地报失败让它去抓预览，别干等收尾超时
+        JpegCallback pending = pendingJpeg;
         pendingJpeg = null;
+        if (pending != null) {
+            pending.onFailed("jpeg channel closed");
+        }
     }
 
     /** 出帧口的 Surface；还没建就按预览尺寸建一个（相机线程上调）。建不出来返回 null。 */
