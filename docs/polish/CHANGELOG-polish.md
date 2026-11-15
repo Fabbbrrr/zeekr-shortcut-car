@@ -54,3 +54,20 @@ selected groups sit in collapsed days; the dead portrait branch in photo playbac
 select-all across a collapsed section.
 
 **Settings / UI.** (in flight)
+
+## Commit map (gates green on this exact tree: 1898 tests, 0 failures; assembleRelease OK)
+
+| Commit | Area |
+|---|---|
+| `135a390b` | Alerts — motion decision on main, synchronised policy, reserve-at-decision, 5-min failure backoff |
+| `d0588cc7` | Alerts — one poller per bot, chat lookup queued on it, dead PollerGate branch, DST test |
+| `f3e256bb` | Camera — dropped capture reported, volatile fields, bounded lane retry, recovery ladder per javadoc |
+| `9d1229b3` | Sound — Run tracking, failure-gate retry, underrun reporting at cap; profile — grid rule |
+| `e171c3e8` | Process — crash handler, warnings log, hourly cleanup, overlay dismiss |
+| `0aa98529` | Recovery — guarded service starts, flag clears only on success (carries the floating-button `ACTION_CANCEL` + bind fix too) |
+| `59f82639` | Playback — audio focus released, select-all says what is hidden, dead portrait branch gone |
+| `779a4f53` | Settings — live header state, cached characteristics, hit height, stale comment |
+
+Two honest notes. The floating-button fix rode inside `0aa98529` rather than its own commit. And three
+`docs(ntfy)` commits (`e2b184a6`, `b9862e15`, `5151f18f`) are another session's work, committed into this
+same checkout while the loop ran — they are on this branch, so pushing the branch pushes them too.
