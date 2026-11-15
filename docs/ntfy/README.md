@@ -40,6 +40,16 @@ quiet downgrade to text-only alerts:
 
 Details: `DECISIONS.md` D13, the exact words in `WIZARD-COPY.md`, the ticket in `PLAN.md` T6b.
 
+**Dormant by default, one developer toggle (owner's decision 2026-11-15).** ntfy is not a feature an
+owner can stumble into: `alerts_transport` is listed in `AppConfig.DEVELOPER_KEYS`, so while developer
+mode is closed it reads as `telegram` no matter what is stored, and every ntfy row, the wizard and the
+warning are unreachable. With developer mode open, one switch in the developer section flips the
+transport — off = Telegram, on = ntfy. The toggle is the transport selector, not a second on/off flag,
+and **switching never erases either side**: both configurations persist, and flipping back restores the
+previous one exactly, including not re-asking a warning that topic already accepted. A car whose stored
+choice is ntfy but whose developer mode is closed falls back to Telegram and says so on the status row,
+rather than going quiet. Details: `DECISIONS.md` D14, ticket `PLAN.md` T5b.
+
 ## Unique topics
 
 Asked for, and it is the right thing to ask: a shipped constant like `zeekr-alerts` would put every

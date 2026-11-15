@@ -73,7 +73,7 @@ Interface from DECISIONS D1; `TelegramChannel` is a thin adapter over the existi
 ### T4 `AppConfig` — keys, all defaulting to today's behaviour
 
 ```
-alerts_transport          "telegram" | "ntfy"      default: "telegram" when a Telegram token exists, else "telegram"
+alerts_transport          "telegram" | "ntfy"      default "telegram"; ADD TO AppConfig.DEVELOPER_KEYS (D14)
 alerts_ntfy_server        "https://ntfy.sh"        default
 alerts_ntfy_tier          "free" | "paid"          default "free"
 alerts_ntfy_cmd_topic     ""                       phase 2
@@ -83,6 +83,9 @@ alerts_ntfy_risk_ack      ""                       "<warning-version>|<last 8 of
 In `SECRETS_PREF_NAME` (not `app_config`): `alerts_ntfy_topic`, `alerts_ntfy_token`.
 `alerts_ntfy_risk_ack` stays in `app_config`: it is an acknowledgement, not a credential, and the
 exported settings may say "this owner accepted this warning for this topic" without leaking anything.
+
+`alerts_transport` is the only gate key: in `DEVELOPER_KEYS` it reads as `telegram` whenever
+developer mode is closed, which is the whole D14 mechanism. Do **not** add a second boolean switch.
 
 Tests: `AlertSecretsTest` grows two cases — the ntfy token **and** the topic are absent from
 `SettingsBackup.snapshot`, and live in the secrets file; the server URL and tier live in `app_config`.
@@ -99,11 +102,46 @@ Tests (`AlertChannelPolicyTest` or extend `AlertPolicyTest`): a 413 stops the lo
 photo; the daily-counter fallback keeps sending the grid photo instead of going silent; a failed
 probe never turns an alert into silence.
 
+### T5b The developer toggle (D14)
+
+`alarm/NtfyGate.java` (new, pure, no Android beyond `AppConfig`):
+
+```java
+static boolean available(boolean developerUnlocked, String storedTransport)  // "ntfy" and unlocked
+static String effective(boolean developerUnlocked, String storedTransport)   // "ntfy" or "telegram"
+```
+
+`SentryAlerts` asks `effective(...)` for the channel, never the raw stored string. The status row
+(D11) asks the same function, so the line cannot disagree with the sender.
+
+`preferences.xml`: one `SwitchPreferenceCompat` in `screen_developer`, key `pref_dev_alerts_ntfy`,
+title/subtitle from `WIZARD-COPY.md`. It is not persistent itself — it writes `alerts_transport`.
+
+Behaviour on toggle:
+- **off → on** with no ntfy topic stored: open the wizard immediately (red warning → QR → code). Back
+  out before a topic exists and the switch returns to off. No half state.
+- **off → on** with a topic stored: just switch. No wizard, no re-warning while the ack matches.
+- **on → off**: one key write. Telegram token, chat id, ntfy topic/token/tier/ack are untouched.
+- never write, clear or migrate the other side's keys. A `git grep` for `remove(` or `clear()` in this
+  ticket's diff should come back empty.
+
+Tests (`NtfyGateTest` + `TogglePreservesConfigTest`, Robolectric):
+- locked developer mode + stored "ntfy" → effective is "telegram"; nothing else changes
+- unlocked + "ntfy" → effective is "ntfy"
+- toggle ntfy → telegram → ntfy: Telegram token/chat id and ntfy topic/token/tier/ack are identical
+  after each hop (read them before and after, assert equality)
+- accepting the free-plan warning, toggling away and back, does **not** show the warning again
+- toggling on with no topic leaves `alerts_transport` at "telegram" when the wizard is cancelled
+- `DeveloperSettingsTest` passes with the new row in `screen_developer`
+
 ### T6 Settings rows + wizard
 
-`preferences.xml`: new group `cat_alerts_channel` and the rows in DECISIONS D11. Telegram rows keep
-their keys and order.
-`SettingsPreferenceFragment`: `bindAlerts()` (860) binds the chooser and the ntfy rows;
+`preferences.xml`: the rows in DECISIONS D11 — one always-visible status row `pref_alerts_channel_status`,
+one developer toggle (T5b), the ntfy rows, and the existing Telegram rows with their keys and order
+untouched. No owner-facing "where do alerts go?" chooser: the developer toggle is the only selector
+until the feature graduates. Group subtitles mark the side that is not in use.
+`SettingsPreferenceFragment`: `bindAlerts()` (860) binds the new status row and the ntfy rows, and
+binds the developer switch when its fragment is the developer section;
 `showAlertsRows()` (1108) owns visibility; new `NtfySetupDialog` (new file in `settings/` or
 `alarm/`) runs the 4-step wizard; QR through the existing `share/QrCode.encode` (ZXing 3.5.1 is
 already a dependency).
@@ -181,8 +219,9 @@ and the URL percent-encodes the command.
    (`CamDialogs.showDestructive`), and the amber "public topic" line stays visible in settings while
    the free tier is selected. Re-generating the topic or bumping `WARNING_VERSION` asks again.
 4. Existing install upgraded: still on Telegram, no setting changed, no new notification.
-5. Switch to ntfy, then back to Telegram: both configs survive; the test button says which channel
-   it used.
+5. Toggle ntfy → Telegram → ntfy from the developer row: both configurations survive every hop
+   (token, chat id, topic, tier, acknowledgement), the free-plan warning is not asked again, and the
+   status row names the channel that is actually sending.
 6. The ntfy token and topic appear in neither the settings export nor the diagnostics report
    (`AlertSecretsTest`).
 7. A photo larger than the tier's limit fails with a sentence a non-technical owner understands, and
@@ -197,6 +236,7 @@ and the URL percent-encodes the command.
 | T3 + T5 | half a day, the risky half (SentryAlerts is shared) |
 | T4 | 2 hours |
 | T6 | 1 day — the wizard is where a non-technical path is either real or theatre |
+| T5b | 2 hours — one key, one pure function, and the preservation test that proves nothing is erased |
 | T6b | half a day — the dialog and its tests are cheap; deciding the wording with the owner is not |
 | T7 | half a day, three locales |
 | T8 + T9 | 1 day, unchanged by the fact that the protocol is proven |
@@ -210,3 +250,6 @@ can surprise you are the wizard copy and the tier limits — not the HTTP.
 - No in-app account creation, no payment, no subscription management.
 - No promises about iOS beyond what the docs say (FINDINGS §4.4).
 - No default/shared topic constant anywhere in the source tree. If a review finds one, that is a bug.
+- No transport chooser for owners in phase 1: a developer toggle until the feature graduates (D14).
+- No code path that clears the inactive transport's settings. If a review finds a `clear()`/`remove()`
+  on an `alerts_ntfy_*` or Telegram key inside the toggle, that is a bug.
