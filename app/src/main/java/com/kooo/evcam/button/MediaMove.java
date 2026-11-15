@@ -14,6 +14,8 @@ import android.os.SystemClock;
 import android.view.KeyEvent;
 
 import com.kooo.evcam.AppLog;
+import com.kooo.evcam.WakeUpHelper;
+import com.kooo.evcam.camera.StallWatch;
 
 /**
  * 灵动贴「语音与媒体」那几项里不碰车的（2026-11-05，用安卓标准的做法，Lab 3.5.x）：
@@ -58,6 +60,12 @@ enum MediaMove {
 
     /** 直接打开、没有接它的就抛（不先问系统：安卓 11 起不登记就问不到别的应用，问了也白问）。 */
     private static boolean voice(Context app) {
+        // 安卓会默默吞掉后台的 Activity 启动（不抛异常），除非有悬浮窗权限或主界面在前台（F-06.05）：
+        // 这种情形报失败，让 SmartButtons 弹「做不了」的提示，别报成成功。
+        if (!WakeUpHelper.hasOverlayPermission(app) && !StallWatch.isForeground()) {
+            AppLog.w(TAG, "voice: 后台启动会被安卓吞掉，报失败");
+            return false;
+        }
         Intent intent = new Intent(Intent.ACTION_VOICE_COMMAND).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             app.startActivity(intent);

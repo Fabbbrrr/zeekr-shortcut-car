@@ -54,7 +54,10 @@ def promote_headings(section):
 
 
 def main():
-    version = sys.argv[1] if len(sys.argv) > 1 else "unknown"
+    version = sys.argv[1] if len(sys.argv) > 1 else ""
+    if not version.strip():
+        sys.stderr.write("release_notes.py: version argument is empty\n")
+        sys.exit(1)
     stable = "-" not in version
 
     out = []
@@ -62,6 +65,10 @@ def main():
     out.append("")
 
     section = changelog_section(version)
+    if stable and not section:
+        # A stable release with no changelog section is a forgotten step, not a normal case.
+        sys.stderr.write("release_notes.py: CHANGELOG.md has no section for " + version + "\n")
+        sys.exit(1)
     if stable:
         if section:
             out.append(promote_headings(section))
