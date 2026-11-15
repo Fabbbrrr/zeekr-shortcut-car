@@ -97,11 +97,36 @@ public class AlertPolicyTest {
     }
 
     @Test
-    public void aFailedSendDoesNotStartTheCooldown() {
+    public void aFailedSendOpensTheFailureBackoff() {
         AlertPolicy policy = ready();
-        // 发失败了就不该调 noteSent：下一次事件马上能重试，不用干等一分钟。
+        // D-12（说好的代价）：警报在判断这一步就占位，发不出去记一次失败退避。
+        // 旧规矩「发失败下一次马上能重试」不再成立。
+        assertEquals(AlertPolicy.Decision.ALLOW, policy.reserve(1_000L));
+        policy.noteFailure(1_000L);
+        assertEquals(AlertPolicy.Decision.FAILURE_BACKOFF, policy.decide(2_000L));
+        assertEquals(AlertPolicy.Decision.FAILURE_BACKOFF,
+                policy.decide(1_000L + AlertPolicy.FAILURE_BACKOFF_MS - 1));
+        // 退避一跳完，占位那一格的冷却早就过了：又能发。
+        assertEquals(AlertPolicy.Decision.ALLOW,
+                policy.decide(1_000L + AlertPolicy.FAILURE_BACKOFF_MS));
+    }
+
+    @Test
+    public void reserveTakesTheSlotAtOnce() {
+        AlertPolicy policy = ready();
+        assertEquals(AlertPolicy.Decision.ALLOW, policy.reserve(1_000L));
+        // 占位当场就算数，不等发送回来 —— 不然两条触发边会各发一张。
+        assertEquals(AlertPolicy.Decision.COOLDOWN, policy.decide(2_000L));
+        assertEquals(1, policy.sentThisHour(2_000L));
+    }
+
+    @Test
+    public void decideStaysAPureCheck() {
+        AlertPolicy policy = ready();
+        // decide 只判断，不占位：诊断靠它看「现在能不能发」。
         assertEquals(AlertPolicy.Decision.ALLOW, policy.decide(1_000L));
-        assertEquals(AlertPolicy.Decision.ALLOW, policy.decide(2_000L));
+        assertEquals(AlertPolicy.Decision.ALLOW, policy.decide(1_001L));
+        assertEquals(0, policy.sentThisHour(1_001L));
     }
 
     @Test

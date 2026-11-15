@@ -18,6 +18,14 @@ package com.kooo.evcam.alarm;
  * <p>一条之后要静一会：一次事件往往连着触发好几个信号（关门、再闪灯），
  * {@link #COOLDOWN_MS} 之内一律不发，免得车主被同一件事吵六次。另外每小时有上限
  * {@link #MAX_PER_HOUR}，用来兜住「画面一直在动」的误判（树叶、雨、虫子）。</p>
+ *
+ * <p>警报那条路用 {@link #reserve}：判成 ALLOW 就当场把这一格占掉。以前是判完先去拍照、
+ * 发送，成功才记账，所以两个线程能在对方记账之前都判成 ALLOW（同一件事发重），
+ * 发不出去时更糟 —— 谁都不记，于是每个触发边都要重新拍一张、传一次（见 {@link #noteFailure}）。
+ * {@link #decide} 留给诊断，保持纯判断。</p>
+ *
+ * <p>写这些字段的线程现在只有一条（{@code SentryAlerts} 把判断挪到了主线程），
+ * 方法还是统一加锁 —— 便宜，而且不许再有人从别的线程调进来。</p>
  */
 public final class AlertPolicy {
 
@@ -26,6 +34,12 @@ public final class AlertPolicy {
 
     /** 一小时内最多几条：超过就只记黑匣子，不再往手机上发。 */
     public static final int MAX_PER_HOUR = 6;
+
+    /**
+     * 一条发不出去之后静多久（D-12）。比成功的 {@link #COOLDOWN_MS} 长，单独算：
+     * 机器人被人从会话里踢了、或者车主拉黑了它，每一条触发边都会重新拍照、压缩、上传两回。
+     */
+    public static final long FAILURE_BACKOFF_MS = 5 * 60_000L;
 
     /** 判断结果。只有 {@link #ALLOW} 才会发。 */
     public enum Decision {
@@ -39,7 +53,9 @@ public final class AlertPolicy {
         /** 上一条还在冷却里。 */
         COOLDOWN,
         /** 这一小时已经发满了。 */
-        HOURLY_CAP
+        HOURLY_CAP,
+        /** 上一条发不出去，还在 {@link #FAILURE_BACKOFF_MS} 里。 */
+        FAILURE_BACKOFF
     }
 
     private boolean enabled;
@@ -49,37 +65,56 @@ public final class AlertPolicy {
     private long lastSentAt;
     private long hourStart;
     private int sentThisHour;
+    /** 发不出去要静到什么时候（elapsedRealtime）；0 = 不欠。 */
+    private long failureUntilMs;
 
     /** @param enabled 用户在设置里打开了警报 */
     public AlertPolicy(boolean enabled) {
         this.enabled = enabled;
     }
 
-    public void setEnabled(boolean enabled) {
+    public synchronized void setEnabled(boolean enabled) {
         this.enabled = enabled;
     }
 
     /** 令牌和会话号都填了没有：缺一个就发不出去，判断在这里就停。 */
-    public void setConfigured(boolean configured) {
+    public synchronized void setConfigured(boolean configured) {
         this.configured = configured;
     }
 
     /** 车停着没有。 */
-    public void setParked(boolean parked) {
+    public synchronized void setParked(boolean parked) {
         this.parked = parked;
     }
 
     /** 哨兵模式开着、并且已经布防。 */
-    public void setArmed(boolean armed) {
+    public synchronized void setArmed(boolean armed) {
         this.armed = armed;
     }
 
     /**
-     * 现在能不能发。
+     * 现在能不能发。纯判断，什么都不记 —— 给诊断用。警报那条路调 {@link #reserve}。
      *
      * @param nowMs {@code SystemClock.elapsedRealtime()}
      */
-    public Decision decide(long nowMs) {
+    public synchronized Decision decide(long nowMs) {
+        return decideLocked(nowMs);
+    }
+
+    /**
+     * 判断，并且当场占位：判成 ALLOW 就等于这一格归这次触发，冷却与每小时上限一起算。
+     *
+     * @param nowMs {@code SystemClock.elapsedRealtime()}
+     */
+    public synchronized Decision reserve(long nowMs) {
+        Decision decision = decideLocked(nowMs);
+        if (decision == Decision.ALLOW) {
+            noteSentLocked(nowMs);
+        }
+        return decision;
+    }
+
+    private Decision decideLocked(long nowMs) {
         if (!enabled || !configured) {
             return Decision.OFF;
         }
@@ -93,17 +128,38 @@ public final class AlertPolicy {
         if (sentThisHour >= MAX_PER_HOUR) {
             return Decision.HOURLY_CAP;
         }
+        if (failureUntilMs != 0 && nowMs < failureUntilMs) {
+            return Decision.FAILURE_BACKOFF;
+        }
         if (lastSentAt != 0 && nowMs - lastSentAt < COOLDOWN_MS) {
             return Decision.COOLDOWN;
         }
         return Decision.ALLOW;
     }
 
-    /** 一条发出去了。只有真的发成功才调，失败重试不该再等一分钟。 */
-    public void noteSent(long nowMs) {
+    /**
+     * 记下真正发出去的一条。已经先 {@link #reserve} 过的路（警报）不用再调这里；
+     * 留给没有占位就自己发出去的人。
+     */
+    public synchronized void noteSent(long nowMs) {
+        noteSentLocked(nowMs);
+    }
+
+    private void noteSentLocked(long nowMs) {
         rotateHour(nowMs);
         lastSentAt = nowMs;
         sentThisHour++;
+    }
+
+    /**
+     * 一条发不出去（被踢、被拉黑、Telegram 不回）：从现在起静 {@link #FAILURE_BACKOFF_MS}。
+     *
+     * <p>这是占位之后的退款，不另开一套账：占位已经把那一格算给这次触发了。</p>
+     *
+     * @param nowMs {@code SystemClock.elapsedRealtime()}
+     */
+    public synchronized void noteFailure(long nowMs) {
+        failureUntilMs = nowMs + FAILURE_BACKOFF_MS;
     }
 
     /**
@@ -111,18 +167,18 @@ public final class AlertPolicy {
      *
      * <p>{@code 0} 表示这一趟还没发过。</p>
      */
-    public long lastSentAt() {
+    public synchronized long lastSentAt() {
         return lastSentAt;
     }
 
     /** 这一小时发了几条。 */
-    public int sentThisHour(long nowMs) {
+    public synchronized int sentThisHour(long nowMs) {
         rotateHour(nowMs);
         return sentThisHour;
     }
 
     /** 冷却还剩多久；不在冷却里是 0。 */
-    public long cooldownLeftMs(long nowMs) {
+    public synchronized long cooldownLeftMs(long nowMs) {
         if (lastSentAt == 0) {
             return 0;
         }
