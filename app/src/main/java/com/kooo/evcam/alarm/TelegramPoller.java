@@ -11,6 +11,8 @@ import com.kooo.evcam.AppConfig;
 import com.kooo.evcam.AppLog;
 import com.kooo.evcam.blackbox.BlackBox;
 
+import java.util.concurrent.ConcurrentLinkedQueue;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -70,7 +72,13 @@ public final class TelegramPoller {
 
     private final AppConfig config;
     private final Handler handler;
+    /** 同一个机器人只许这一条线程：它没真的断气之前，手里这份不放。 */
     private Thread thread;
+    private final Object lifecycleLock = new Object();
+    /** 断气之前被重新打开：那条线程一落地就接着跑，不起第二条。 */
+    private volatile boolean restartWanted;
+    /** 排在两轮之间跑的活（那时手上没有挂着的 getUpdates）。 */
+    private final ConcurrentLinkedQueue<Runnable> betweenPolls = new ConcurrentLinkedQueue<>();
     private volatile boolean running;
     /** 最近一次问成了的时刻（壁钟，0 = 这轮还没成功过）。 */
     private volatile long lastOkAt;
@@ -105,13 +113,35 @@ public final class TelegramPoller {
 
     /** 开始问。已经在问就什么都不做（旧线程还活着也一样：同一个机器人不能有两个轮询者）。 */
     public void start() {
-        if (running || (thread != null && thread.isAlive())) {
+        synchronized (lifecycleLock) {
+            if (running) {
+                return;
+            }
+            Thread current = thread;
+            if (current != null && current.isAlive()) {
+                // 它只是被那条 25 秒的读拖住了（interrupt 打不断它）：等它落地接着跑，不再起一条。
+                restartWanted = true;
+                return;
+            }
+            // 到这里手里那条（如果有）已经断气了，才可以真的起一条
+            thread = new Thread(this::loop, "telegram-poll");
+            running = true;
+            thread.start();
+            BlackBox.note("alerts: command poller started");
+        }
+    }
+
+    /**
+     * 排到两轮之间跑：那时手上没有挂着的 {@code getUpdates}，才许第二次问话（D-14）。
+     *
+     * <p>可能要等一轮（最长 {@link #POLL_SECONDS} 秒）：读被打断不了。设置里那个
+     * 「找会话号」不赶这几秒，但它自己再开一条 {@code getUpdates} 就是把这条规矩撞了。</p>
+     */
+    public void runBetweenPolls(Runnable task) {
+        if (task == null) {
             return;
         }
-        running = true;
-        thread = new Thread(this::loop, "telegram-poll");
-        thread.start();
-        BlackBox.note("alerts: command poller started");
+        betweenPolls.add(task);
     }
 
     /**
@@ -120,25 +150,42 @@ public final class TelegramPoller {
      * <p>只把 {@code running} 置假是不够的：线程还挂在一条 25 秒的长轮询上，
      * 这时候重新打开开关就会起第二条 —— 同一个机器人同时两个 {@code getUpdates}，
      * Telegram 回 409，两条都拿不到消息。所以这里打断它、等它退出，最多等 3 秒。</p>
+     *
+     * <p>3 秒不够（D-13）：那时候引用留着、这份不换手，下一次 {@link #start()} 复用同一条线程，
+     * 它一落地就接着问。一个机器人从头到尾就这一个轮询者。</p>
      */
     public void stop() {
-        running = false;
-        Thread stopping = thread;
-        thread = null;
-        if (stopping != null) {
+        synchronized (lifecycleLock) {
+            running = false;
+            restartWanted = false;
+            Thread stopping = thread;
+            if (stopping == null) {
+                return;
+            }
             stopping.interrupt();
             try {
                 stopping.join(3_000L);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+            if (!stopping.isAlive()) {
+                thread = null;
+                BlackBox.note("alerts: command poller stopped");
+            } else {
+                // 还没断气：拿着它等，别拿这条重新起一条
+                BlackBox.note("alerts: 轮询线程还挂在上一条问话上，等它落地");
+            }
         }
-        BlackBox.note("alerts: command poller stopped");
     }
 
     private void loop() {
         long retryMs = 0;
-        while (running) {
+        while (running || restartWanted) {
+            drainBetweenPolls();
+            if (!running) {
+                restartWanted = false;
+                return;
+            }
             String token = config.getAlertsTelegramToken();
             String chatId = config.getAlertsTelegramChatId();
             String ownerId = config.getAlertsOwnerId();
@@ -187,6 +234,18 @@ public final class TelegramPoller {
                 lastErrorAt = System.currentTimeMillis();
                 AppLog.w(TAG, "poll failed: " + lastError);
                 sleep(retryMs);
+            }
+        }
+    }
+
+    /** 两轮之间：手上没有挂着的问话，排队的活在这一格跑掉，一件一件来。 */
+    private void drainBetweenPolls() {
+        Runnable task;
+        while ((task = betweenPolls.poll()) != null) {
+            try {
+                task.run();
+            } catch (RuntimeException | OutOfMemoryError e) {
+                AppLog.w(TAG, "between-poll task failed: " + TelegramRequest.redact(String.valueOf(e)));
             }
         }
     }

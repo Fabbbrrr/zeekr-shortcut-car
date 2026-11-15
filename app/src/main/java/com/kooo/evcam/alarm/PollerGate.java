@@ -21,6 +21,10 @@ package com.kooo.evcam.alarm;
  *       两者都要等于设置里那个号。</li>
  * </ul>
  *
+ * <p><b>群里还要先记下车主的用户号</b>（D-09）：那个号是设置里的「找会话号」填进去的。
+ * 没记下的时候，手填一个群号上去就什么都不会回应 —— 只在黑匣子里留一行。不靠「谁先说话谁就是车主」
+ * 补这个空：那等于让群里第一个开口的人变成车主。要群聊就先去设置里把会话和车主号选出来。</p>
+ *
  * <p>另外，睡了一夜的车醒过来时会把停机期间的命令一起收到。超过 {@link #NOTE_AGE_MS} 的命令照执行，
  * 但照片配文里写上“要求于几点”；超过 {@link #MAX_AGE_MS} 的只确认、不执行。</p>
  */
@@ -78,10 +82,6 @@ public final class PollerGate {
             }
         } else if (!privateChat || !TelegramCommand.fromOwner(fromUserId, configuredChatId)) {
             // 还不知道车主是谁时，只认私聊里的本人（那时会话号 == 用户号）
-            return Verdict.NOT_OWNER;
-        }
-        if (privateChat && !TelegramCommand.fromOwner(fromUserId, configuredChatId)
-                && (ownerUserId == null || ownerUserId.isEmpty())) {
             return Verdict.NOT_OWNER;
         }
         if (messageDateMs > 0 && nowMs - messageDateMs > MAX_AGE_MS) {
