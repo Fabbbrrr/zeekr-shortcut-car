@@ -78,8 +78,11 @@ alerts_ntfy_server        "https://ntfy.sh"        default
 alerts_ntfy_tier          "free" | "paid"          default "free"
 alerts_ntfy_cmd_topic     ""                       phase 2
 alerts_ntfy_cmd_since     ""                       phase 2, last seen message id
+alerts_ntfy_risk_ack      ""                       "<warning-version>|<last 8 of topic>", D13
 ```
 In `SECRETS_PREF_NAME` (not `app_config`): `alerts_ntfy_topic`, `alerts_ntfy_token`.
+`alerts_ntfy_risk_ack` stays in `app_config`: it is an acknowledgement, not a credential, and the
+exported settings may say "this owner accepted this warning for this topic" without leaking anything.
 
 Tests: `AlertSecretsTest` grows two cases — the ntfy token **and** the topic are absent from
 `SettingsBackup.snapshot`, and live in the secrets file; the server URL and tier live in `app_config`.
@@ -110,11 +113,45 @@ mismatch" does), so the wizard can be reasoned about without a screen. `Settings
 the project has one for `showAlertsRows`; otherwise keep visibility logic in one static function and
 test that.
 
+### T6b The free-tier warning gate (owner's decision, 2026-11-15)
+
+`alarm/NtfyRisk.java` (new, pure): `WARNING_VERSION` const, `ackFor(topic)` → the string to store,
+`accepted(topic, storedAck)` → boolean. Nothing else. Tested without a screen.
+
+`drawable` / `colors.xml`: add two semantic colours to **both** `values/colors.xml` and
+`values-night/colors.xml` — `caution` (amber, the standing notice) and `caution_quiet` (its fill).
+`ColorResourceParityTest` fails if only one file gets them. Do not reuse `locked` (that name means
+locked footage) and do not use `energy` (that is the brand orange, not a warning).
+
+`settings/NtfyRiskDialog` (new): builds the reason list from strings, then wraps the builder in
+`CamDialogs.showDestructive(builder)` — that is the call that paints the primary button red
+(`R.color.recording`); the builder carries `R.style.Theme_Cam_MaterialAlertDialog`, which
+`DialogStyleTest` pins. Secondary action opens the paid path. Back or dismiss == decline.
+
+Gate behaviour:
+
+- the dialog appears immediately after the free option is chosen and **before** the QR is drawn or
+  anything is published (`WIZARD-COPY.md` screen order)
+- accept → store `alerts_ntfy_risk_ack`, continue to the QR step
+- decline / back → free tier stays off, paid path offered
+- with free selected and no matching ack: `SentryAlerts` sends **nothing**, writes one blackbox line
+  per dropped alert, and raises one local notification (`notif_alerts_ntfy_risk_*`)
+- a new topic, a new server, or a bumped `WARNING_VERSION` clears the match and re-asks
+
+Tests:
+- `NtfyRiskTest` — ack is topic-specific; a different topic, a bumped version, an empty ack and a
+  malformed ack all fail; the exact accepted one passes
+- `NtfyRiskGateTest` — with free on and no ack, the channel is never called (stub channel counts
+  calls) and the notify happens once, not per alert
+- after accept, the same alert sends normally
+- string keys exist in all three locales (`StringResourceParityTest` already enforces parity)
+
 ### T7 Strings, three locales
 
 `docs/ntfy/WIZARD-COPY.md` has the copy. Key names follow the existing `set_alerts_*` /
 `opt_alerts_*` / `set_group_alerts_*` convention. No string may mention "ntfy.sh", "API", "token" or
-"topic" on the free path — the free path only says "notification", "QR code", "code".
+"topic" on the free path — the free path says "notification", "QR code", "code", and "name" where
+the topic has to be referred to at all.
 
 ## Phase 2 — commands (separate release, separate decision)
 
@@ -137,14 +174,20 @@ and the URL percent-encodes the command.
 
 1. Fresh install, free path, zero typing except the 4-digit code: alerts arrive on a phone with the
    ntfy app, photo included.
-2. Existing install upgraded: still on Telegram, no setting changed, no new notification.
-3. Switch to ntfy, then back to Telegram: both configs survive; the test button says which channel
+2. Free tier cannot send before the warning is accepted: choose free, dismiss the red dialog, and the
+   car sends nothing (local notification once, blackbox line per drop). Accept it and the next alert
+   goes through.
+3. The red dialog lists all six reasons, its primary button is the red one
+   (`CamDialogs.showDestructive`), and the amber "public topic" line stays visible in settings while
+   the free tier is selected. Re-generating the topic or bumping `WARNING_VERSION` asks again.
+4. Existing install upgraded: still on Telegram, no setting changed, no new notification.
+5. Switch to ntfy, then back to Telegram: both configs survive; the test button says which channel
    it used.
-4. The ntfy token and topic appear in neither the settings export nor the diagnostics report
+6. The ntfy token and topic appear in neither the settings export nor the diagnostics report
    (`AlertSecretsTest`).
-5. A photo larger than the tier's limit fails with a sentence a non-technical owner understands, and
+7. A photo larger than the tier's limit fails with a sentence a non-technical owner understands, and
    the blackbox records the HTTP code.
-6. Both gradle gates green, test count ≥ baseline with no failures.
+8. Both gradle gates green, test count ≥ baseline with no failures.
 
 ## Effort, honestly
 
@@ -154,6 +197,7 @@ and the URL percent-encodes the command.
 | T3 + T5 | half a day, the risky half (SentryAlerts is shared) |
 | T4 | 2 hours |
 | T6 | 1 day — the wizard is where a non-technical path is either real or theatre |
+| T6b | half a day — the dialog and its tests are cheap; deciding the wording with the owner is not |
 | T7 | half a day, three locales |
 | T8 + T9 | 1 day, unchanged by the fact that the protocol is proven |
 

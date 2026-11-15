@@ -40,7 +40,7 @@ a topic plus one stored message id.
 **Cost.** Two topic names to keep, two rows in the settings page. Free tier: two public names instead
 of one. Commands stay **off by default** and are their own later ticket, so v1 has one topic.
 
-## D3 — Free path: no account, no token, no e-mail. Just a generated topic.
+## D3 — Free path: no account, no token, no e-mail. Just a generated topic. (Decided: photos stay.)
 
 Measured: publishing needs no credential at all (§1.2), and the account's token buys nothing on a
 public topic. So the free wizard asks for nothing a non-technical owner cannot do:
@@ -56,8 +56,12 @@ the difference between "we posted it" and "you saw it".
 
 **Cost.** Free topics are public: whoever learns the name can read the photos and post fake alerts
 (§1.4). The name is unguessable, but it is visible on a lock screen, in the app, and to anyone
-watching cleartext DNS. This is the honest trade of the free tier and the wizard says so in one plain
-sentence. Closing it costs $6/mo (D4).
+watching cleartext DNS. Closing it costs $6/mo (D4).
+
+**Owner's decision (2026-11-15): keep photos on the free tier.** The risk is the owner's to carry,
+not something the app hides or quietly prevents. What the app owes in return is disclosure that
+cannot be missed and an acceptance that is recorded — D13. Text-only free alerts are **not** the
+plan; do not implement a downgrade nobody asked for.
 
 **No default topic in the APK, ever.** A shipped constant like `zeekr-alerts` would put every owner
 on one topic. Each install generates its own; the string is stored per device.
@@ -192,11 +196,54 @@ costs nothing.
 **Cost.** Two configurations can be present at once; only the selected one sends. The test button
 says which channel it used ("sent via ntfy"), so nobody has to guess.
 
+## D13 — The free-topic risk is disclosed in red and accepted before the first alert
+
+Decided (owner, 2026-11-15): the free tier keeps the photos, and the owner carries the risk. So the
+app must make the risk impossible to miss and must record that it was accepted.
+
+**Two surfaces, two severities.**
+
+- The free-tier row in settings carries a **yellow** dot/line and the words "public topic" — amber,
+  `R.color.caution`, visible every time the owner looks at the page. Amber, not red: it is a standing
+  fact, not an action being taken right now.
+- Every path that turns the free tier on passes a **red** confirmation dialog, placed immediately
+  after choosing the free option and **before** the QR is drawn or anything is published: the reasons,
+  then a button that says what it does ("I understand, the risk is mine, use it anyway"). Red via
+  `ui/CamDialogs.showDestructive`, the same treatment the app already gives irreversible operations,
+  because this is not a normal "OK".
+
+**The reasons are a list, not a sentence.** Someone accepting must be able to read the actual failure
+modes: the photos are readable by anyone who learns the name; fake alerts can be posted; the name is
+visible on a lock screen and in the app; the photos leave the car and pass through a third party
+(ntfy.sh and its push provider); free-tier messages keep 12 h and pictures 3 h; nobody can prove
+later who published what. The full copy is in `WIZARD-COPY.md`.
+
+**The acceptance is recorded, per topic, per wording version.** `alerts_ntfy_risk_ack` in
+`app_config` holds `<warning-version>|<last 8 of topic>`. The wording version is a constant in code
+(`NtfyRisk.WARNING_VERSION`), so a future edit to the warning text forces a fresh acknowledgement
+instead of inheriting consent for words the owner never read. Changing the topic or the server clears
+the match, so a new topic is a new decision.
+
+**What happens when it is missing.** The car does **not** send. It raises one local notification
+("alerts are not being sent: confirm the free-plan warning") and writes a blackbox line per dropped
+alert. Silence would be the one outcome worse than a public topic — an owner who believes the car is
+watched when it is not.
+
+**Cost.** Three taps more on the free path, one more stored key, one dialog that has to be written
+carefully in three languages. It also means the free tier can never be enabled by a restore from a
+backup made on another car: the ack carries the topic, so it correctly fails to match. That is the
+intent, not a bug.
+
+**Sending stays the owner's responsibility afterwards.** The dialog is a gate, not a guarantee: it
+does not encrypt anything, does not hide the topic from the lock screen, and cannot stop a fake alert
+arriving. The paid path is the only thing that closes the hole (D4).
+
 ## Open questions for the owner
 
-1. Do we accept a **public** free topic at all, given the photos are readable by anyone who learns the
-   name? (The alternative is free tier = text-only alerts, which removes the point.)
-2. Free tier, per-camera mode: warn and allow, or force the grid photo?
+1. ~~Do we accept a public free topic at all?~~ **Answered 2026-11-15: yes, keep it, owner's risk,
+   gated by D13.**
+2. Free tier, per-camera mode: warn and allow, or force the grid photo? (D6 currently proposes warn
+   and allow with a silent fallback when the daily budget runs low.)
 3. Ship phase 2 (commands) in the same release, or alerts only first?
 4. Name in the settings UI: "ntfy" as-is, or "ntfy (phone notifications)" for people who have never
    heard of it?
