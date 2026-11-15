@@ -266,10 +266,6 @@ public class MainActivity extends AppCompatActivity implements com.kooo.evcam.se
     };
 
 
-    // 存储清理管理器
-    private StorageCleanupManager storageCleanupManager;
-
-
     /** 在不在录：只问相机管家（{@link CameraKeeper#isRecording()}），界面自己不记。 */
     private boolean isRecording() {
         return keeper != null && keeper.isRecording();
@@ -340,9 +336,7 @@ public class MainActivity extends AppCompatActivity implements com.kooo.evcam.se
         
         // 唤醒锁只属于「熄屏录制（阻止休眠）」（规格 §3.3）：熄屏时在录像才拿，见 ScreenOffRecording；2026-11-02 熄屏录制停用，没有人拿
                 
-        // 启动存储清理任务（如果用户设置了限制）
-        storageCleanupManager = new StorageCleanupManager(this);
-        storageCleanupManager.start();
+        // 存储清理活在进程上（见 ZeekrShortcutApp.onCreate）：这个界面销毁了也要接着清
 
         // 检查是否是开机自启动
         boolean autoStartFromBoot = getIntent().getBooleanExtra("auto_start_from_boot", false);
@@ -2741,9 +2735,12 @@ public class MainActivity extends AppCompatActivity implements com.kooo.evcam.se
         // 前台服务：录制还在继续就不能停 —— 没有它，系统会在后台把录制掐掉。留不留由相机管家照规矩判（开机自启动、在录、这一趟要录）
         keeper.mainScreenGone(isChangingConfigurations());
 
-        // 停止存储清理任务
-        if (storageCleanupManager != null) {
-            storageCleanupManager.stop();
+        // 存储清理不再在这里停：它由应用起、跟进程一起结束
+
+        // 亮度/降噪悬浮窗挂在这个界面的 context 上：界面没了就关掉，不然它比界面活得久，
+        // 下次打开会叠第二层。关掉顺带把没保存的滑杆写回配置（和关闭按钮同一条路）
+        if (imageAdjustFloatingWindow != null && imageAdjustFloatingWindow.isShowing()) {
+            imageAdjustFloatingWindow.dismiss();
         }
 
         // 这个界面设在管线上的回调一律摘掉：管线比界面活得久，不摘的话销毁了的界面被它留住、还被回调

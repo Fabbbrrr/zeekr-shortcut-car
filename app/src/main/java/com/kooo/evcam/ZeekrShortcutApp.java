@@ -30,9 +30,15 @@ public class ZeekrShortcutApp extends Application {
     /** 上一次看到的配置，拿来和新的比，看变的到底是哪一项。 */
     private Configuration lastConfig;
 
+    /** 存储清理活在进程上：主界面可能从头到尾没开过（被扫描、WorkManager 拉起来的那些进程也要清）。 */
+    private StorageCleanupManager storageCleanupManager;
+
     @Override
     public void onCreate() {
         super.onCreate();
+        // 日志装配（轮换、崩溃处理器、warnings.log）跟着进程，不跟着主界面：
+        // 没开过主界面的进程里，警告、错误和崩溃原本一个都存不下来
+        AppLog.init(this);
         com.kooo.evcam.settings.DeveloperMode.init(this);
         lastConfig = new Configuration(getResources().getConfiguration());
         // 黑匣子尽早接上。ContentProvider 比这里还早，那边也会接一次，谁先谁算
@@ -70,6 +76,10 @@ public class ZeekrShortcutApp extends Application {
         config.forgetRetiredKeys();
         Languages.apply(config.getLanguageMode());
         StallWatch.start(this);
+        // 每小时一次的存储清理（冷启动 30 秒后先跑一次）也活在进程上：以前它挂在主界面上，
+        // 主界面一销毁就停，之后盘满也没人删。删除那一路本来就拿 FootageLocks.guard()，不需要界面
+        storageCleanupManager = new StorageCleanupManager(this);
+        storageCleanupManager.start();
     }
 
     /**

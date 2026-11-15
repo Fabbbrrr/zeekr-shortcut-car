@@ -44,13 +44,30 @@ public final class AppLog {
     // 原始的 UncaughtExceptionHandler
     private static Thread.UncaughtExceptionHandler sDefaultHandler = null;
 
+    // init 一个进程只真跑一次：轮换日志、装崩溃处理器都只在这一趟做一次
+    private static boolean sInitialized = false;
+
 
     private AppLog() {
     }
 
+    /**
+     * 装配日志：轮换会话日志、装崩溃处理器、记下 context（警告和错误要落盘）。
+     *
+     * <p>由 {@link ZeekrShortcutApp} 在进程起来时调用一次 —— 主界面可能根本没开过（被扫描广播、
+     * WorkManager 拉起来的那些进程），那时警告和崩溃也得有地方存。</p>
+     *
+     * <p>幂等：第二个及以后的调用只是确认已装配，不再轮换日志、不再换 handler。</p>
+     */
     public static void init(Context context) {
         if (context == null) {
             return;
+        }
+        synchronized (LOCK) {
+            if (sInitialized) {
+                return;
+            }
+            sInitialized = true;
         }
         
         // 保存 Application Context（用于崩溃时保存日志）
