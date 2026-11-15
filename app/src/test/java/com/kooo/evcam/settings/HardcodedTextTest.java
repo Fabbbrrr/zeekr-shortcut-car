@@ -80,6 +80,7 @@ public class HardcodedTextTest {
         JAVA_ALLOWED.put("settings/SettingSpec.java", "设置定义写错时抛给开发者的异常");
         JAVA_ALLOWED.put("settings/SegmentedPreference.java", "设置定义写错时抛给开发者的异常");
         JAVA_ALLOWED.put("settings/SettingsRegistry.java", "日志用的设置名；界面上的名字走 strings");
+        JAVA_ALLOWED.put("overlay/OverlayCoordinator.java", "被拒项的名字只随返回值进黑匣子；界面上的名字走 strings");
         JAVA_ALLOWED.put("KeepAliveReceiver.java", "触发原因只写进日志");
         JAVA_ALLOWED.put("zeekr/LaneCycle.java", "日志里的方位名");
         JAVA_ALLOWED.put("repair/Mp4Repair.java",

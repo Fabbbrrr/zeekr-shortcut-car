@@ -1449,8 +1449,9 @@ public final class DiagnosticsCollector {
 
     private static void appendLogcat(StringBuilder sb) {
         sb.append("## 9. 最近日志（本进程）").append('\n');
+        Process p = null;
         try {
-            Process p = Runtime.getRuntime().exec(new String[]{
+            p = Runtime.getRuntime().exec(new String[]{
                     "logcat", "-d", "-v", "time", "-t", String.valueOf(LOGCAT_READ_LINES)});
             BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
             List<String> kept = new ArrayList<>();
@@ -1476,6 +1477,15 @@ public final class DiagnosticsCollector {
         } catch (Exception e) {
             AppLog.w(TAG, "抓取 logcat 失败", e);
             sb.append("!! 抓取失败（车机可能不允许应用读取 logcat）: ").append(e).append('\n');
+        } finally {
+            // 收掉这个进程，不然每刷一次报告都留下一个没人管的子进程和它的管道（照 ScanProbe、StallWatch 的写法）
+            if (p != null) {
+                p.destroy();
+                try {
+                    p.waitFor();
+                } catch (InterruptedException ignored) {
+                }
+            }
         }
     }
 }

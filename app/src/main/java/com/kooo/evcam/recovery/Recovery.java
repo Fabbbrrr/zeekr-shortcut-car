@@ -21,6 +21,8 @@ import com.kooo.evcam.blackbox.BlackBox;
 import com.kooo.evcam.camera.CameraKeeper;
 import com.kooo.evcam.overlay.OverlayCoordinator;
 
+import java.util.List;
+
 /**
  * 开机自启动（规格 §2.5）的统一入口：收到各类信号、判断自己能正常运行了，就把核心程序起来。
  *
@@ -84,10 +86,10 @@ public final class Recovery {
             if (!config.didUiLeaveForScreenOff() || UserExit.isExited(context)) {
                 return;
             }
-            config.setUiLeftForScreenOff(false);
             if (com.kooo.evcam.camera.StallWatch.isForeground()) {
                 // 记号是熄屏那一刻记的（主界面在前就记，进程被车机结束了也接得回来）；熄屏期间它一直没退下去（在录、在等开录、
                 // 熄屏录制开着）就还在前面，不用再拉
+                config.setUiLeftForScreenOff(false);
                 return;
             }
             boolean alive = MainActivity.getInstance() != null;
@@ -98,6 +100,8 @@ public final class Recovery {
                 intent.putExtra("restored_by_app", true);
             }
             context.startActivity(intent);
+            // 起来了才算数：拉失败的，这一阵的重复窗口和记号都不动，下一轮（亮屏、保活）还会再来一次（F-07.08）
+            config.setUiLeftForScreenOff(false);
             // 主界面这就起来了：这一阵不再为接录像另外静默拉一次（那样它起来闪一下又退回后台）
             broughtUpAtMs = SystemClock.elapsedRealtime();
             BlackBox.noteImportant("亮屏：把因熄屏退下去的主界面接回前台（" + (alive ? "界面还在" : "重新起一个") + "）");
@@ -188,8 +192,13 @@ public final class Recovery {
         StringBuilder did = new StringBuilder();
         if (OverlayCoordinator.canShowOverlay(context)) {
             // 按设置起悬浮按钮、后视镜和盲区画面；已经在的不会重复。它们自己知道屏幕黑着就不接相机
-            OverlayCoordinator.restoreOnLaunch(context);
-            did.append("overlays");
+            // 被安卓拒的那几个没起来，不能跟它们一起算进「起来了」（F-07.06）
+            List<String> refused = OverlayCoordinator.restoreOnLaunch(context);
+            if (refused.isEmpty()) {
+                did.append("overlays");
+            } else {
+                did.append("overlays（refused：" + String.join("、", refused) + "）");
+            }
         }
 
         // 录像：被结束之前在录、在等接回、或因熄屏停下等亮屏接的（「这一趟要录」落着盘），和这一趟还没看过的启动自动录制，

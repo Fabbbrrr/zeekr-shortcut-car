@@ -19,6 +19,9 @@ import com.kooo.evcam.service.RecordingFloatingService;
 import com.kooo.evcam.zeekr.RearViewMirrorService;
 import com.kooo.evcam.zeekr.SideViewService;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 三个悬浮窗（超级镜子、盲区画面、录制悬浮按钮）「该不该开、能不能开、什么时候开」。
  *
@@ -59,10 +62,17 @@ public final class OverlayCoordinator {
      * <p>悬浮按钮的录制状态不从这里推：它显示出来时自己问 {@code CameraKeeper}，之后听相机管家的广播。
      * 以前这里隔 500 ms 推一次主界面记的状态 —— 主界面刚重建、还没对上录制状态时推的是「没在录」，
      * 录着像按钮却是灰的（2.10.0 实车，2026-10-08）。</p>
+     *
+     * <p>后台起服务可能被安卓拒（没有前台服务撑着时，{@code QuickActions} 早就防着这一手）：
+     * 拒了记一行接着做下一个，别让一个拒绝把后面的都带走（F-07.06）。
+     * 被拒的那几个用名字返回给调用方 —— 调用方写黑匣子时不能把它们算成「起来了」。</p>
+     *
+     * @return 被拒、没起来的那几个（名字）；都起来了是空表
      */
-    public static void restoreOnLaunch(Context context) {
+    public static List<String> restoreOnLaunch(Context context) {
         AppConfig config = new AppConfig(context);
         boolean allowed = canShowOverlay(context);
+        List<String> refused = new ArrayList<>();
 
         if (config.isRearViewEnabled() && allowed) {
             // 这一段以前没有：开关存着「开」，但没人在启动时把服务拉起来，
@@ -75,14 +85,23 @@ public final class OverlayCoordinator {
 
         if (config.isSideViewEnabled() && allowed) {
             // 不用等相机：挂 D 挡才挂窗口、登记环视，开相机由通道调度做
-            SideViewService.start(context);
-            AppLog.d(TAG, "盲区画面已按设置开启");
+            try {
+                SideViewService.start(context);
+                AppLog.d(TAG, "盲区画面已按设置开启");
+            } catch (RuntimeException e) {
+                AppLog.w(TAG, "startService(SideViewService) failed: " + e);
+                refused.add("盲区画面");
+            }
         }
 
         if (config.isRecordingFloatingEnabled() && allowed) {
-            sendToRecordingFloating(context, RecordingFloatingService.ACTION_SHOW);
-            AppLog.d(TAG, "悬浮按钮已启动");
+            if (sendToRecordingFloating(context, RecordingFloatingService.ACTION_SHOW)) {
+                AppLog.d(TAG, "悬浮按钮已启动");
+            } else {
+                refused.add("悬浮按钮");
+            }
         }
+        return refused;
     }
 
     // ------------------------------------------------------------------ 开关
@@ -166,10 +185,17 @@ public final class OverlayCoordinator {
 
     // ------------------------------------------------------------------
 
-    private static void sendToRecordingFloating(Context context, String action) {
+    /** 送一条命令给悬浮按钮的服务；被安卓拒了返回 {@code false}（记一行就往下走，见 {@link #restoreOnLaunch}）。 */
+    private static boolean sendToRecordingFloating(Context context, String action) {
         Intent intent = new Intent(context, RecordingFloatingService.class);
         intent.setAction(action);
-        context.startService(intent);
+        try {
+            context.startService(intent);
+            return true;
+        } catch (RuntimeException e) {
+            AppLog.w(TAG, "startService(RecordingFloatingService) failed: " + e);
+            return false;
+        }
     }
 
     private static Handler main() {

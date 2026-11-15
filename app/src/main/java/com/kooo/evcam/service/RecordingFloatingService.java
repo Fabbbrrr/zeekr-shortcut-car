@@ -131,7 +131,8 @@ public class RecordingFloatingService extends Service {
     private static final int CLICK_THRESHOLD = 10;
 
     // 录制服务：按钮在时绑着它（开录、停录不经它，见 QuickActions）
-    private boolean isServiceBound = false;
+    /** 有没有发起过绑定。回调可能永远不来（服务很快被销毁），那时 onDestroy 也要解绑。 */
+    private boolean bindRequested = false;
 
     // 录制状态（照相机管家画，见 renderRecordingState）
     /** 录像意图开着（开录中、在录、等待摄像头）：按一下是停。 */
@@ -145,15 +146,13 @@ public class RecordingFloatingService extends Service {
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
-            isServiceBound = true;
-
             // 之后的变化相机管家告诉本服务（keeperListener）；这里只对一次当前状态
             renderRecordingState();
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            isServiceBound = false;
+            // 对方挂了不等于绑定没了：连接还在，onDestroy 照样要解绑
         }
     };
 
@@ -174,8 +173,8 @@ public class RecordingFloatingService extends Service {
         screenWidth = metrics.widthPixels;
         screenHeight = metrics.heightPixels;
 
-        // 在后台线程绑定录制服务
-        new Thread(() -> bindRecordingService()).start();
+        // 绑定录制服务。就在主线程发起：回调本来也是投到主线程的，换线程不改变什么时候回调
+        bindRecordingService();
 
         // 录像的样子变了相机管家告诉本服务（keeperListener），onDestroy 摘掉
         com.kooo.evcam.camera.CameraKeeper.get(this).addListener(keeperListener);
@@ -287,8 +286,13 @@ public class RecordingFloatingService extends Service {
         super.onDestroy();
         hideFloatingWindow();
 
-        if (isServiceBound) {
-            unbindService(serviceConnection);
+        // 发起过绑定就解绑：只看连上没有的话，创建后很快销毁的那次绑定会留在死服务上，
+        // 把相机管家的服务一直撑住。没建立过的连接解绑在有些版本里抛异常，吃掉它
+        if (bindRequested) {
+            try {
+                unbindService(serviceConnection);
+            } catch (IllegalArgumentException ignored) {
+            }
         }
 
         com.kooo.evcam.camera.CameraKeeper.get(this).removeListener(keeperListener);
@@ -299,6 +303,7 @@ public class RecordingFloatingService extends Service {
     // ========== 服务绑定 ==========
 
     private void bindRecordingService() {
+        bindRequested = true;
         Intent intent = new Intent(this, CameraRecordingService.class);
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
     }
@@ -462,6 +467,7 @@ public class RecordingFloatingService extends Service {
                         initialTouchY = event.getRawY();
                         isDragging = false;
                         longPressFired = false;
+                        slidWhileLocked = false;
                         mainHandler.postDelayed(longPressRunnable, LONG_PRESS_MS);
                         return true;
 
@@ -515,6 +521,15 @@ public class RecordingFloatingService extends Service {
                             // 拖动结束才落盘，避免拖动过程中反复写 SharedPreferences
                             appConfig.setRecordingFloatingPosition(layoutParams.x, layoutParams.y);
                         }
+                        return true;
+
+                    case MotionEvent.ACTION_CANCEL:
+                        // 手势作废（手指滑出按钮、被别人抢走、窗口没了）：清掉这一下的状态，
+                        // 不然残留的标志会把下一次正常的点击吃掉
+                        mainHandler.removeCallbacks(longPressRunnable);
+                        isDragging = false;
+                        longPressFired = false;
+                        slidWhileLocked = false;
                         return true;
                 }
                 return false;

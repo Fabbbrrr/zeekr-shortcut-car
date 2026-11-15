@@ -116,6 +116,10 @@ public class DiagnosticsActivity extends AppCompatActivity {
             }
             final String finalResult = result;
             mainHandler.post(() -> {
+                // 已经离开的界面不再往上写
+                if (isDestroyed()) {
+                    return;
+                }
                 report = finalResult;
                 if (reportView != null) {
                     long setStart = android.os.SystemClock.uptimeMillis();
@@ -264,6 +268,10 @@ public class DiagnosticsActivity extends AppCompatActivity {
         new Thread(() -> {
             File out = saveReport();
             mainHandler.post(() -> {
+                // 界面已经离开，不再触发后续（发到手机）
+                if (isDestroyed()) {
+                    return;
+                }
                 if (then != null && out != null) {
                     then.accept(out);
                 }
