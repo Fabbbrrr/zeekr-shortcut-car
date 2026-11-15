@@ -1078,17 +1078,6 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
                     appConfig.getAlertsQuietEnd()));
         }
 
-        Preference quietStart = findPreference("pref_alerts_quiet_start");
-        if (quietStart != null) {
-            quietStart.setSummary(com.kooo.evcam.alarm.QuietHours.format(
-                    appConfig.getAlertsQuietStart()));
-        }
-        Preference quietEnd = findPreference("pref_alerts_quiet_end");
-        if (quietEnd != null) {
-            quietEnd.setSummary(com.kooo.evcam.alarm.QuietHours.format(
-                    appConfig.getAlertsQuietEnd()));
-        }
-
         Preference triggersRow = findPreference("pref_alerts_triggers");
         if (triggersRow != null) {
             triggersRow.setPersistent(false);
