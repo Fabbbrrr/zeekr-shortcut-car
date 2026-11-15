@@ -14,12 +14,15 @@ Findings implemented and gate-green: alarm 00 (all 10), camera 01 (all 5), zeekr
 settings/ui 03 (01–05), sound/profile 04 (01–07), root 06 (01–04, 06), recovery/overlay 07 (06–08),
 playback 07 (01, 02, 07).
 
-## Wave 2 — in flight when this was written
+## Wave 2 — done, gate green (1911 tests, 0 failures; assembleRelease OK)
 
-| Worker | Findings | Files |
+| Commit | Findings | What |
 |---|---|---|
-| playback/share | F-07.03, F-07.04, F-07.05 | `share/PhoneShare.java`, `playback/PhotoPlaybackActivity.java`, `playback/ExpandablePhotoGroupAdapter.java` |
-| button/CI | F-06.05, F-06.09 | `button/MediaMove.java`, `.github/scripts/release_notes.py` |
+| `ec1c1795` | F-07.03, F-07.04, F-07.05 | share server stopped by its host's lifecycle; interface scan and QR encode off main (generation guard against a stale code); photo scan off main, rebuild on main, stale snapshot dropped on a mid-scan delete/lock |
+| `87598814` | F-06.05, F-06.09 | a background voice action no longer reports success for a start the platform drops; `release_notes.py` fails on a missing section for a stable tag |
+| `10bdafc0` | — | the `AlertPolicyTest` change that `05c9e6b3` left behind |
+
+Tests added: `PhoneShareHostTest` (5), `PhotoPlaybackScanTest` (4), `MediaMoveTest` (2).
 
 ## Deliberately not changed (documented in `DECISIONS.md`)
 
