@@ -71,3 +71,16 @@ select-all across a collapsed section.
 Two honest notes. The floating-button fix rode inside `0aa98529` rather than its own commit. And three
 `docs(ntfy)` commits (`e2b184a6`, `b9862e15`, `5151f18f`) are another session's work, committed into this
 same checkout while the loop ran — they are on this branch, so pushing the branch pushes them too.
+
+## Review pass 1 (adversarial) — `docs/polish/review-pass1.md`
+
+Verdict was HOLD. One blocker and three should-fixes, all now fixed:
+
+| Commit | What |
+|---|---|
+| `ec3fb123` | **Blocker.** The poller restart fix had introduced its own bug: a fast off→on handed over `restartWanted` and then exited, so the car ended with no poller at all. Now the thread resumes on one poller; the new test fails on the previous code. |
+| `05c9e6b3` | The third overlay start (`RearViewMirrorService`) was left unguarded in the same restore path — a refusal there was an uncaught exception on the main looper and could not report itself. The DST test can now actually fail. `cooldownLeftMs` reports whichever window is holding. |
+
+Also noted, not changed: `135a390b` does not compile on its own (it calls `runBetweenPolls`, added in `d0588cc7`) — the two are one unit; a bisect lands on a broken commit between them. And the review confirms two costs already accepted in `DECISIONS.md`: failed sends are charged against the hourly cap even though nothing delivered, and an activity destroy now persists pending slider moves where it previously just leaked.
+
+**Gates on the final tree: 1900 tests, 0 failures, 0 errors; `assembleRelease` successful.**
