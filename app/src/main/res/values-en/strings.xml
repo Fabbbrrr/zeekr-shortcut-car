@@ -1480,6 +1480,7 @@ If I forget: %3$s</string>
     <string name="alert_clip_available_from">The recordings go back to %1$s</string>
     <string name="alert_headline_recorded_clip">%1$s, cut from the recording at the time you asked for</string>
     <string name="set_alerts_wizard_entry_title">Bot token</string>
+    <string name="set_alerts_wizard_entry_hint">About two minutes — or paste a token you already have</string>
     <string name="set_alerts_wizard_entry_guided">Walk me through it (about two minutes)</string>
     <string name="set_alerts_wizard_entry_manual">I will paste the token myself</string>
     <string name="set_alerts_wizard_bot_title">Step 1: get a bot from Telegram</string>
@@ -1487,10 +1488,10 @@ If I forget: %3$s</string>
 
 1. Open Telegram and type @BotFather in the search box at the top
 2. @BotFather is the official Telegram account that makes bots. Open it
-3. Send it this: /newbot
-4. It asks for a name for the bot. Anything you like; only you see it
-5. It then asks for a username. It must end in bot, for example my_zeekr_bot
-6. It replies with a long code. That code is the token: this car signs in as your bot with it, so it works like a password. Long press it and copy</string>
+3. Tap the Open button at the bottom of the chat: the panel it opens has Create a New Bot at the top. On an older Telegram that shows only the chat, send /newbot instead
+4. It shows a form. The first field is the bot\'s name; anything you like, only you see it
+5. The second field is the username. It must end in bot, for example my_zeekr_bot. Only one bot on all of Telegram can hold a name, so when yours is taken it says so — add a few letters or numbers and try again
+6. At the end it gives you a long code. That code is the token: this car signs in as your bot with it, so it works like a password. Long press it and copy</string>
     <string name="set_alerts_wizard_bot_hint">Paste the code you just copied here</string>
     <string name="set_alerts_wizard_next">Next</string>
     <string name="set_alerts_wizard_bot_bad_title">That code does not look right</string>
