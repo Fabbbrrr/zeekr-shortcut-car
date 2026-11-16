@@ -22,14 +22,40 @@ import com.kooo.evcam.AppConfig;
 import com.kooo.evcam.AppLog;
 import com.kooo.evcam.MainActivity;
 import com.kooo.evcam.R;
+import com.kooo.evcam.alarm.guard.AlertAnchor;
+import com.kooo.evcam.alarm.guard.AlertMoment;
+import com.kooo.evcam.alarm.guard.GuardHome;
+import com.kooo.evcam.alarm.guard.GuardPolicy;
+import com.kooo.evcam.alarm.guard.GuardToken;
+import com.kooo.evcam.alarm.media.AlertPicture;
+import com.kooo.evcam.alarm.media.FrameDiff;
+import com.kooo.evcam.alarm.media.MotionTap;
+import com.kooo.evcam.alarm.media.PictureBudget;
+import com.kooo.evcam.alarm.media.RecordedClip;
+import com.kooo.evcam.alarm.media.RecordedFrame;
+import com.kooo.evcam.alarm.media.SnapshotTaker;
+import com.kooo.evcam.alarm.ntfy.NtfyCommandPoller;
+import com.kooo.evcam.alarm.ntfy.NtfyRisk;
+import com.kooo.evcam.alarm.ntfy.NtfySender;
+import com.kooo.evcam.alarm.policy.AlertPolicy;
+import com.kooo.evcam.alarm.policy.ArmDelay;
+import com.kooo.evcam.alarm.policy.QuietHours;
+import com.kooo.evcam.alarm.policy.RequestPolicy;
+import com.kooo.evcam.alarm.policy.SentryFacts;
+import com.kooo.evcam.alarm.policy.TriggerSet;
+import com.kooo.evcam.alarm.telegram.PollerGate;
+import com.kooo.evcam.alarm.telegram.TelegramCommand;
+import com.kooo.evcam.alarm.telegram.TelegramPoller;
+import com.kooo.evcam.alarm.telegram.TelegramRequest;
+import com.kooo.evcam.alarm.telegram.TelegramSender;
 import com.kooo.evcam.blackbox.BlackBox;
 import com.kooo.evcam.camera.CameraKeeper;
 import com.kooo.evcam.camera.CameraNames;
-import com.kooo.evcam.zeekr.FisheyeProjection;
 import com.kooo.evcam.telemetry.Readings;
 import com.kooo.evcam.telemetry.Signal;
 import com.kooo.evcam.telemetry.Telemetry;
 import com.kooo.evcam.telemetry.VehicleState;
+import com.kooo.evcam.zeekr.FisheyeProjection;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -1493,22 +1519,14 @@ public final class SentryAlerts implements Telemetry.Listener {
     }
 
     /**
-     * 现在该走哪条出口。
+     * 现在该走哪条出口。判断本身在 {@link AlertChannels}：那是全应用唯一认得出具体出口的名字的地方，
+     * 也是 {@code ProviderWiringTest} 钉住的那一处。
      *
-     * <p>两条规矩都在这里，且只在这里：开发者选项关着就是 Telegram，存着 ntfy 也一样
-     * （{@link NtfyGate}）—— 藏起来的功能不能变成「悄悄不发了」；ntfy 免费话题的风险提示没被接受，
-     * 就返回一个永远发不出去的出口（{@link NtfyRisk}），由 {@link #blockedChannel} 说清楚。</p>
-     *
-     * Which exit to use now. Both rules live here and only here: developer options closed means
-     * Telegram even when ntfy is stored (a hidden feature must not turn into silence), and an
-     * unaccepted free-topic warning yields an exit that never sends, explained by
-     * {@link #blockedChannel}.
+     * Which exit to use now. The decision itself is {@link AlertChannels}, the one place in the app that
+     * knows concrete exit names and the one {@code ProviderWiringTest} pins.
      */
     private AlertChannel channel() {
-        if (config.isAlertsNtfy()) {
-            return NtfyChannel.of(config);
-        }
-        return new TelegramChannel(config.getAlertsTelegramToken(), config.getAlertsTelegramChatId());
+        return AlertChannels.of(config);
     }
 
     /**

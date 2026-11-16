@@ -15,6 +15,8 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
+import com.kooo.evcam.alarm.policy.SentryFacts;
+
 /**
  * 停车警报怎么读车辆信号（{@link SentryFacts}）：只有「锁着、布防」（哨兵 2）才算数，
  * 所以车主解锁回来那一下之后的亮屏、亮灯都不会发出去。
@@ -35,9 +37,9 @@ public class SentryFactsTest {
 
     @Test
     public void theOwnerComingBackDropsOutOfArmedBeforeAnythingLightsUp() {
-        // 平台笔记：解锁时哨兵 2 → 1，10 毫秒后防盗位才跟着动；屏幕和车灯是更晚的事。
-        // Platform note: on unlock, sentry goes 2 → 1 and the anti-theft bit
-        // follows 10 ms later; the screen and lamps are even later.
+        // 车上记录的：解锁时防盗位 0x20240300 先 1 → 0，10 毫秒后哨兵 2 → 1；屏幕和车灯是更晚的事。
+        // On the car: the anti-theft bit 0x20240300 goes 1 → 0 first, sentry 2 → 1 ten
+        // milliseconds later; the screen and lamps are even later.
         assertTrue(SentryFacts.armed(2));
         assertFalse(SentryFacts.armed(1));
     }
