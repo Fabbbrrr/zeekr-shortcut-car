@@ -1465,6 +1465,7 @@ Kalau lupa: %3$s</string>
     <string name="alert_clip_available_from">Rakaman hanya sampai %1$s</string>
     <string name="alert_headline_recorded_clip">%1$s, dipotong daripada rakaman pada masa yang diminta</string>
     <string name="set_alerts_wizard_entry_title">Token bot</string>
+    <string name="set_alerts_wizard_entry_hint">Kira-kira dua minit — atau tampal token yang anda sudah ada</string>
     <string name="set_alerts_wizard_entry_guided">Bimbing saya langkah demi langkah (kira-kira dua minit)</string>
     <string name="set_alerts_wizard_entry_manual">Saya akan tampal token sendiri</string>
     <string name="set_alerts_wizard_bot_title">Langkah 1: minta Telegram buatkan bot</string>
@@ -1472,10 +1473,10 @@ Kalau lupa: %3$s</string>
 
 1. Buka Telegram dan taip @BotFather di kotak carian di atas
 2. @BotFather ialah akaun rasmi Telegram yang membuat bot. Buka ia
-3. Hantar ini kepadanya: /newbot
-4. Ia tanya nama bot. Apa-apa pun boleh; hanya anda yang nampak
-5. Ia kemudian tanya nama pengguna. Ia mesti berakhir dengan bot, contohnya my_zeekr_bot
-6. Ia balas dengan satu kod panjang. Kod itu ialah token: kereta ini masuk sebagai bot anda dengannya, jadi ia berfungsi seperti kata laluan. Tekan lama dan salin</string>
+3. Tekan butang Open di bawah chat: panel yang terbuka ada Create a New Bot di atasnya. Pada Telegram lama yang hanya tunjuk chat, hantar /newbot
+4. Ia tunjuk satu borang. Ruang pertama ialah nama bot; apa-apa pun boleh, hanya anda yang nampak
+5. Ruang kedua ialah nama pengguna. Ia mesti berakhir dengan bot, contohnya my_zeekr_bot. Hanya satu bot di seluruh Telegram boleh pakai satu nama, jadi kalau nama itu sudah diambil ia akan beritahu — tambah beberapa huruf atau nombor dan cuba lagi
+6. Akhirnya ia beri satu kod panjang. Kod itu ialah token: kereta ini masuk sebagai bot anda dengannya, jadi ia berfungsi seperti kata laluan. Tekan lama dan salin</string>
     <string name="set_alerts_wizard_bot_hint">Tampal kod yang baru anda salin di sini</string>
     <string name="set_alerts_wizard_next">Seterusnya</string>
     <string name="set_alerts_wizard_bot_bad_title">Kod itu nampak tidak betul</string>

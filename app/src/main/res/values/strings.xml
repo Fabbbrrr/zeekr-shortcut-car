@@ -1481,6 +1481,7 @@
     <string name="alert_clip_available_from">录像只留到 %1$s</string>
     <string name="alert_headline_recorded_clip">%1$s，按你要的时刻从视频里切的</string>
     <string name="set_alerts_wizard_entry_title">机器人令牌</string>
+    <string name="set_alerts_wizard_entry_hint">大约两分钟 —— 或者粘贴你已有的令牌</string>
     <string name="set_alerts_wizard_entry_guided">一步一步来（约两分钟）</string>
     <string name="set_alerts_wizard_entry_manual">我自己粘贴令牌</string>
     <string name="set_alerts_wizard_bot_title">第 1 步：让 Telegram 给你造一个机器人</string>
@@ -1488,10 +1489,10 @@
 
 1. 打开 Telegram，在最上面的搜索框里输入 @BotFather
 2. @BotFather 是 Telegram 官方的账号，专门用来造机器人。点开它
-3. 在里面发送：/newbot
-4. 它问你机器人叫什么名字，随便起一个，是给你自己看的
-5. 它再问用户名，这个必须以 bot 结尾，比如 my_zeekr_bot
-6. 它回一段话，里面有一长串码。那串码就是令牌 —— 这辆车用它当你的机器人，所以它等于密码。长按它、复制</string>
+3. 点聊天底部那个「打开」按钮，弹出的面板最上面就是「新建机器人」（英文界面叫 Create a New Bot）。只看到聊天的旧版 Telegram，就改成发送 /newbot
+4. 它给一张表：第一格填机器人的名字，随便起一个，是给你自己看的
+5. 第二格填用户名，必须以 bot 结尾，比如 my_zeekr_bot。这个名字全 Telegram 只能用一次 —— 被别人占了它就说已占用，加几个字母或数字再试
+6. 最后它给一长串码。那串码就是令牌 —— 这辆车用它当你的机器人，所以它等于密码。长按它、复制</string>
     <string name="set_alerts_wizard_bot_hint">把刚复制的那串码粘在这里</string>
     <string name="set_alerts_wizard_next">下一步</string>
     <string name="set_alerts_wizard_bot_bad_title">这串码不对</string>
