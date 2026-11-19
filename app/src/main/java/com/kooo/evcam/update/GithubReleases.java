@@ -165,6 +165,10 @@ public final class GithubReleases {
     public static Release fetchLatest(boolean includeBeta, boolean includeAlpha, String currentVersion)
             throws IOException {
         String body = getText(listUrl());
+        // 只认自己那一档：fork 发的版本带 -fab 标记，上游发的不带（UpdateSource）。
+        // 光比版本号分不开 —— 上游的编号可能比 fork 的大，那是「上游又抬了一版」，
+        // 不是「fork 发了新版」，这一句就是不让它变成一个要装上的更新。
+        boolean forkMarked = UpdateSource.forkMarked(owner);
         Release best = null;
         List<Release> newer = new ArrayList<>();
         try {
@@ -177,6 +181,10 @@ public final class GithubReleases {
                 }
                 Release candidate = toRelease(release);
                 if (candidate == null) {
+                    continue;
+                }
+                if (!VersionName.fitsSource(candidate.tagName, forkMarked)) {
+                    // 另一边的版本：数字再大也不属于这次检查的地方
                     continue;
                 }
                 boolean eligible = !includeBeta ? VersionName.isRelease(candidate.tagName)

@@ -9,6 +9,24 @@ commit message, not here.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [4.13.0-fab-beta] - 2026-11-19
+
+This is the fork's build. Upstream's 4.13 is not merged here; the fork's number sits one
+minor above the upstream release it contains, and every fork release carries the
+`-fab` marker so the app can tell whose version it is looking at.
+
+- Everything upstream released up to **4.12.1-alpha** is in this build: X knob support, the
+  Super mirror's fisheye correction following the method chosen in General, Arabic and the
+  right-to-left groundwork, the camera list fix in the black box, the stall monitor going quiet
+  in the dark, and the climate being switched on only when the car reports it off.
+- Updates come from the fork only. With "Update from the fork" on (Developer options), a
+  version published upstream can no longer show up as an available update, whatever its
+  number says.
+- Known gap: the Alerts screens and their settings rows are Chinese, English and Malay for
+  now. Arabic is a separate pass; with Arabic selected those rows fall back to the default
+  resources, which are Chinese.
 - Alerts: **Forgot Sentry**. Park away from home with Sentry Mode off and the car says so in the chat,
   with a button to switch it on — and switches it on 60 s later by itself unless you say no. Four
   modes under Settings → Alerts, off by default; "Also at home" lifts the away-from-home rule.

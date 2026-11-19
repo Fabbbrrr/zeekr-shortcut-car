@@ -51,6 +51,14 @@ public class DeveloperSettingsTest {
     private static final Map<String, List<String>> OUTSIDE = new LinkedHashMap<>();
     /** 只是动作或说明，不存设置。 */
     private static final List<String> NONE = Collections.emptyList();
+    /**
+     * 开发者选项分区里、锁上之后<b>照样算数</b>的行 → 它存的键。
+     *
+     * <p>只有一类：把开发者选项锁上不该顺带改掉的行为。更新来源就是这一种 —— 锁一下界面
+     * 就把一台车机换回上游的更新，等于下一次点「检查更新」可能装进一个上游版本。
+     * 理由写在 {@code AppConfig#isUpdateFromFork}。</p>
+     */
+    private static final Map<String, List<String>> UNGATED = new LinkedHashMap<>();
 
     static {
         ROWS.put("pref_recording_mode", Arrays.asList("recording_mode"));
@@ -68,8 +76,8 @@ public class DeveloperSettingsTest {
         ROWS.put("pref_alerts_debug", NONE);
         // ntfy 那一行 2026-11-15 搬进「停车警报」了（事件清单 + 发到哪儿），开发者区不再有它。
         // The ntfy row moved into the alerts section on 2026-11-15; the developer area no longer has it.
-        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）
-        ROWS.put("pref_update_fork", Arrays.asList("update_from_fork"));
+        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）。锁上开发者选项后照样算数（UNGATED）
+        UNGATED.put("pref_update_fork", Arrays.asList("update_from_fork"));
         ROWS.put("pref_raw_frame_dump", Arrays.asList("raw_frame_dump"));
         ROWS.put("pref_gpu_fisheye_preview", Arrays.asList("gpu_fisheye_preview"));
         ROWS.put("pref_gpu_fisheye_video", Arrays.asList("gpu_fisheye_video"));
@@ -114,13 +122,26 @@ public class DeveloperSettingsTest {
 
         Set<String> unknown = new TreeSet<>(rows);
         unknown.removeAll(ROWS.keySet());
+        unknown.removeAll(UNGATED.keySet());
         assertTrue("开发者选项分区里这几行没写它存在哪个键：把键加进 AppConfig.DEVELOPER_KEYS，"
-                + "再写进这里的 ROWS（只是动作的写 NONE）: " + unknown, unknown.isEmpty());
+                + "再写进这里的 ROWS（只是动作的写 NONE；锁上之后还要算数的写 UNGATED）: " + unknown,
+                unknown.isEmpty());
 
         Set<String> gone = new TreeSet<>(ROWS.keySet());
+        gone.addAll(UNGATED.keySet());
         gone.removeAll(rows);
-        assertTrue("这几行已经不在开发者选项分区里了，从 ROWS 里拿掉（键也从 DEVELOPER_KEYS 里拿掉）: "
+        assertTrue("这几行已经不在开发者选项分区里了，从 ROWS / UNGATED 里拿掉（键也从 DEVELOPER_KEYS 里拿掉）: "
                 + gone, gone.isEmpty());
+    }
+
+    @Test
+    public void ungatedDeveloperRowsKeepWorkingWhileLocked() {
+        for (Map.Entry<String, List<String>> row : UNGATED.entrySet()) {
+            for (String key : row.getValue()) {
+                assertFalse(row.getKey() + "（" + key + "）锁上开发者选项后照样算数",
+                        AppConfig.readsAsUnset(key, false));
+            }
+        }
     }
 
     @Test

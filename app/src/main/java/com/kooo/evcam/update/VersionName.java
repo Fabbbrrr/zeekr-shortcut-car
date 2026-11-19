@@ -17,10 +17,66 @@ package com.kooo.evcam.update;
  * {@code "0.9.0" > "0.25.0"}（因为 '9' > '2'），正好是「有更新却说没有」。</p>
  *
  * <p>所以按段拆开、按数字比。这部分完全不碰网络和 Android，可以单独测。</p>
+ *
+ * <h3>fork 标记（{@code -fab}）</h3>
+ *
+ * <p>这个 fork 的版本号写成 {@code 4.13.0-fab-beta}：数字段跟上游对齐，后缀里多一段
+ * {@value #FORK_MARKER}。标记只做一件事 —— 说明「这个版本是这个 fork 发的」。
+ * 检查更新据此分来源：开了「更新从自己的 fork 取」时只认带标记的版本，没开时只认不带标记的，
+ * 所以上游的版本号哪怕比 fork 的编号大，也不会被当成一条要装上的更新。</p>
+ *
+ * <p>标记本身不参与排序：{@code 4.13.0-fab-beta} 和 {@code 4.13.0-beta} 比大小是相等的。
+ * 排序只看数字段和通道（alpha / beta / 正式版）。来源由 {@link #isFork} 分开管，
+ * 混在一个数字里分不清是谁发的。</p>
  */
 public final class VersionName {
 
+    /** 后缀里代表「这个 fork 发的版本」的那一段。 */
+    public static final String FORK_MARKER = "fab";
+
     private VersionName() {
+    }
+
+    /**
+     * 这个版本号是不是这个 fork 发的（后缀里有一段正好是 {@value #FORK_MARKER}）。
+     *
+     * <p>只看整段：{@code 4.13.0-fab-beta} 是，{@code 4.13.0-fabulous-beta} 不是。</p>
+     */
+    public static boolean isFork(String version) {
+        for (String token : suffixTokens(version)) {
+            if (token.equalsIgnoreCase(FORK_MARKER)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 后缀里去掉 fork 标记之后剩下的那一段，也就是通道：{@code 4.13.0-fab-beta} → {@code beta}，
+     * {@code 4.13.0} → 空（正式版）。标记的位置不固定，{@code -fab-beta} 和 {@code -beta-fab} 一样。
+     */
+    public static String channel(String version) {
+        StringBuilder out = new StringBuilder();
+        for (String token : suffixTokens(version)) {
+            if (token.equalsIgnoreCase(FORK_MARKER)) {
+                continue;
+            }
+            if (out.length() > 0) {
+                out.append('-');
+            }
+            out.append(token);
+        }
+        return out.toString();
+    }
+
+    /**
+     * 这个版本能不能用在这次检查更新上：从 fork 取时只认带标记的，从上游取时只认不带标记的。
+     *
+     * <p>这一句是「打开「更新从自己的 fork 取」之后，上游的版本永远不会被当成更新」的落脚处：
+     * 两边的版本永远进不了对方的列表，跟谁的编号大无关。</p>
+     */
+    public static boolean fitsSource(String version, boolean forkMarked) {
+        return isFork(version) == forkMarked;
     }
 
     /**
@@ -44,13 +100,16 @@ public final class VersionName {
             }
         }
 
-        // 数字段一样，再看预发布后缀。按 semver：正式版比同号的预发布版新
-        boolean preA = !coreA[1].isEmpty();
-        boolean preB = !coreB[1].isEmpty();
+        // 数字段一样，再看预发布后缀。按 semver：正式版比同号的预发布版新。
+        // 比的是通道，不是原始后缀：fork 标记不参与排序（见类注释）
+        String channelA = channel(a);
+        String channelB = channel(b);
+        boolean preA = !channelA.isEmpty();
+        boolean preB = !channelB.isEmpty();
         if (preA != preB) {
             return preA ? -1 : 1;
         }
-        return coreA[1].compareTo(coreB[1]);
+        return channelA.compareTo(channelB);
     }
 
     /** 远端那个版本是不是比本机的新。拿不准（解析不出数字）时一律当作「不是」。 */
@@ -77,15 +136,15 @@ public final class VersionName {
      * 得在这里明确加上，而不是靠「看起来比 beta 新」这种默认。</p>
      */
     public static boolean isBetaOrRelease(String version) {
-        String[] parts = splitCore(version);
-        if (numbers(parts[0]).length == 0) {
+        if (numbers(splitCore(version)[0]).length == 0) {
             // 版本号都认不出来，谈不上属于哪一档
             return false;
         }
-        if (parts[1].isEmpty()) {
+        String channel = channel(version);
+        if (channel.isEmpty()) {
             return true;
         }
-        return parts[1].toLowerCase(java.util.Locale.US).startsWith("beta");
+        return channel.toLowerCase(java.util.Locale.US).startsWith("beta");
     }
 
     /**
@@ -96,9 +155,8 @@ public final class VersionName {
         if (isBetaOrRelease(version)) {
             return true;
         }
-        String[] parts = splitCore(version);
-        return numbers(parts[0]).length > 0
-                && parts[1].toLowerCase(java.util.Locale.US).startsWith("alpha");
+        return numbers(splitCore(version)[0]).length > 0
+                && channel(version).toLowerCase(java.util.Locale.US).startsWith("alpha");
     }
 
     /**
@@ -107,8 +165,7 @@ public final class VersionName {
      * <p>设置里关掉「接收 Beta 版」之后，检查更新只认这一档。</p>
      */
     public static boolean isRelease(String version) {
-        String[] parts = splitCore(version);
-        return numbers(parts[0]).length > 0 && parts[1].isEmpty();
+        return numbers(splitCore(version)[0]).length > 0 && channel(version).isEmpty();
     }
 
     /**
@@ -118,6 +175,12 @@ public final class VersionName {
     public static int major(String version) {
         int[] nums = numbers(splitCore(version)[0]);
         return nums.length == 0 ? -1 : nums[0];
+    }
+
+    /** 后缀按 '-' 拆开（{@code fab-beta.2} → {@code fab}、{@code beta.2}）；没有后缀时是空数组。 */
+    private static String[] suffixTokens(String version) {
+        String suffix = splitCore(version)[1];
+        return suffix.isEmpty() ? new String[0] : suffix.split("-");
     }
 
     /** 拆成「数字部分」和「预发布后缀」两段，顺便吃掉前导的 v。 */

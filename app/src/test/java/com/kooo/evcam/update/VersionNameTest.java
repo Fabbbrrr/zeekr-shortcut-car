@@ -147,5 +147,65 @@ public class VersionNameTest {
         assertTrue(VersionName.major("nightly") == -1);
         assertTrue(VersionName.major("") == -1);
         assertTrue(VersionName.major(null) == -1);
+
+        // fork 的版本号同样只看第一段：4.13.0-fab-beta 还是 4 时代，设置可以照旧导入
+        assertTrue(VersionName.major("4.13.0-fab-beta") == 4);
+    }
+
+    // ---------------------------------------------------------------- fork 标记
+
+    /**
+     * 标记只看整段：{@code -fab} 是，{@code -fabulous} 不是。
+     *
+     * <p>这一句把「哪一边发的」从版本号里分出来，上游和 fork 的编号再怎样交叉都不会认错。</p>
+     */
+    @Test
+    public void forkMarkerIsAWholeSuffixSegment() {
+        assertTrue(VersionName.isFork("4.13.0-fab-beta"));
+        assertTrue(VersionName.isFork("v4.13.0-fab-beta"));
+        assertTrue(VersionName.isFork("4.13.0-fab"));
+        assertTrue("标记写在后面也算", VersionName.isFork("4.13.0-beta-fab"));
+        assertTrue(VersionName.isFork("4.13.0-FAB-beta"));
+        assertFalse(VersionName.isFork("4.12.1-alpha"));
+        assertFalse(VersionName.isFork("4.13.0"));
+        assertFalse("不是一个词就不算", VersionName.isFork("4.13.0-fabulous-beta"));
+        assertFalse(VersionName.isFork(null));
+    }
+
+    /**
+     * 上游的版本号比 fork 的大时，两边仍然互不算更新。
+     *
+     * <p>这就是那个 bug：上游走到 4.12，fork 还在 4.5，光比数字会把上游的版本当成一条要装上的更新，
+     * 哪怕开关指着自己的 fork。</p>
+     */
+    @Test
+    public void aSourceOnlyAcceptsItsOwnVersions() {
+        // 指着 fork：上游那一个再新也进不来
+        assertFalse(VersionName.fitsSource("v4.12.1-alpha", true));
+        assertFalse(VersionName.fitsSource("v4.4.2-beta", true));
+        assertTrue(VersionName.fitsSource("v4.13.0-fab-beta", true));
+        // 指着上游：fork 自己发的不进上游的列表
+        assertTrue(VersionName.fitsSource("v4.12.1-alpha", false));
+        assertFalse(VersionName.fitsSource("v4.13.0-fab-beta", false));
+    }
+
+    /** 标记不参与排序：同号的两边版本一样大。 */
+    @Test
+    public void forkMarkerDoesNotChangeTheOrder() {
+        assertTrue(VersionName.compare("4.13.0-fab-beta", "4.13.0-beta") == 0);
+        assertTrue(VersionName.compare("4.13.0-beta-fab", "4.13.0-fab-beta") == 0);
+        assertTrue(VersionName.isNewer("4.13.1-fab-beta", "4.13.0-fab-beta"));
+        assertTrue("正式版仍然比同号的 beta 新", VersionName.isNewer("4.13.0-fab", "4.13.0-fab-beta"));
+    }
+
+    /** fork 的 beta 版也归 beta 那一档：设置里「接收 beta 版」要的正是它们。 */
+    @Test
+    public void forkVersionsStillBelongToTheirChannel() {
+        assertTrue(VersionName.isBetaOrRelease("4.13.0-fab-beta"));
+        assertTrue(VersionName.isAlphaBetaOrRelease("4.13.0-fab-beta"));
+        assertTrue(VersionName.isAlphaBetaOrRelease("4.13.0-fab-alpha"));
+        assertFalse("关了 beta 就只有正式版", VersionName.isRelease("4.13.0-fab-beta"));
+        assertTrue(VersionName.isRelease("4.13.0-fab"));
+        assertFalse(VersionName.isBetaOrRelease("4.13.0-fab-rc1"));
     }
 }
