@@ -22,6 +22,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 import org.robolectric.RuntimeEnvironment;
 
 /**
@@ -45,6 +46,7 @@ import org.robolectric.RuntimeEnvironment;
  * is checked at this level only for wiring; the rule itself is {@link NtfyCommandsTest}.
  */
 @RunWith(RobolectricTestRunner.class)
+@Config(sdk = 34)
 public class NtfyTopicRotationTest {
 
     private static final String OLD_TOPIC =

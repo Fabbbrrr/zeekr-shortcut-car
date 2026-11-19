@@ -22,6 +22,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 import org.robolectric.RuntimeEnvironment;
 
 /**
@@ -51,6 +52,7 @@ import org.robolectric.RuntimeEnvironment;
  * too: only Telegram carries clips — a fact that until now lived in a comment.</p>
  */
 @RunWith(RobolectricTestRunner.class)
+@Config(sdk = 34)
 public class AlertChannelsTest {
 
     private static final String BOT_TOKEN = "123456789:AAH_exampleTOKENvalue_0123456789";

@@ -19,6 +19,7 @@ import org.junit.After;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 import org.robolectric.RuntimeEnvironment;
 
 import java.util.concurrent.CountDownLatch;
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit;
  * 手里那条线程一落地要<b>接着问</b>，不是把旗子吃掉就退场。
  */
 @RunWith(RobolectricTestRunner.class)
+@Config(sdk = 34)
 public class TelegramPollerRestartTest {
 
     private static final String THREAD_NAME = "telegram-poll";

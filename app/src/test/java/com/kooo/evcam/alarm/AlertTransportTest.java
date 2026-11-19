@@ -25,6 +25,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 import org.robolectric.RuntimeEnvironment;
 
 /**
@@ -41,6 +42,7 @@ import org.robolectric.RuntimeEnvironment;
  * moment they wanted alerts.
  */
 @RunWith(RobolectricTestRunner.class)
+@Config(sdk = 34)
 public class AlertTransportTest {
 
     private static final String BOT_TOKEN = "123456789:AAH_exampleTOKENvalue_0123456789";

@@ -15,6 +15,7 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 
 /**
  * 一次 Telegram 回复怎么解读（{@code TelegramSender.parse}）。
@@ -31,6 +32,7 @@ import org.robolectric.RobolectricTestRunner;
  * in the UI and the retry decision come from that one conclusion.
  */
 @RunWith(RobolectricTestRunner.class)
+@Config(sdk = 34)
 public class TelegramReplyTest {
 
     private static TelegramSender.Reply parse(int code, String body) {

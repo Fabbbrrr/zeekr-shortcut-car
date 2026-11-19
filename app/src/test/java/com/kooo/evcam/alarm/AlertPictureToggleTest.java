@@ -51,7 +51,7 @@ import java.util.concurrent.TimeUnit;
  * there is no camera and no network here.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(shadows = {ShadowSnapshotTaker.class, ShadowNtfySender.class})
+@Config(sdk = 34, shadows = {ShadowSnapshotTaker.class, ShadowNtfySender.class})
 public class AlertPictureToggleTest {
 
     private static final String TOPIC =

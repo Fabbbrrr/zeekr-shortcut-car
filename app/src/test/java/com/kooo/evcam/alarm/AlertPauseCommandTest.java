@@ -48,7 +48,7 @@ import java.util.concurrent.TimeUnit;
  * value the diagnostics report carries.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(shadows = {ShadowNtfySender.class})
+@Config(sdk = 34, shadows = {ShadowNtfySender.class})
 public class AlertPauseCommandTest {
 
     private static final String TOPIC =

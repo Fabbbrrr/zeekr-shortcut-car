@@ -26,14 +26,23 @@ import com.kooo.evcam.alarm.guard.AlertMoment;
  * <p>这里全部用「设备默认时区里的今天」算期望值，所以换个时区跑也是同一套断言；只有 ISO 的时区
  * 偏移随机器变，所以那一条只钉形状不钉具体偏移。</p>
  *
+ * <p>UTC 那一台机器上格式器印的是 {@code Z} 而不是 {@code +00:00}（ISO-8601 的零偏移写法，
+ * {@code XXX} 就是这么印的），所以形状里两种都认。这条以前只在 UTC+11 的机器上跑过，
+ * 到 CI（UTC）上才发现。</p>
+ *
  * The moment inside an alert ({@link AlertMoment}): what it looks like written down, and
  * whether reading it back lands on the same instant.
  *
  * <p>Every expectation here is built as "today in the device's default zone", so the assertions
  * hold in any zone; only the ISO offset varies by machine, so that case pins the shape and not
- * the offset.</p>
+ * the offset. On a machine in UTC the formatter prints {@code Z} rather than {@code +00:00} --
+ * the ISO-8601 spelling of zero offset, which is what {@code XXX} produces -- so the shape
+ * accepts both.</p>
  */
 public class AlertMomentTest {
+
+    /** ISO-8601 的时区：{@code +11:00}，或零偏移的 {@code Z}。 */
+    private static final String OFFSET = "([+-]\\d\\d:\\d\\d|Z)";
 
     /** 一天某一刻的墙钟毫秒，按默认时区算。 */
     private static long today(int hour, int minute, int second) {
@@ -49,7 +58,7 @@ public class AlertMomentTest {
     public void isoCarriesTheDateTheTimeAndTheOffset() {
         String iso = AlertMoment.iso(today(18, 16, 4));
         assertTrue("要带时区偏移 / must carry the offset: " + iso,
-                iso.matches("\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d[+-]\\d\\d:\\d\\d"));
+                iso.matches("\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d" + OFFSET));
         // 纪元那一刻、冬天、夏天都只要求形状对：偏移随机器变。
         // Epoch, winter and summer only need the right shape: the offset varies by machine.
         // 0 是「没有时刻」，不印 1970：返回空串。
@@ -58,7 +67,7 @@ public class AlertMomentTest {
         for (long wallMs : new long[]{1L, 1_700_000_000_000L, today(0, 0, 0)}) {
             assertTrue(AlertMoment.iso(wallMs),
                     AlertMoment.iso(wallMs).matches(
-                            "\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d[+-]\\d\\d:\\d\\d"));
+                            "\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d" + OFFSET));
         }
     }
 

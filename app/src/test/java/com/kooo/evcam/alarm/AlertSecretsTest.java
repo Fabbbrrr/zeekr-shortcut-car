@@ -22,6 +22,7 @@ import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 import org.robolectric.RuntimeEnvironment;
 
 import java.util.Iterator;
@@ -44,6 +45,7 @@ import java.util.Iterator;
  * anywhere in the whole exported settings.
  */
 @RunWith(RobolectricTestRunner.class)
+@Config(sdk = 34)
 public class AlertSecretsTest {
 
     private static final String TOKEN = "123456789:AAH_exampleTOKENvalue_0123456789";

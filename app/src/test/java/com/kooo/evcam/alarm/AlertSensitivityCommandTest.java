@@ -50,7 +50,7 @@ import java.util.concurrent.TimeUnit;
  * path runs; only the ntfy send is a counting shadow, so there is no network here.
  */
 @RunWith(RobolectricTestRunner.class)
-@Config(shadows = {ShadowNtfySender.class})
+@Config(sdk = 34, shadows = {ShadowNtfySender.class})
 public class AlertSensitivityCommandTest {
 
     private static final String TOPIC =
