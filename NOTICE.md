@@ -75,12 +75,14 @@ dts88 写的部分另有两条 GPL-3.0 第 7 条允许的附加条款（署名�
   从他的 7X-U 搬来，他在 7X 上实测过）；比较盘的路径时统一用 / 分隔，单元测试在 Windows 上也能通过（`FallbackVolumes`）。
   都是 PR #160，2026-11-06 收录，项目所有者照界面文字规范改了动作的名字。
 - **calvinbui**（Calvin Bui，<https://github.com/calvinbui>）：在他的澳洲 7X（固件 2.1.1c）上实测 6 项设置的记录：
-  内外循环、二排空调、自动远光、低速紧急制动、陡坡缓降、舒适加速（`docs/australian-7x-*.md`，PR #145，2026-11-06 收录）。
-  他没核实、本项目实测过的休眠、下电、重启，补在舒适加速那一篇的第 8 节。
+  内外循环、二排空调、自动远光、低速紧急制动、陡坡缓降、舒适加速（[PR #145](https://github.com/dts88/zeekr-shortcut-car/pull/145)，2026-11-06 收录）。
 - **lelelolo**（<https://github.com/lelelolo>）：盲区画面的两处改进，2026-11-08 随 PR 合并：
   - 环视被车机占用、在恢复或恢复不了时不显示黑框，提示一次（`SideViewDecision.surroundCanShow`，PR #173）；
   - 后视镜上的灯亮着时画面描边（`SideViewAlert`、`SideViewEdge`，PR #174）。
   合并后项目所有者改了提示文字（只留前半句）和配色（盲区一直黄色、往这一侧打灯时闪，红色只给开门预警）。
+- **Fabbbrrr**（Fab，<https://github.com/Fabbbrrr>）：哨兵提醒走 ntfy、Telegram，直接发到车主自己的手机、不经过开发者服务器的
+  去中心化做法（创新建议，PR #211）。ntfy 提醒照他的设计和 PR #211 的逻辑由本项目重写，代码贡献归他（项目所有者 2026-11-17）；
+  这部分的署名另有一条附加条款，见第 8 节「ntfy 提醒的署名」。
 
 盲区画面的服务和窗口（`SideViewService`、`SideViewWindow`）里读车辆信号、备着 / 显示两种状态的写法，也照 wysie、FerixzTanz 两位 PR 里的侧视弹窗写。
 这些代码照本仓库的 GPL-3.0 发布。碰相机的部分（窗口怎么挂、画布怎么交给通道调度）由本项目照通道调度重写，没有用 PR 里的那一套。
@@ -183,3 +185,25 @@ dts88 为本项目写的代码，在 GPL-3.0 之外附加两条：
 >    presented as the original Zeekr Shortcut or as coming from dts88, and must be marked in reasonable ways as
 >    different from the original, for example by a different app name or the words "modified version" next to its
 >    name.
+
+### ntfy 提醒的署名（Fabbbrrr，2026-11-17）
+
+哨兵提醒走 ntfy 的那部分，是照 Fab（Fabbbrrr）的设计和他在 PR #211 里的逻辑写的。这部分在 GPL-3.0 之外附加一条署名条款
+（GPL-3.0 第 7 条 b 款），由项目所有者和 Fabbbrrr（他在 PR #211 里提出、同意）一起定：
+
+- 管哪些：源文件开头带「Portions Copyright (C) 2026 Fab (Fabbbrrr) - https://github.com/Fabbbrrr」这一行的文件，
+  不论那一部分是他写的、还是本项目照他的逻辑重写的。
+- 要求：用到这部分的作品（改没改都算），在它显示的版权与许可声明里（应用就是「关于」或致谢页）保留一行
+  「ntfy alerts designed by Fab (Fabbbrrr) - https://github.com/Fabbbrrr」（或它的译文），让用户看得见；源文件开头他的那一行也要保留。
+- 和上面两条一样，这是第 7 条允许的附加条款，不是第 10 条说的「额外限制」；从加上这一条的提交起生效。以下面的英文原文为准。
+
+> **Additional term for the ntfy alerts (section 7(b) of the GNU General Public License, version 3)**
+>
+> The material that sends parked-car alerts through ntfy was designed by Fab (Fabbbrrr) and follows the logic of his
+> pull request #211; it is the material in the source files whose header carries the line
+> "Portions Copyright (C) 2026 Fab (Fabbbrrr) - https://github.com/Fabbbrrr", whether that part was written by him or
+> rewritten for this project from his logic. With the agreement of dts88 and of Fab (Fabbbrrr), who offered this term in
+> pull request #211, any work that contains this material, modified or not, must keep, in the Appropriate Legal Notices
+> it displays (for an app, its About or credits screen) and reasonably visible to users, the line
+> "ntfy alerts designed by Fab (Fabbbrrr) - https://github.com/Fabbbrrr" (or its translation), and must keep that line
+> in the headers of those source files. This term applies from the commit that adds it onward.

@@ -50,6 +50,35 @@ public class SettingsShotsTest {
         shoot(Shots.DAY_EN, "day-en");
     }
 
+    /**
+     * 从右往左的语言：设置这类文字界面跟着镜像 —— 左栏到了右边（行尾的 › 翻过来看图）；
+     * ① 标题区不镜像，菜单键还在左上、标题紧跟着（项目所有者 2026-11-19；ui-spec §十七）。
+     */
+    @Test
+    public void everySectionRightToLeft() {
+        rightToLeft(shoot(Shots.DAY_RTL, "day-rtl"));
+    }
+
+    /** 阿拉伯语：同上，文字是阿拉伯文、数字 0–9。 */
+    @Test
+    public void everySectionInArabic() {
+        rightToLeft(shoot(Shots.DAY_AR, "day-ar"));
+    }
+
+    private static void rightToLeft(ShotActivity activity) {
+        int[] headers = new int[2];
+        int[] detail = new int[2];
+        activity.findViewById(R.id.settings_headers).getLocationInWindow(headers);
+        activity.findViewById(R.id.settings_detail).getLocationInWindow(detail);
+        assertTrue("左栏到了右边：" + headers[0] + " / " + detail[0], headers[0] > detail[0]);
+        int[] nav = new int[2];
+        int[] title = new int[2];
+        activity.findViewById(R.id.settings_nav).getLocationInWindow(nav);
+        activity.findViewById(R.id.settings_title).getLocationInWindow(title);
+        assertTrue("菜单键在左上：" + nav[0], nav[0] < headers[0] / 4);
+        assertTrue("标题紧跟在菜单键右边：" + nav[0] + " / " + title[0], nav[0] < title[0]);
+    }
+
     @Test
     public void everySectionByNight() {
         shoot(Shots.NIGHT, "night");
@@ -100,16 +129,140 @@ public class SettingsShotsTest {
         namedSmartButtons(Shots.DAY_EN, "-en");
     }
 
+    @Test
+    public void knobRows() {
+        knobRows(Shots.DAY, "");
+    }
+
+    @Test
+    public void knobRowsInEnglish() {
+        knobRows(Shots.DAY_EN, "-en");
+    }
+
+    private void knobRows(String qualifiers, String suffix) {
+        android.content.Context app = RuntimeEnvironment.getApplication();
+        AppConfig config = new AppConfig(app);
+        String button = "00:11:22:33:44:55";
+        String knob = "66:77:88:99:AA:BB";
+        config.addAccessory(com.kooo.evcam.button.Accessory.BUTTON, button);
+        config.addAccessory(com.kooo.evcam.button.Accessory.KNOB, knob);
+
+        RuntimeEnvironment.setQualifiers(qualifiers);
+        ShotActivity activity = Robolectric.buildActivity(ShotActivity.class).setup().get();
+        Shots.stillFrames(activity);
+        SettingsShellFragment shell = new SettingsShellFragment();
+        activity.getSupportFragmentManager().beginTransaction().replace(activity.container, shell).commitNow();
+        Shots.settle();
+        shell.showSection("screen_floating");
+        Shots.settle();
+        SettingsPreferenceFragment section = (SettingsPreferenceFragment)
+                shell.getChildFragmentManager().findFragmentById(R.id.settings_detail);
+        assertNotNull(section);
+
+        assertNotNull(section.findPreference("cat_smart_buttons"));
+        assertNotNull(section.findPreference("pref_smart_buttons"));
+        assertNotNull(section.findPreference("pref_smart_button_bind"));
+        org.junit.Assert.assertNull(section.findPreference("cat_x_knobs"));
+        org.junit.Assert.assertNull(section.findPreference("pref_x_knobs"));
+        Preference row = section.findPreference("x_knob." + knob);
+        assertNotNull(row);
+        assertEquals(activity.getString(R.string.x_knob_name, com.kooo.evcam.button.SmartButtonAd.shortId(knob)),
+                String.valueOf(row.getTitle()));
+        String summary = String.valueOf(row.getSummary());
+        assertTrue(summary.contains(activity.getString(R.string.knob_fn_volume)));
+        assertNotNull(section.findPreference("smart_button." + button));
+
+        section.scrollToPreference("x_knob." + knob);
+        File file = Shots.save(activity, "settings-floating-day-knob" + suffix);
+        assertTrue(file.length() > 10_000);
+        Preference status = section.findPreference("x_knob." + knob + "/status");
+        assertNotNull(status);
+        assertFalse(status.isVisible());
+
+        Preference buttonRow = section.findPreference("smart_button." + button);
+        buttonRow.getOnPreferenceClickListener().onPreferenceClick(buttonRow);
+        Shots.settle();
+        assertFalse(section.findPreference("smart_button." + button + "/status").isVisible());
+        assertTrue(section.findPreference("smart_button." + button + "/name").isVisible());
+        assertTrue(section.findPreference("smart_button." + button + "/2").isVisible());
+        section.scrollToPreference("smart_button." + button + "/2");
+        Shots.settle();
+        File buttonOpen = Shots.save(activity, "settings-floating-day-button-open" + suffix);
+        assertTrue(buttonOpen.length() > 10_000);
+        buttonRow.getOnPreferenceClickListener().onPreferenceClick(buttonRow);
+        Shots.settle();
+        assertFalse(section.findPreference("smart_button." + button + "/name").isVisible());
+
+        row.getOnPreferenceClickListener().onPreferenceClick(row);
+        Shots.settle();
+        assertTrue(status.isVisible());
+        assertTrue(String.valueOf(status.getSummary()).contains(activity.getString(R.string.x_knob_mode_normal)));
+        Preference turnRow = section.findPreference("x_knob." + knob + "/turn");
+        Preference homeRow = section.findPreference("x_knob." + knob + "/home");
+        assertTrue(turnRow.isVisible());
+        assertFalse(homeRow.isVisible());
+        section.scrollToPreference("x_knob." + knob + "/turn");
+        Shots.settle();
+        File open = Shots.save(activity, "settings-floating-day-knob-open" + suffix);
+        assertTrue(open.length() > 10_000);
+
+        turnRow.getOnPreferenceClickListener().onPreferenceClick(turnRow);
+        Shots.settle();
+        android.app.Dialog turn = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotNull(turn);
+        assertEquals(1 + com.kooo.evcam.button.KnobTurn.groups().indexOf(com.kooo.evcam.button.ButtonAction.Group.MEDIA),
+                ((androidx.appcompat.app.AlertDialog) turn).getListView().getCheckedItemPosition());
+        File turnFile = Shots.save(turn, "settings-floating-day-knob-turn" + suffix);
+        turn.dismiss();
+        assertTrue(turnFile.length() > 10_000);
+
+        CardItemPreference exclusive = section.findPreference("x_knob." + knob + "/exclusive");
+        assertNotNull(exclusive);
+        assertFalse(exclusive.isChecked());
+        exclusive.onClick();
+        Shots.settle();
+        assertTrue(config.isKnobExclusive(knob));
+        assertFalse(turnRow.isVisible());
+        assertTrue(homeRow.isVisible());
+        section.scrollToPreference("x_knob." + knob + "/home");
+        Shots.settle();
+        File openExclusive = Shots.save(activity, "settings-floating-day-knob-open-exclusive" + suffix);
+        assertTrue(openExclusive.length() > 10_000);
+
+        homeRow.getOnPreferenceClickListener().onPreferenceClick(homeRow);
+        Shots.settle();
+        android.app.Dialog home = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        org.junit.Assert.assertNotSame(turn, home);
+        File homeFile = Shots.save(home, "settings-floating-day-knob-home" + suffix);
+        android.util.SparseBooleanArray picks = ((androidx.appcompat.app.AlertDialog) home).getListView()
+                .getCheckedItemPositions();
+        java.util.List<com.kooo.evcam.button.KnobTurn> catalog = new java.util.ArrayList<>(
+                java.util.Arrays.asList(com.kooo.evcam.button.KnobTurn.values()));
+        catalog.remove(com.kooo.evcam.button.KnobTurn.NONE);
+        for (int i = 0; i < 8; i++) {
+            assertEquals(catalog.get(i).key, com.kooo.evcam.button.KnobTurn.home().contains(catalog.get(i)),
+                    picks.get(i));
+        }
+        home.dismiss();
+        assertTrue(homeFile.length() > 10_000);
+
+        row.getOnPreferenceClickListener().onPreferenceClick(row);
+        Shots.settle();
+        assertFalse(status.isVisible());
+        assertFalse(homeRow.isVisible());
+        config.setKnobExclusive(knob, false);
+    }
+
     private void namedSmartButtons(String qualifiers, String suffix) {
         android.content.Context app = RuntimeEnvironment.getApplication();
         AppConfig config = new AppConfig(app);
         String first = "00:11:22:33:44:55";
         String second = "66:77:88:99:AA:BB";
         String third = "CC:DD:EE:FF:00:11";
-        config.addSmartButton(first);
-        config.addSmartButton(second);
-        config.addSmartButton(third);
-        config.setSmartButtonName(first, "方向盘左");
+        config.addAccessory(com.kooo.evcam.button.Accessory.BUTTON, first);
+        config.addAccessory(com.kooo.evcam.button.Accessory.BUTTON, second);
+        config.addAccessory(com.kooo.evcam.button.Accessory.BUTTON, third);
+        config.setAccessoryName(com.kooo.evcam.button.Accessory.BUTTON, first, "方向盘左");
         app.getSharedPreferences(AppConfig.PREF_NAME, android.content.Context.MODE_PRIVATE).edit()
                 .putString("smart_button_name." + second, "<b>%s</b>\n\n\u202E" + "很长的名字".repeat(30)).commit();
 
@@ -500,7 +653,7 @@ public class SettingsShotsTest {
         assertEquals("screen_recording", shell.currentSection());
     }
 
-    private void shoot(String qualifiers, String tag) {
+    private ShotActivity shoot(String qualifiers, String tag) {
         RuntimeEnvironment.setQualifiers(qualifiers);
         ShotActivity activity = Robolectric.buildActivity(ShotActivity.class).setup().get();
         Shots.stillFrames(activity);
@@ -512,5 +665,6 @@ public class SettingsShotsTest {
             File file = Shots.save(activity, "settings-" + section.substring("screen_".length()) + "-" + tag);
             assertTrue(file + " 是空的", file.length() > 10_000);
         }
+        return activity;
     }
 }

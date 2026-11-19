@@ -32,6 +32,7 @@ import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 
 import com.kooo.evcam.AppConfig;
@@ -140,6 +141,7 @@ public class RearViewMirrorView extends ViewGroup {
     /** 鱼眼校正开关与目标视野，进入时读一次，设置页改了再推过来。 */
     private boolean fisheyeCorrection;
     private float fovDegrees;
+    private String projection;
     /** 分片绘制（和主界面预览、视频回看同一套）。 */
     private final FisheyeMesh mesh = new FisheyeMesh();
     private final FisheyeMesh.Painter paintTexture = this::drawTextureOnce;
@@ -152,6 +154,11 @@ public class RearViewMirrorView extends ViewGroup {
     private static final float TAP_FLASH_ALPHA = 0.5f;
 
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
+    /**
+     * 每秒检查停着（{@link #idleTick}）：屏幕黑着、画面已经盖上「点击恢复」（或者贴边不画）—— 黑着没人看，盖上了也就没什么要看的了
+     * （项目所有者 2026-11-16）。新的一帧来了（{@link #noteFrame}）、亮屏（{@link #screenLit}）时接着看。
+     */
+    private boolean idlePaused;
     private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     /** 最后一帧新画面的时刻，单调时钟。 */
@@ -215,6 +222,7 @@ public class RearViewMirrorView extends ViewGroup {
                 ViewConfiguration.get(context).getScaledMinimumFlingVelocity();
         this.fisheyeCorrection = appConfig.isRearViewFisheyeCorrection();
         this.fovDegrees = appConfig.getRearViewFov();
+        this.projection = appConfig.getFisheyeProjection();
 
         setBackgroundColor(0xFF000000);
 
@@ -298,19 +306,52 @@ public class RearViewMirrorView extends ViewGroup {
             frozen = false;
             invalidate();
         }
+        if (idlePaused) {
+            // 黑着停下以后又来了画面（黑着时相机又开了）：接着看，画面再停时照样盖上
+            resumeIdleTick();
+        }
     }
 
-    /** 窗口问服务的两件事（RearViewMirrorService 实现）。 */
+    /** 窗口问服务的三件事（RearViewMirrorService 实现）。 */
     public interface CanvasHost {
         /** 这一块画布此刻在出画面：它那一路在出画面，会话里带着这块画布。 */
         boolean streaming(boolean cabin);
 
         /** 这一块画布刚设成可见、或者窗口重新可见：图层可能是新建的，缓冲区尺寸要拨回会话配置时那个。 */
         void shown(boolean cabin);
+
+        /**
+         * 要画了：看得见的这一块画面尺寸还没交过来、相机已经知道了的，现在交过来（{@link #setSourceSize}、{@link #setCabinSource}），
+         * 这一帧就照它画。
+         */
+        void beforeDraw(boolean cabin);
     }
 
     public void setCanvasHost(CanvasHost host) {
         this.canvasHost = host;
+    }
+
+    /**
+     * 每次画之前问一次服务（{@link CanvasHost#beforeDraw}）：环视的取景（{@link #plan}）是这个窗口自己画的，画面尺寸要在第一帧画之前到 ——
+     * 第一帧来时才补的话（那一下已经在画的途中），那一帧照「还不知道几何」原样画了整幅合成流。贴边时不画画面，不问。
+     */
+    private final ViewTreeObserver.OnPreDrawListener askBeforeDraw = () -> {
+        if (canvasHost != null && !docked) {
+            canvasHost.beforeDraw(isShowingCabin());
+        }
+        return true;
+    };
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        getViewTreeObserver().addOnPreDrawListener(askBeforeDraw);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        getViewTreeObserver().removeOnPreDrawListener(askBeforeDraw);
+        super.onDetachedFromWindow();
     }
 
     /**
@@ -424,7 +465,9 @@ public class RearViewMirrorView extends ViewGroup {
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
-        params.gravity = Gravity.TOP | Gravity.START;
+        // 照屏幕上的实际位置摆：从右往左的语言里也不镜像（ui-spec §十七）
+        params.gravity = Gravity.TOP | Gravity.LEFT;
+        setLayoutDirection(LAYOUT_DIRECTION_LTR);
 
         int savedX = appConfig.getRearViewX();
         int savedY = appConfig.getRearViewY();
@@ -500,9 +543,31 @@ public class RearViewMirrorView extends ViewGroup {
                 invalidate();
             }
             syncDockState();
+            if (com.kooo.evcam.screen.ScreenState.dark() && (frozen || docked)) {
+                // 屏幕黑着、画面已经盖上（或者贴边不画）：停下。画面还在走时照旧每秒看 —— 不先盖上就停的话，
+                // 亮屏时那张黑之前的画面会露出来，直到这里再看一次
+                idlePaused = true;
+                return;
+            }
             idleHandler.postDelayed(this, IDLE_TICK_MS);
         }
     };
+
+    /**
+     * 亮屏了（服务的屏幕监听叫）：每秒检查停着的话接着看，当场先看一次（{@link #idleTick}）。黑着时画面停了已经盖上「点击恢复」，
+     * 新的一帧来了照旧揭掉（{@link #noteFrame}）。
+     */
+    public void screenLit() {
+        resumeIdleTick();
+    }
+
+    private void resumeIdleTick() {
+        if (!attached || !idlePaused) {
+            return;
+        }
+        idlePaused = false;
+        idleHandler.post(idleTick);
+    }
 
     /**
      * 贴边状态变了就改一次画布的可见、通知一次服务。
@@ -1265,7 +1330,8 @@ public class RearViewMirrorView extends ViewGroup {
      * 相机的消费者始终只有它一个（为什么不上 GL，见 docs/local/zeekr-platform-notes.md §2.1）。</p>
      *
      * <p>代价是每帧 {@code N²} 次绘制。后视镜是一块小窗口，固定每边
-     * {@link FisheyeProjection#MESH_DIVISIONS} 格；投影固定是直线投影，只有视野可调。</p>
+     * {@link FisheyeProjection#MESH_DIVISIONS} 格；投影照「通用 → 鱼眼校正」选的方式（项目所有者 2026-11-17，
+     * 以前固定是直线投影），视野是自己的那一项。</p>
      *
      * <p>每个角点三步走，顺序不能换：先按取景落到「校正后画面」里，再反投影回原始鱼眼画面，
      * 最后加上这一路在合成流里的偏移。取景之所以作用在校正之后，是因为用户是对着
@@ -1275,7 +1341,7 @@ public class RearViewMirrorView extends ViewGroup {
                                RearViewGeometry.Viewport viewport) {
         RearViewGeometry.ShaderRects r =
                 RearViewGeometry.toShaderRects(plan, laneIndex, viewport);
-        mesh.setCorrection(fovDegrees, FisheyeProjection.PROJECTION_RECTILINEAR);
+        mesh.setCorrection(fovDegrees, projection);
         mesh.prepare(FisheyeProjection.MESH_DIVISIONS,
                 r.laneOffsetX * width, r.laneOffsetY * height,
                 r.laneScaleX * width, r.laneScaleY * height,
@@ -1291,8 +1357,9 @@ public class RearViewMirrorView extends ViewGroup {
     public void applyCorrectionFromConfig() {
         fisheyeCorrection = appConfig.isRearViewFisheyeCorrection();
         fovDegrees = appConfig.getRearViewFov();
+        projection = appConfig.getFisheyeProjection();
         // 两种模式下视野角度都会改变取景，所以无论开关如何都要重画
-        AppLog.i(TAG, "鱼眼校正 " + (fisheyeCorrection ? "开，视野 " + fovDegrees + "°" : "关"));
+        AppLog.i(TAG, "鱼眼校正 " + (fisheyeCorrection ? "开，" + projection + "，视野 " + fovDegrees + "°" : "关"));
         invalidate();
     }
 }

@@ -81,15 +81,15 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     private final androidx.activity.result.ActivityResultLauncher<String> micPermission =
             registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
                     this::onMicPermission);
-    /** 「悬浮键与灵动贴」页上的灵动贴那一组；别的页是 null。 */
-    private SmartButtonRows smartButtonRows;
-    /** 灵动贴：绑定前要「附近的设备」权限（扫描、连接），结果交给那一组（{@link SmartButtonRows}）。登记规矩同上。 */
+    /** 「按键」页上的那几组（{@link AccessoryRows}）；别的页是空的。 */
+    private final java.util.List<AccessoryRows> accessoryRows = new java.util.ArrayList<>();
+    /** 绑定前要「附近的设备」权限（扫描、连接），结果交给那几组。登记规矩同上。 */
     private final androidx.activity.result.ActivityResultLauncher<String[]> bluetoothPermissions =
             registerForActivityResult(
                     new androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
                     result -> {
-                        if (smartButtonRows != null) {
-                            smartButtonRows.onPermissions();
+                        for (AccessoryRows rows : accessoryRows) {
+                            rows.onPermissions();
                         }
                     });
     /** 绑定这一页时开发者选项开没开；回到这一页时变了就重绑（见 {@link #onResume}）。 */
@@ -778,7 +778,7 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         android.widget.TextView unit = new android.widget.TextView(context);
         unit.setTextAppearance(R.style.TextAppearance_Cam_Row);
         unit.setText("GB");
-        unit.setPadding(Math.round(12 * density), 0, 0, 0);
+        unit.setPaddingRelative(Math.round(12 * density), 0, 0, 0);
         row.addView(unit);
         return row;
     }
@@ -2114,7 +2114,8 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
      */
     private void editFov(SwitchNavPreference pref) {
         SliderDialog.Slider fov = new SliderDialog.Slider(null,
-                (int) FisheyeProjectionBounds.MIN, (int) FisheyeProjectionBounds.MAX,
+                (int) FisheyeProjectionBounds.MIN,
+                (int) com.kooo.evcam.zeekr.FisheyeProjection.maxFovFor(appConfig.getFisheyeProjection()),
                 Math.round(appConfig.getRearViewFov()), "°", getString(R.string.set_rearview_fov_summary),
                 true, true, value -> {
                     appConfig.setRearViewFov(value);
@@ -2493,38 +2494,42 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             });
             appearance.setAction(getString(R.string.action_reset), () -> confirmFloatingReset(appearance));
         }
-        bindSmartButtons();
+        bindAccessories();
     }
 
     /**
-     * 灵动贴（试验性）那一组：总开关一行（关着时不扫描蓝牙，车主 2026-11-04），绑定一行，绑定的每一台一行（{@link SmartButtonRows}）。
+     * 灵动贴（试验性）那一组：总开关一行（关着时不扫描蓝牙，车主 2026-11-04），绑定一行，绑定的每一台一行（{@link AccessoryRows}）。
      * 重绑时先把上一份收掉。
      */
-    private void bindSmartButtons() {
-        if (smartButtonRows != null) {
-            smartButtonRows.detach();
-            smartButtonRows = null;
-        }
-        bindSwitch(SmartButtonRows.SWITCH_KEY, appConfig.isSmartButtonsEnabled(), on -> {
-            appConfig.setSmartButtonsEnabled(on);
+    private void bindAccessories() {
+        detachAccessories();
+        bindSwitch(AccessoryRows.SWITCH_KEY, appConfig.isAccessoriesEnabled(), on -> {
+            appConfig.setAccessoriesEnabled(on);
             com.kooo.evcam.button.SmartButtons buttons = com.kooo.evcam.button.SmartButtons.get();
             if (buttons != null) {
                 buttons.setEnabled(on);
             }
         });
-        androidx.preference.PreferenceCategory category = findPreference("cat_smart_buttons");
+        bindSegmented(AccessoryRows.PANEL_KEY, SettingsRegistry.KNOB_PANEL, appConfig.getKnobPanel(),
+                appConfig::setKnobPanel);
+        androidx.preference.PreferenceCategory category = findPreference(AccessoryRows.CATEGORY_KEY);
         if (category != null) {
-            smartButtonRows = new SmartButtonRows(this, category, bluetoothPermissions);
-            smartButtonRows.bind();
+            AccessoryRows rows = new AccessoryRows(this, category, bluetoothPermissions);
+            accessoryRows.add(rows);
+            rows.bind();
         }
+    }
+
+    private void detachAccessories() {
+        for (AccessoryRows rows : accessoryRows) {
+            rows.detach();
+        }
+        accessoryRows.clear();
     }
 
     @Override
     public void onDestroy() {
-        if (smartButtonRows != null) {
-            smartButtonRows.detach();
-            smartButtonRows = null;
-        }
+        detachAccessories();
         super.onDestroy();
     }
 
@@ -2737,6 +2742,7 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
                     appConfig.setFisheyeProjection(projection[0]);
                     appConfig.setFisheyeFov(fov[0].value());
                     showInterfaceFisheye(pref);
+                    pushCorrection();
                 })
                 .setNegativeButton(R.string.action_cancel, null));
     }
@@ -3276,14 +3282,15 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         show("pref_floating_long_press", floating);
         show("pref_floating_appearance", floating);
 
-        // 灵动贴：总开关下面的都跟着它（绑定的每一台是代码里加的行，SmartButtonRows）
-        androidx.preference.PreferenceCategory buttons = findPreference("cat_smart_buttons");
-        if (buttons != null) {
-            boolean smart = appConfig.isSmartButtonsEnabled();
-            for (int i = 0; i < buttons.getPreferenceCount(); i++) {
-                Preference row = buttons.getPreference(i);
-                if (!SmartButtonRows.SWITCH_KEY.equals(row.getKey()) && row.isVisible() != smart) {
-                    row.setVisible(smart);
+        // 总开关下面的都跟着它（绑定的每一台是代码里加的行，AccessoryRows）
+        androidx.preference.PreferenceCategory accessories = findPreference(AccessoryRows.CATEGORY_KEY);
+        if (accessories != null) {
+            boolean on = appConfig.isAccessoriesEnabled();
+            for (int i = 0; i < accessories.getPreferenceCount(); i++) {
+                Preference row = accessories.getPreference(i);
+                boolean visible = on && AccessoryRows.wanted(row, appConfig);
+                if (!AccessoryRows.SWITCH_KEY.equals(row.getKey()) && row.isVisible() != visible) {
+                    row.setVisible(visible);
                 }
             }
         }
@@ -3339,7 +3346,8 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
 
     /** 试验性的功能：名称旁一个小标签（ui-spec §三「试验性标签」），名称后面不再写「（试验性）」。 */
     private void tagExperimental() {
-        for (String key : new String[] {"pref_info_bar", "cat_smart_buttons", "cat_drive_sound", "pref_vehicle_status"}) {
+        for (String key : new String[] {"pref_info_bar", "cat_smart_buttons", "cat_drive_sound",
+                "pref_vehicle_status"}) {
             Preference pref = findPreference(key);
             if (pref != null && getContext() != null) {
                 pref.setTitle(com.kooo.evcam.ui.TagSpan.append(requireContext(), pref.getTitle(),
@@ -3808,6 +3816,5 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     /** 视野角度的取值范围，避免这里再写一遍数字。 */
     private static final class FisheyeProjectionBounds {
         static final float MIN = com.kooo.evcam.zeekr.FisheyeProjection.MIN_FOV_DEGREES;
-        static final float MAX = com.kooo.evcam.zeekr.FisheyeProjection.MAX_FOV_DEGREES;
     }
 }

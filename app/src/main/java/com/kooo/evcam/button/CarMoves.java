@@ -67,6 +67,12 @@ final class CarMoves {
     static final long DOOR_STEP_MS = 200;
     /** 几扇一起关时，两扇之间隔多久写：车自己的设置页逐扇关就是隔 200 ms（Lab findings §2.139）。 */
     static final long DOOR_GAP_MS = 200;
+    static final int VOLUME_UP_MAX = 5;
+    static final long VOLUME_GAP_MS = 40;
+    static final String TEMP_FIELD = "HVAC_FUNC_TEMP";
+    static final float TEMP_STEP = 0.5f;
+    static final float TEMP_MIN = 15.5f;
+    static final float TEMP_MAX = 28.5f;
     /** 一键运动记下的原来的驾驶模式（运行状态，在 {@code smart_button_state} 里）。 */
     static final String SPORT_SAVED = "sport_saved_mode";
 
@@ -103,6 +109,10 @@ final class CarMoves {
         Integer function(String iface, String field);
 
         int zone(String name);
+
+        default int window(String name) {
+            return CarNames.window(name);
+        }
     }
 
     /** 记一个数（一键运动记下原来的模式）。 */
@@ -183,6 +193,109 @@ final class CarMoves {
         });
     }
 
+    private static final java.util.Map<String, Turning> turning = new java.util.HashMap<>();
+
+    private static final class Turning {
+        int delta;
+        java.util.function.BiConsumer<Result, String> done;
+    }
+
+    static void dial(Context app, String key, KnobDials.Dial dial, int delta,
+                     java.util.function.BiConsumer<Result, String> done) {
+        if (delta != 0) {
+            synchronized (turning) {
+                Turning t = turning.get(key);
+                if (t != null) {
+                    t.delta += delta;
+                    t.done = done;
+                    return;
+                }
+                t = new Turning();
+                t.delta = delta;
+                t.done = done;
+                turning.put(key, t);
+            }
+        }
+        Handler h = handler();
+        Handler back = main;
+        h.post(() -> {
+            CarAccess access = Telemetry.get().carAccess();
+            Car car = access == null ? null : new Car(access, SYSTEM_NAMES, SystemClock::sleep, memory(app), app);
+            Result result = car == null ? Result.UNAVAILABLE : Result.DONE;
+            String text = null;
+            int total = 0;
+            int writes = 0;
+            java.util.function.BiConsumer<Result, String> finish = done;
+            if (delta != 0) {
+                for (Turning got = claim(key); got.delta != 0; got = claim(key)) {
+                    finish = got.done;
+                    total += got.delta;
+                    writes++;
+                    if (car != null) {
+                        try {
+                            result = dial.turn(car, got.delta);
+                        } catch (RuntimeException e) {
+                            result = Result.UNAVAILABLE;
+                            car.note("failed: " + e);
+                        }
+                    }
+                }
+            }
+            if (car != null) {
+                try {
+                    text = dial.shown(car, app, total);
+                } catch (RuntimeException e) {
+                    car.note("failed: " + e);
+                }
+            }
+            if (delta != 0) {
+                String detail = car == null ? "car interface not connected" : car.detail();
+                BlackBox.note("X旋钮动作 " + key + " " + total + (writes > 1 ? "（并成 " + writes + " 次写）" : "")
+                        + "：" + result + "（" + detail + "）");
+            }
+            Result r = result;
+            String t = text;
+            java.util.function.BiConsumer<Result, String> callback = finish;
+            back.post(() -> callback.accept(r, t));
+        });
+    }
+
+    private static Turning claim(String key) {
+        synchronized (turning) {
+            Turning t = turning.get(key);
+            Turning got = new Turning();
+            if (t == null) {
+                return got;
+            }
+            got.delta = t.delta;
+            got.done = t.done;
+            t.delta = 0;
+            if (got.delta == 0) {
+                turning.remove(key);
+            }
+            return got;
+        }
+    }
+
+    static void look(Context app, KnobDials.Dial dial, Consumer<KnobDials.Positions> seen) {
+        Handler h = handler();
+        Handler back = main;
+        h.post(() -> {
+            CarAccess access = Telemetry.get().carAccess();
+            KnobDials.Positions positions = null;
+            if (access != null) {
+                Car car = new Car(access, SYSTEM_NAMES, SystemClock::sleep, memory(app), app);
+                try {
+                    positions = dial.positions(car, app);
+                } catch (RuntimeException e) {
+                    positions = null;
+                }
+            }
+            KnobDials.Positions p = positions;
+            back.post(() -> seen.accept(p));
+        });
+    }
+
     private static Memory memory(Context app) {
         SharedPreferences prefs = app.getSharedPreferences(SmartButtons.STATE, Context.MODE_PRIVATE);
         return new Memory() {
@@ -196,6 +309,41 @@ final class CarMoves {
                 prefs.edit().putInt(key, value).apply();
             }
         };
+    }
+
+    static int glow() {
+        CarAccess access = Telemetry.get().carAccess();
+        return access == null ? -1 : glow(new Car(access, SYSTEM_NAMES, SystemClock::sleep, null, null));
+    }
+
+    static final int KEEP_TINT = -2;
+    static final int[] THEMES = {0xE9947D, 0xD6ADF1, 0x78E8C9, 0xED9049, 0x76ABE8, 0xD1E259};
+
+    static int glow(Car car) {
+        Integer zones = car.function("SETTING_FUNC_AMBIENCE_LIGHT_MAINZONES", "IAmbienceLight");
+        Integer on = zones == null ? null : car.access.read(zones);
+        if (on == null || on != 1) {
+            return -1;
+        }
+        Integer main = car.function("SETTING_FUNC_AMBIENCE_LIGHT_MAINCOLOR", "IAmbienceLight", "IVehicle");
+        Integer mode = main == null ? null : car.access.read(main);
+        if (main != null && mode != null && mode == main + 4) {
+            return KEEP_TINT;
+        }
+        if (main != null && mode != null && mode == main + 1) {
+            Integer theme = car.function("SETTING_FUNC_AMBIENCE_LIGHT_THEME_COLOR", "IAmbienceLight");
+            Integer n = theme == null ? null : car.access.read(theme);
+            return THEMES[n != null && n >= 1 && n <= THEMES.length ? n - 1 : 0];
+        }
+        for (String field : new String[] {"SETTING_FUNC_AMBIENCE_LIGHT_MAINZONES_COLOR_SET",
+                "SETTING_FUNC_AMBIENCE_LIGHT_TOPZONES_COLOR_SET"}) {
+            Integer id = car.function(field, "IAmbienceLight");
+            Integer color = id == null ? null : car.access.read(id);
+            if (color != null && (color >>> 24) != 0) {
+                return color & 0xFFFFFF;
+            }
+        }
+        return -1;
     }
 
     // ================================================================= 读写车（写车的线程）
@@ -751,22 +899,95 @@ final class CarMoves {
         };
     }
 
-    /** 媒体音量加一格、减一格（调安卓的媒体音量），显示系统的音量条。 */
-    static Job volume(int direction) {
+    static Job volume(int steps) {
+        return volume(steps, AudioManager.STREAM_MUSIC);
+    }
+
+    static Job volume(int steps, int stream) {
         return c -> {
             AudioManager audio = c.app == null ? null : c.app.getSystemService(AudioManager.class);
-            if (audio == null) {
+            if (audio == null || steps == 0) {
                 return Result.UNAVAILABLE;
             }
-            int before = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
-            audio.adjustStreamVolume(AudioManager.STREAM_MUSIC,
-                    direction > 0 ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
-            c.note("media volume " + before + " -> " + audio.getStreamVolume(AudioManager.STREAM_MUSIC));
+            int n = steps > 0 ? Math.min(steps, VOLUME_UP_MAX) : -steps;
+            int direction = steps > 0 ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER;
+            for (int i = 0; i < n; i++) {
+                audio.adjustSuggestedStreamVolume(direction, stream, AudioManager.FLAG_SHOW_UI);
+                if (i + 1 < n) {
+                    c.sleeper.sleep(VOLUME_GAP_MS);
+                }
+            }
+            c.note("volume " + (steps > 0 ? "+" : "-") + n + " via the suggested stream " + stream);
             return Result.DONE;
         };
     }
 
+    static Job temperature(int steps) {
+        return temperature(steps, true, CarNames.DRIVER, CarNames.PASSENGER);
+    }
+
+    static Job temperature(int steps, boolean open, String... zoneNames) {
+        return c -> {
+            Integer id = c.function(TEMP_FIELD, "IHvac");
+            if (id == null) {
+                return Result.UNAVAILABLE;
+            }
+            int first = c.zone(zoneNames[0]);
+            Float now = c.access.readFloat(id, first);
+            if (now == null) {
+                c.note("temperature unreadable");
+                return Result.UNAVAILABLE;
+            }
+            float to = nextTemperature(now, steps);
+            c.note(String.format(Locale.US, "temperature %.1f -> %.1f", now, to));
+            if (to == now) {
+                return Result.DONE;
+            }
+            if (open) {
+                openClimate(c, c.zone(CarNames.ROW_1));
+            }
+            boolean accepted = true;
+            for (String name : zoneNames) {
+                accepted &= c.access.writeFloat(id, c.zone(name), to);
+            }
+            c.note(accepted ? "written" : "refused");
+            if (!accepted) {
+                return Result.UNAVAILABLE;
+            }
+            for (long n = BACK_MS / BACK_STEP_MS, waited = BACK_STEP_MS; n > 0; n--, waited += BACK_STEP_MS) {
+                c.sleeper.sleep(BACK_STEP_MS);
+                Float seen = c.access.readFloat(id, first);
+                if (seen != null && Math.abs(seen - to) < 0.01f) {
+                    c.note("back after " + waited + " ms");
+                    return Result.DONE;
+                }
+            }
+            c.note("not back after " + BACK_MS + " ms");
+            return Result.NO_CHANGE;
+        };
+    }
+
+    /**
+     * 先开空调：电源按排读写（前排 {@link CarNames#ROW_1}、二排 {@link CarNames#ROW_2}），读到的不是开着（1）就写开。
+     * 车上开、关空调变的是排的区域；按主驾、副驾的座位读一直是 0，看不出开没开（澳洲 7X 车主实测，PR #145）。
+     */
+    static void openClimate(Car c, int row) {
+        Integer power = c.function("HVAC_FUNC_POWER", "IHvac");
+        if (power == null) {
+            return;
+        }
+        Integer on = c.read(power, row);
+        if (on == null || on != 1) {
+            c.write(power, row, 1);
+        }
+    }
+
     // ================================================================= 纯函数
+
+    static float nextTemperature(float now, int steps) {
+        float to = Math.round((now + TEMP_STEP * steps) * 2) / 2f;
+        return Math.max(TEMP_MIN, Math.min(TEMP_MAX, to));
+    }
 
     /** 车机说能用：{@code active}（枚举的名字；带着类名的也认）。别的（notactive、notavailable、error、问不了）都不算。 */
     static boolean active(String status) {

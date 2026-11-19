@@ -66,7 +66,8 @@ public final class SettingsRegistry {
             entry("auto", "跟随系统", R.string.lang_auto),
             entry("zh", "中文", R.string.lang_zh),
             entry("en", "English", R.string.lang_en),
-            entry("ms", "Bahasa Melayu", R.string.lang_ms));
+            entry("ms", "Bahasa Melayu", R.string.lang_ms),
+            entry("ar", "العربية", R.string.lang_ar));
 
     /**
      * 鱼眼校正用哪种投影。
@@ -75,7 +76,7 @@ public final class SettingsRegistry {
      * 这边是界面，中间只隔着这一个字符串。{@code FisheyeProjectionTest} 钉着这一条。</p>
      *
      * <p>默认直线投影：它把直线掰得笔直，是大多数人说「矫正」时想要的那个样子。
-     * 主界面预览、图片回看、视频回看共用；超级镜子不用它。</p>
+     * 主界面预览、图片回看、视频回看共用；超级镜子的鱼眼校正也照它（项目所有者 2026-11-17），视野另有一项。</p>
      */
     public static final SettingSpec FISHEYE_PROJECTION = SettingSpec.of(
             "fisheye_projection", "鱼眼校正方式", "rectilinear",
@@ -93,6 +94,11 @@ public final class SettingsRegistry {
             "action_rail_side", "操作按钮位置", "right",
             entry("right", "右侧", R.string.opt_rail_right),
             entry("left", "左侧", R.string.opt_rail_left));
+
+    public static final SettingSpec KNOB_PANEL = SettingSpec.of(
+            "x_knob_panel", "X旋钮浮窗", "top",
+            entry("top", "顶部", R.string.opt_knob_panel_top),
+            entry("side", "主驾侧", R.string.opt_knob_panel_side));
 
     /** 超级镜子的切换范围（{@link com.kooo.evcam.zeekr.MirrorViews}）：分段按钮，三档（项目所有者 2026-10-19）。 */
     public static final SettingSpec REARVIEW_VIEWS = SettingSpec.of(
@@ -247,6 +253,7 @@ public final class SettingsRegistry {
             LANGUAGE,
             FISHEYE_PROJECTION,
             ACTION_RAIL_SIDE,
+            KNOB_PANEL,
             REARVIEW_VIEWS,
             SIDE_VIEW_TARGET,
             ALERTS_LAYOUT,

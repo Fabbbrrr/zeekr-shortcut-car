@@ -1358,7 +1358,10 @@ public class AppConfig {
         prefs.edit().putBoolean(KEY_CAMERA_HOLDER_SUSPECTS, on).apply();
     }
 
-    /** 鱼眼校正用哪种投影（直线 / 柱面 / 立体）。主界面预览、图片回看、视频回看共用；后视镜不用它。 */
+    /**
+     * 鱼眼校正用哪种投影（直线 / 柱面 / 立体）。主界面预览、图片回看、视频回看共用；
+     * 超级镜子的鱼眼校正也照它（项目所有者 2026-11-17），视野角度它有自己的一项。
+     */
     public String getFisheyeProjection() {
         return readEnum(SettingsRegistry.FISHEYE_PROJECTION);
     }
@@ -1385,14 +1388,19 @@ public class AppConfig {
     }
 
 
-    /** 校正的目标视野角度（度）。 */
+    /**
+     * 超级镜子的视野角度（度）。和 {@link #getFisheyeFov} 一样按<b>当前投影</b>夹：直线最大 140°，
+     * 宽视野、全圆最大 180°；从宽视野切回直线时存着的 170° 读出来就是 140°，界面写多少、生效的就是多少。
+     */
     public float getRearViewFov() {
         return FisheyeProjection.clampFov(
-                prefs.getFloat(KEY_REARVIEW_FOV, FisheyeProjection.DEFAULT_FOV_DEGREES));
+                prefs.getFloat(KEY_REARVIEW_FOV, FisheyeProjection.DEFAULT_FOV_DEGREES),
+                getFisheyeProjection());
     }
 
     public void setRearViewFov(float degrees) {
-        prefs.edit().putFloat(KEY_REARVIEW_FOV, FisheyeProjection.clampFov(degrees)).apply();
+        prefs.edit().putFloat(KEY_REARVIEW_FOV,
+                FisheyeProjection.clampFov(degrees, getFisheyeProjection())).apply();
     }
 
     /**
@@ -1788,6 +1796,14 @@ public class AppConfig {
     }
 
     /** 「方向盘在哪边」问过没有。和语言一样单独记：老用户升级上来也问这一次。 */
+    public String getKnobPanel() {
+        return readEnum(SettingsRegistry.KNOB_PANEL);
+    }
+
+    public void setKnobPanel(String value) {
+        writeEnum(SettingsRegistry.KNOB_PANEL, value);
+    }
+
     public boolean isRailSideChosen() {
         return prefs.getBoolean(KEY_RAIL_SIDE_CHOSEN, false);
     }
@@ -3142,19 +3158,29 @@ public class AppConfig {
      * 是设置：导出、导入跟着走，所以读的时候当不可信的洗一遍（{@code button.DeviceLabel}）。
      */
     private static final String KEY_SMART_BUTTON_NAME_PREFIX = "smart_button_name.";
+    private static final String KEY_X_KNOBS = "x_knobs";
+    private static final String KEY_X_KNOB_ACTION_PREFIX = "x_knob_action.";
+    private static final String KEY_X_KNOB_NAME_PREFIX = "x_knob_name.";
+    private static final String KEY_X_KNOB_TURN_PREFIX = "x_knob_turn.";
+    private static final String KEY_X_KNOB_EXCLUSIVE_PREFIX = "x_knob_exclusive.";
+    private static final String KEY_X_KNOB_HOME_PREFIX = "x_knob_home.";
 
-    /** 灵动贴开着没有；默认开：一台都没绑的本来就不扫。 */
-    public boolean isSmartButtonsEnabled() {
+    private static boolean knob(com.kooo.evcam.button.Accessory kind) {
+        return kind == com.kooo.evcam.button.Accessory.KNOB;
+    }
+
+    /** 开着没有；默认开：一台都没绑的本来就不扫。 */
+    public boolean isAccessoriesEnabled() {
         return prefs.getBoolean(KEY_SMART_BUTTONS_ENABLED, true);
     }
 
-    public void setSmartButtonsEnabled(boolean enabled) {
+    public void setAccessoriesEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_SMART_BUTTONS_ENABLED, enabled).apply();
     }
 
-    /** 绑定的灵动贴，按绑定先后。 */
-    public java.util.List<String> getSmartButtons() {
-        String joined = prefs.getString(KEY_SMART_BUTTONS, "");
+    /** 绑定的，按绑定先后。 */
+    public java.util.List<String> getAccessories(com.kooo.evcam.button.Accessory kind) {
+        String joined = prefs.getString(knob(kind) ? KEY_X_KNOBS : KEY_SMART_BUTTONS, "");
         java.util.List<String> out = new java.util.ArrayList<>();
         for (String address : joined.split(",")) {
             if (!address.trim().isEmpty() && !out.contains(address.trim())) {
@@ -3164,62 +3190,109 @@ public class AppConfig {
         return out;
     }
 
-    /** 记下一台（已经记着就什么都不做）：单击、双击都是「不使用」，选了才做事。 */
-    public void addSmartButton(String address) {
-        java.util.List<String> buttons = getSmartButtons();
-        if (address == null || buttons.contains(address)) {
+    /** 记下一台（已经记着就什么都不做）。 */
+    public void addAccessory(com.kooo.evcam.button.Accessory kind, String address) {
+        java.util.List<String> bound = getAccessories(kind);
+        if (address == null || bound.contains(address)) {
             return;
         }
-        buttons.add(address);
-        prefs.edit().putString(KEY_SMART_BUTTONS, String.join(",", buttons)).apply();
+        bound.add(address);
+        prefs.edit().putString(knob(kind) ? KEY_X_KNOBS : KEY_SMART_BUTTONS, String.join(",", bound)).apply();
     }
 
-    /** 删掉一台，连同它两种按法选的动作、起的名字。 */
-    public void removeSmartButton(String address) {
-        java.util.List<String> buttons = getSmartButtons();
-        buttons.remove(address);
-        prefs.edit().putString(KEY_SMART_BUTTONS, String.join(",", buttons))
-                .remove(smartButtonActionKey(address, com.kooo.evcam.button.SmartButtonAd.SINGLE))
-                .remove(smartButtonActionKey(address, com.kooo.evcam.button.SmartButtonAd.DOUBLE))
-                .remove(KEY_SMART_BUTTON_NAME_PREFIX + address)
-                .apply();
-    }
-
-    /**
-     * 这一台的「名称 / 位置」：用户起的名字，洗过的（最多 {@code DeviceLabel.MAX} 个字、只有看得见的字）；没起过、
-     * 存的不是字、洗完什么都不剩，都是空串 —— 界面那边照旧显示默认的「灵动贴 xxxx」。
-     *
-     * <p>存着的值不可信（导入的备份、被人改过的文件），所以每次读都洗，不指望写的时候洗过。</p>
-     */
-    public String getSmartButtonName(String address) {
-        Object stored = prefs.getAll().get(KEY_SMART_BUTTON_NAME_PREFIX + address);
-        return stored instanceof String ? com.kooo.evcam.button.DeviceLabel.clean((String) stored) : "";
-    }
-
-    /** 起名字：洗过再存；洗完是空的（没填、全是空白）就把这一项删掉，回到默认名。 */
-    public void setSmartButtonName(String address, String name) {
-        String clean = com.kooo.evcam.button.DeviceLabel.clean(name);
-        SharedPreferences.Editor editor = prefs.edit();
-        if (clean.isEmpty()) {
-            editor.remove(KEY_SMART_BUTTON_NAME_PREFIX + address);
-        } else {
-            editor.putString(KEY_SMART_BUTTON_NAME_PREFIX + address, clean);
+    /** 删掉一台，连同它选的动作、起的名字。 */
+    public void removeAccessory(com.kooo.evcam.button.Accessory kind, String address) {
+        java.util.List<String> bound = getAccessories(kind);
+        bound.remove(address);
+        SharedPreferences.Editor editor = prefs.edit()
+                .putString(knob(kind) ? KEY_X_KNOBS : KEY_SMART_BUTTONS, String.join(",", bound))
+                .remove(nameKey(kind, address))
+                .remove(KEY_X_KNOB_TURN_PREFIX + address)
+                .remove(KEY_X_KNOB_EXCLUSIVE_PREFIX + address)
+                .remove(KEY_X_KNOB_HOME_PREFIX + address);
+        for (int gesture : kind.actionGestures()) {
+            editor.remove(actionKey(kind, address, gesture));
         }
         editor.apply();
     }
 
-    /** 这一台这种按法（1 单击、2 双击）做什么；没选过是「不使用」。 */
-    public String getSmartButtonAction(String address, int clicks) {
-        return prefs.getString(smartButtonActionKey(address, clicks),
-                com.kooo.evcam.button.ButtonAction.NONE.key);
+    /**
+     * 这一台的「名称 / 位置」：用户起的名字，洗过的（最多 {@code DeviceLabel.MAX} 个字、只有看得见的字）；没起过、
+     * 存的不是字、洗完什么都不剩，都是空串 —— 界面那边照旧显示默认名。
+     *
+     * <p>存着的值不可信（导入的备份、被人改过的文件），所以每次读都洗，不指望写的时候洗过。</p>
+     */
+    public String getAccessoryName(com.kooo.evcam.button.Accessory kind, String address) {
+        Object stored = prefs.getAll().get(nameKey(kind, address));
+        return stored instanceof String ? com.kooo.evcam.button.DeviceLabel.clean((String) stored) : "";
     }
 
-    public void setSmartButtonAction(String address, int clicks, String key) {
-        prefs.edit().putString(smartButtonActionKey(address, clicks), key).apply();
+    /** 起名字：洗过再存；洗完是空的（没填、全是空白）就把这一项删掉，回到默认名。 */
+    public void setAccessoryName(com.kooo.evcam.button.Accessory kind, String address, String name) {
+        String clean = com.kooo.evcam.button.DeviceLabel.clean(name);
+        SharedPreferences.Editor editor = prefs.edit();
+        if (clean.isEmpty()) {
+            editor.remove(nameKey(kind, address));
+        } else {
+            editor.putString(nameKey(kind, address), clean);
+        }
+        editor.apply();
     }
 
-    private static String smartButtonActionKey(String address, int clicks) {
-        return KEY_SMART_BUTTON_ACTION_PREFIX + address + "." + clicks;
+    /** 这一台这种按法做什么。 */
+    public String getAccessoryAction(com.kooo.evcam.button.Accessory kind, String address, int gesture) {
+        return prefs.getString(actionKey(kind, address, gesture), com.kooo.evcam.button.ButtonAction.NONE.key);
+    }
+
+    public void setAccessoryAction(com.kooo.evcam.button.Accessory kind, String address, int gesture, String key) {
+        prefs.edit().putString(actionKey(kind, address, gesture), key).apply();
+    }
+
+    private static String actionKey(com.kooo.evcam.button.Accessory kind, String address, int gesture) {
+        return (knob(kind) ? KEY_X_KNOB_ACTION_PREFIX : KEY_SMART_BUTTON_ACTION_PREFIX) + address + "." + gesture;
+    }
+
+    private static String nameKey(com.kooo.evcam.button.Accessory kind, String address) {
+        return (knob(kind) ? KEY_X_KNOB_NAME_PREFIX : KEY_SMART_BUTTON_NAME_PREFIX) + address;
+    }
+
+    public com.kooo.evcam.button.KnobTurn getKnobTurn(String address) {
+        return com.kooo.evcam.button.KnobTurn.fromKey(prefs.getString(KEY_X_KNOB_TURN_PREFIX + address,
+                com.kooo.evcam.button.KnobTurn.VOLUME.key));
+    }
+
+    public void setKnobTurn(String address, com.kooo.evcam.button.KnobTurn turn) {
+        prefs.edit().putString(KEY_X_KNOB_TURN_PREFIX + address, turn.key).apply();
+    }
+
+    public boolean isKnobExclusive(String address) {
+        return prefs.getBoolean(KEY_X_KNOB_EXCLUSIVE_PREFIX + address, false);
+    }
+
+    public void setKnobExclusive(String address, boolean on) {
+        prefs.edit().putBoolean(KEY_X_KNOB_EXCLUSIVE_PREFIX + address, on).apply();
+    }
+
+    public java.util.List<com.kooo.evcam.button.KnobTurn> getKnobHome(String address) {
+        String joined = prefs.getString(KEY_X_KNOB_HOME_PREFIX + address, null);
+        java.util.List<com.kooo.evcam.button.KnobTurn> out = new java.util.ArrayList<>();
+        if (joined != null) {
+            java.util.List<String> keys = java.util.Arrays.asList(joined.split(","));
+            for (com.kooo.evcam.button.KnobTurn turn : com.kooo.evcam.button.KnobTurn.values()) {
+                if (turn != com.kooo.evcam.button.KnobTurn.NONE && keys.contains(turn.key)) {
+                    out.add(turn);
+                }
+            }
+        }
+        return out.isEmpty() ? new java.util.ArrayList<>(com.kooo.evcam.button.KnobTurn.home()) : out;
+    }
+
+    public void setKnobHome(String address, java.util.Collection<com.kooo.evcam.button.KnobTurn> turns) {
+        java.util.List<String> keys = new java.util.ArrayList<>();
+        for (com.kooo.evcam.button.KnobTurn turn : turns) {
+            keys.add(turn.key);
+        }
+        prefs.edit().putString(KEY_X_KNOB_HOME_PREFIX + address, String.join(",", keys)).apply();
     }
 
     // ==================== 录制悬浮按钮配置 ====================

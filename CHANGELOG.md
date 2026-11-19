@@ -40,6 +40,50 @@ commit message, not here.
   flash, or a door opens. The bot token is typed on the car screen and can be found together with the
   chat id under Alerts; it stays on the car and out of the settings export.
 
+## [4.12.1-alpha] - 2026-11-19
+
+- Temperature up / down, and the X knob's temperature and air direction: the climate is switched on first only when the car reports it off.
+
+## [4.12.0-alpha] - 2026-11-19
+
+- Arabic (العربية) in Settings → General → Language and in first-run setup; numbers stay 0–9.
+- Right to left: menu and back keys stay top left and the drawer opens from the left; the main screen, playback, Super mirror, Blind spot view and the floating button keep their layout.
+- Recordings and photos: file names and the time drawn into them always use 0–9; names an earlier version wrote with other digits still sort by time.
+- About: Fabbbrrr added to the contributors.
+
+## [4.11.0-alpha] - 2026-11-17
+
+- Super mirror: fisheye correction uses the method chosen in Settings → General → Fisheye correction; up to 180° with Wide or Full circle.
+- X knob: turn timing adjusted.
+
+## [4.10.0-alpha] - 2026-11-17
+
+- Settings → Buttons: one switch and one pairing entry for smart buttons and X knobs; bound ones show an icon.
+- X knob: Exclusive mode is now Single-knob mode; its panel shows at the top or on the driver side (X knob display).
+- X knob: turning follows the knob more closely.
+
+## [4.9.1-alpha] - 2026-11-17
+
+- Settings → Buttons: tap a bound smart button or X knob to expand its settings inline.
+
+## [4.9.0-alpha] - 2026-11-17
+
+- X knob (experimental) in Settings → Buttons.
+- Smart buttons and the floating button: new actions Temperature up and Temperature down.
+- Volume up / down: adjust through the suggested stream.
+
+## [4.8.0-alpha] - 2026-11-16
+
+- Super mirror and side view: the camera keeper hands their pictures to every camera pipeline as soon as it is built; their own retries and 2-second watchdogs are gone.
+- Super mirror: while the screen is dark, the window stops checking its picture every second once the picture is covered, and checks again when the screen comes on or a new frame arrives.
+- Smart buttons: while the screen is dark and Bluetooth is off, the app no longer checks Bluetooth every 5 seconds; it checks again when the screen comes on or the head unit wakes.
+- Storage cleanup: does not run while the screen is dark; a skipped run happens 10 minutes after the screen comes on.
+- Diagnostics: the stall monitor stops once the screen has been dark for 30 seconds and every camera is closed, and resumes when the screen comes on or something needs watching.
+
+## [4.7.1-alpha] - 2026-11-16
+
+- Diagnostics: when a camera becomes unavailable, the black box notes whether it left the camera list, instead of always saying another app took it.
+
 ## [4.7.0-alpha] - 2026-11-16
 
 - Smart buttons: the Bluetooth scan restarts every 25 minutes, so presses are no longer missed after a long drive.
