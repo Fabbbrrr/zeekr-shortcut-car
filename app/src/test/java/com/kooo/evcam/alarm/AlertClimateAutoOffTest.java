@@ -23,6 +23,9 @@ import com.kooo.evcam.alarm.guard.GuardToken;
 import com.kooo.evcam.alarm.ntfy.NtfyGate;
 import com.kooo.evcam.alarm.ntfy.NtfyRisk;
 import com.kooo.evcam.alarm.policy.ClimatePolicy;
+import com.kooo.evcam.telemetry.Signal;
+import com.kooo.evcam.telemetry.TestSnapshots;
+import com.kooo.evcam.telemetry.VehicleState;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -193,17 +196,145 @@ public class AlertClimateAutoOffTest {
         assertFalse("也不再声称知道它关着", known());
 
         // 同一个策略、同一个车厢：说「空调开着」就压住，说「空调没关成」就报。
-        // 读数得一直在来（每两个之间不超 staleMs），否则计时起点作废 —— 这也是车里真实的样子。
-        long t = 1_000L;
-        ClimatePolicy suppressed = freshPolicy();
-        suppressed.decide(33f, 20f, 60, true, true, false, false, false, t);
+        // 阀值、回差、计时全从跑着的那一份来（{@code newClimatePolicy()}），不在这条测试里另写一套数。
+        //
+        // Same policy, same cabin: "the AC is on" suppresses it, "the AC did not switch off" reports it.
+        // Thresholds, band and timings all come from the live policy; none of them is typed in here.
+        float cabin = config.getAlertsClimateHotC() + 1f;
+        long after = ClimatePolicy.DEFAULT_HOLD_MS + ClimatePolicy.DEFAULT_STALE_MS / 3;
         assertEquals("空调开着时热警报被压住（这一条是反证）", ClimatePolicy.Kind.NONE,
-                suppressed.decide(33f, 20f, 60, true, true, false, false, false, t + 600_000L).kind);
-        ClimatePolicy fires = freshPolicy();
-        fires.decide(33f, 20f, 60, true, believedOn(), false, false, false, t);
-        fires.decide(33f, 20f, 60, true, believedOn(), false, false, false, t + 300_000L);
+                hot(after, true, cabin, newPolicy()));
         assertEquals("关不掉时同一条就要报", ClimatePolicy.Kind.HOT,
-                fires.decide(33f, 20f, 60, true, believedOn(), false, false, false, t + 600_000L).kind);
+                hot(after, believedOn(), cabin, newPolicy()));
+    }
+
+    /**
+     * 一条热读数序列：三个新鲜样本，最后一个时间点上得出的结论。
+     *
+     * A hot sample sequence: three fresh samples, the verdict at the last one.
+     */
+    private static ClimatePolicy.Kind hot(long lastAt, boolean hvacOn, float cabin,
+                                          ClimatePolicy policy) {
+        long step = ClimatePolicy.DEFAULT_STALE_MS / 3;
+        policy.decide(cabin, null, null, true, hvacOn, false, false, false, 1_000L);
+        policy.decide(cabin, null, null, true, hvacOn, false, false, false, 1_000L + step);
+        return policy.decide(cabin, null, null, true, hvacOn, false, false, false, lastAt).kind;
+    }
+
+    // ================================================================= 车开走了：这一趟结束
+
+    /**
+     * 车在十分钟里开走了：自动关这一条链当场取消，而且一声不响。
+     *
+     * <p>没有这一道的时候：开走之后链还在重试，重试满了就回一句「关不掉空调」——
+     * 而车里的空调是车主自己留着开的，那句话是假的。
+     *
+     * <p>钻不动十分钟，所以这里走的是哨兵那条路看到的那一下：一条「不在 P」的读数来的时候
+     * {@code climateCheck} 调 {@code climateForgetSession}。</p>
+     *
+     * The car drives off inside the window: the chain is cancelled and says nothing. Without that guard the
+     * chain kept retrying and then reported "could not switch the AC off" about an AC the owner deliberately
+     * left running. The clock cannot be wound here, so this drives the sample the watcher really sees: a
+     * non-P reading, which makes climateCheck end the park session.
+     */
+    @Test
+    public void drivingAwayCancelsTheAutoOffWithoutSayingAnything() throws Exception {
+        onClimateReport(report(ClimateSource.Outcome.DONE, 22f, true, true, false), 22, false, false, 0);
+        ScheduledFuture<?> armed = pending();
+        assertNotNull("先得排上", armed);
+        // 回执那条先落地、再清掉计数：下面要比的是「取消之后又说了没有」。
+        // Let the receipt land, then clear the counters: what is measured below is noise after the cancel.
+        assertTrue(awaitSend());
+        ShadowNtfySender.reset();
+
+        climateCheck(VehicleState.empty().edit().gear("D").build(),
+                TestSnapshots.of(Signal.TEMP_INSIDE, 30f));
+
+        assertNull("开走了：这一条链要取消", pending());
+        assertTrue("取消要真的落到那个 future 上", armed.isCancelled() || armed.isDone());
+        assertEquals("取消是安静的：一句话都不说", 0, ShadowNtfySender.texts);
+    }
+
+    /**
+     * 温度开关关着、自动关那条链已经排上，车开走了：链照样要取消，一句话都不说。
+     *
+     * <p>以后 parked 的判断排在开关后面：开关一关这段就提前返回，链留着，重试到「丢手」，在车主开着空调
+     * 开车的时候发一句「没能确认为你关了」—— 假消息，而且没法消除。离开 P 就是这一趟结束，与设置无关。</p>
+     *
+     * The switch is off and an auto-off chain is pending; the car drives away. The chain must still be
+     * cancelled and nothing sent. With the parked check behind the switch this returned early, the chain
+     * retried to GIVE_UP, and the owner got "could not confirm the AC is off" while driving with the AC on.
+     * Leaving P ends the session whatever the settings say.
+     */
+    @Test
+    public void drivingAwayCancelsTheAutoOffEvenWithTheClimateSwitchOff() throws Exception {
+        onClimateReport(report(ClimateSource.Outcome.DONE, 22f, true, true, false), 22, false, false, 0);
+        ScheduledFuture<?> armed = pending();
+        assertNotNull("先得排上", armed);
+        // 回执那条先落地，再把开关关掉、清计数：下面要比的是「取消之后又说了没有」。
+        // Let the receipt land, then turn the switch off and clear the counters: what is measured
+        // below is noise after the cancel.
+        assertTrue(awaitSend());
+        config.setAlertsClimateEnabled(false);
+        ShadowNtfySender.reset();
+
+        climateCheck(VehicleState.empty().edit().gear("D").build(),
+                TestSnapshots.of(Signal.TEMP_INSIDE, 30f));
+
+        assertNull("开关关着，开走了也一样：这一条链要取消", pending());
+        assertTrue("取消要真的落到那个 future 上", armed.isCancelled() || armed.isDone());
+        assertEquals("取消是安静的：一句话都不说", 0, ShadowNtfySender.texts);
+    }
+
+    /**
+     * 取消以后，老的那条链就算还是跑了一次（取消和它撞在一起），也必须在号那一关停手：不写车、不说话。
+     *
+     * <p>这就是号存在的理由：{@code scheduleClimateOff} 在主线程上取消再赋值，而重试在
+     * {@code alert-climate} 线程上赋值 —— 两条链能同时活着。</p>
+     *
+     * An older chain that still runs once (a cancel that collides with it) stops at the number check: no write,
+     * no chat line. That is why the number exists: the main thread cancels and re-arms while a retry assigns on
+     * the alert-climate thread, so two chains can be alive at once.
+     */
+    @Test
+    public void anOlderChainStopsAtTheNumberCheck() throws Exception {
+        onClimateReport(report(ClimateSource.Outcome.DONE, 22f, true, true, false), 22, false, false, 0);
+        int old = generation();
+        assertTrue(awaitSend());
+        ShadowNtfySender.reset();
+
+        climateCheck(VehicleState.empty().edit().gear("D").build(),
+                TestSnapshots.of(Signal.TEMP_INSIDE, 30f));
+        assertEquals("取消要换一个号", old + 1, generation());
+        assertNull(pending());
+
+        // 老链带着老号跑起来：连「放弃」那句话都不许说。
+        attemptClimateOff(10, 2, 1_000L, old);
+
+        assertEquals("老链一句话都不许说", 0, ShadowNtfySender.texts);
+        assertNull("也不许给自己再排一次", pending());
+    }
+
+    /**
+     * 车主自己关成了：自动关那一条当场取消，出口不通也一样取消。
+     *
+     * <p>以前取消那一步排在出口判断后面：出口没配好时直接返回，链还活着，十分钟后又写一次车、
+     * 又在聊天里说一句。</p>
+     *
+     * A successful manual off cancels the chain even with a blocked channel. The cancel used to sit behind the
+     * channel guard, so a blocked exit returned early and left the chain to write the car again ten minutes
+     * later.
+     */
+    @Test
+    public void aManualOffCancelsTheAutoOffEvenWhenTheChannelIsBlocked() throws Exception {
+        config.setAlertsNtfyTopic("");
+        onClimateReport(report(ClimateSource.Outcome.DONE, 22f, true, true, false), 22, false, false, 0);
+        assertNotNull("出口不通也得先把自动关排上", pending());
+
+        onClimateReport(report(ClimateSource.Outcome.DONE, 0f, false, true, true), 0, false, false, 0);
+
+        assertNull("车主自己关了：自动关必须取消，出口不通也要取消", pending());
+        assertEquals("出口不通，一句都没发", 0, ShadowNtfySender.texts);
     }
 
     // ================================================================= 回执里的座椅
@@ -274,6 +405,29 @@ public class AlertClimateAutoOffTest {
         assertEquals(context.getString(R.string.alert_climate_moving), ShadowNtfySender.sent.get(0));
     }
 
+    /**
+     * 过期的「关」那颗：回的是「要关就说 ac off」，不是「要开就说 ac on 22」。
+     *
+     * <p>以前两种按下去都回同一句开空调的话 —— 一个按钮回了反着的动作。</p>
+     *
+     * A stale OFF button is answered with "send ac off", not "send ac on 22": the old wording told the owner to
+     * do the opposite of what they pressed.
+     */
+    @Test
+    public void aStaleOffButtonAnswersWithTheOffWording() throws Exception {
+        setClimateToken("");
+        String payload = AlertButton.data(AlertButton.ACTION_CLIMATE_OFF, GuardToken.mint(79L));
+
+        alerts.onAlertButton(payload);
+
+        assertTrue("按了就得有回话", awaitSend());
+        assertEquals("只发一句", 1, ShadowNtfySender.texts);
+        assertEquals("说的是「要关就说 ac off」",
+                context.getString(R.string.alert_climate_stale_off_button),
+                ShadowNtfySender.sent.get(0));
+        assertNull("过期按钮不排任何事", pending());
+    }
+
     // ================================================================= 小工具
 
     private static ClimateSource.Report report(ClimateSource.Outcome outcome, float targetC,
@@ -316,10 +470,33 @@ public class AlertClimateAutoOffTest {
         set("climateKnown", known);
     }
 
-    /** 和设置里那一条同样参数的策略（10 分钟 hold、30 度热、15 分钟重复）。 */
-    private static ClimatePolicy freshPolicy() {
-        return new ClimatePolicy(30f, 5f, 40f, 35f, 3f, 20, 10 * 60_000L, 15 * 60_000L,
-                10 * 60_000L, 3);
+    /** 和设置里那一条同样参数的策略：直接问跑着的那一份（{@code newClimatePolicy()}）。 */
+    private ClimatePolicy newPolicy() throws Exception {
+        java.lang.reflect.Method m = SentryAlerts.class.getDeclaredMethod("newClimatePolicy");
+        m.setAccessible(true);
+        return (ClimatePolicy) m.invoke(alerts);
+    }
+
+    private int generation() throws Exception {
+        return (Integer) field("climateOffGeneration");
+    }
+
+    /** 带号的那一次尝试：老链就是这么跑起来的。The attempt with a generation: how an old chain wakes up. */
+    private void attemptClimateOff(int minutes, int level, long firstAt, int generation)
+            throws Exception {
+        java.lang.reflect.Method m = SentryAlerts.class.getDeclaredMethod("attemptClimateOff",
+                int.class, int.class, long.class, int.class);
+        m.setAccessible(true);
+        m.invoke(alerts, minutes, level, firstAt, generation);
+    }
+
+    /** 哨兵那条路在读数来的时候叫的就是它（开走了就靠这一下）。 */
+    private void climateCheck(VehicleState state, com.kooo.evcam.telemetry.Readings readings)
+            throws Exception {
+        java.lang.reflect.Method m = SentryAlerts.class.getDeclaredMethod("climateCheck",
+                VehicleState.class, com.kooo.evcam.telemetry.Readings.class);
+        m.setAccessible(true);
+        m.invoke(alerts, state, readings);
     }
 
     private void setClock(long[] now) throws Exception {

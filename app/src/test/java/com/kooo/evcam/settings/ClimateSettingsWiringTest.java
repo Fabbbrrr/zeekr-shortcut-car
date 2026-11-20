@@ -113,6 +113,35 @@ public class ClimateSettingsWiringTest {
         assertNotNull("拖动条改完也要叫 refresh()", policy());
     }
 
+    /**
+     * 只填了 ntfy 的车：这一组开着就该真的开始读车信号，不只是换一份策略。
+     *
+     * <p>{@code watching} 是「登记了车辆信号」那一个字段：换成 Telegram 没填好的出口时它是 false，
+     * 只填了 ntfy 话题时就该是 true —— 否则「只盯温度」的车白白一座车开出去，什么都没读到。</p>
+     *
+     * <p>只有策略不算数：策略一直在换（refresh 一进门就换），换得再勤，没人读信号也看不到温度。</p>
+     *
+     * An ntfy-only car must actually start watching the signals, not just get a fresh policy: watching is the
+     * field that says the vehicle signals are registered. A fresh policy alone proves nothing — refresh()
+     * always builds one, and none of it matters if nobody is reading the temperature.
+     */
+    @Test
+    public void anNtfyOnlyCarStartsWatchingTheSignals() throws Exception {
+        config.setAlertsTransport(NtfyGate.NTFY);
+        config.setAlertsNtfyTopic("zeekrsc_kymoy9m40cuQYXmHabcdefghijklmnopqrstu");
+        config.setAlertsNtfyRiskAck(
+                com.kooo.evcam.alarm.ntfy.NtfyRisk.ackFor(config.getAlertsNtfyTopic()));
+        config.setAlertsNtfyPaid(true);
+        assertFalse("开始时没在听", watching());
+
+        Preference row = climatePage().findPreference("pref_alerts_climate");
+        assertNotNull("少了车厢温度那个开关", row);
+        assertEquals(Boolean.TRUE, row.callChangeListener(true));
+
+        assertTrue("只填了 ntfy 的车也要开始读温度", watching());
+        assertNotNull("策略照旧换一份", policy());
+    }
+
     // ================================================================= 行尾
 
     /**
@@ -225,6 +254,13 @@ public class ClimateSettingsWiringTest {
         java.lang.reflect.Field field = SentryAlerts.class.getDeclaredField("climatePolicy");
         field.setAccessible(true);
         return field.get(SentryAlerts.get(RuntimeEnvironment.getApplication()));
+    }
+
+    /** 登记了车辆信号没有（{@code SentryAlerts.watching}）。Whether the vehicle signals are registered. */
+    private static boolean watching() throws Exception {
+        java.lang.reflect.Field field = SentryAlerts.class.getDeclaredField("watching");
+        field.setAccessible(true);
+        return field.getBoolean(SentryAlerts.get(RuntimeEnvironment.getApplication()));
     }
 
     private static void forgetSingleton() throws Exception {

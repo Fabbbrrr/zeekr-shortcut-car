@@ -528,13 +528,17 @@ public class ClimateSourceTest {
      * 开关读到 1、设定温度那个号整个适配层都不回值（这台 7X 就是）：空调确实开了，结果是 {@code DONE}，
      * 不是「没变」。当成没变会回一句假话，而且自动关排不上。
      *
-     * Power reads 1 and the setpoint id answers nothing at all on this adapter: the climate is on, so this is
-     * DONE with a note, not NO_CHANGE — which would be a false receipt and would lose the auto-off.
+     * <p>和上面那一条的区别在假车：上面是范围那几个号读得到、只有设定值不报；这一条是整条浮点通通不报。
+     * 两条走的是同一个分支，但进来的情况不同 —— 4.14.0 在车上跘到的是这一个（适配层全空）。</p>
+     *
+     * Power reads 1 and every float id answers nothing at all on this adapter: the climate is on, so this is
+     * DONE with a note, not NO_CHANGE — which would be a false receipt and would lose the auto-off. The fake
+     * differs from the test above: there only the setpoint is silent, here the whole float channel is.
      */
     @Test
     public void powerOnWithAnUnreadableSetpointIsDoneNotNoChange() {
         FakeCar car = car();
-        car.nullCustomReads.add(TEMP);
+        car.customReads = false;
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 

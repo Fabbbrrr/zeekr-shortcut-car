@@ -403,68 +403,63 @@
             android:key="screen_alerts_climate"
             android:title="@string/set_alerts_page_climate">
 
-            <PreferenceCategory
-                android:key="cat_alerts_climate"
-                android:title="@string/set_group_alerts_climate">
+            <SwitchPreferenceCompat
+                android:key="pref_alerts_climate"
+                android:title="@string/set_alerts_climate_title"
+                android:summary="@string/set_alerts_climate_summary" />
 
-                <SwitchPreferenceCompat
-                    android:key="pref_alerts_climate"
-                    android:title="@string/set_alerts_climate_title"
-                    android:summary="@string/set_alerts_climate_summary" />
+            <!-- 太热：25–40 °C，默认 30。行尾写「30 °C」，拖到哪一格就是哪一度。 -->
+            <SeekBarPreference
+                android:key="pref_alerts_climate_hot"
+                android:title="@string/set_alerts_climate_hot_title"
+                app:min="25"
+                android:max="40" />
 
-                <!-- 太热：25–40 °C，默认 30。行尾写「30 °C」，拖到哪一格就是哪一度。 -->
-                <SeekBarPreference
-                    android:key="pref_alerts_climate_hot"
-                    android:title="@string/set_alerts_climate_hot_title"
-                    app:min="25"
-                    android:max="40" />
+            <!-- 太冷：-10–15 °C，默认 5 -->
+            <SeekBarPreference
+                android:key="pref_alerts_climate_cold"
+                android:title="@string/set_alerts_climate_cold_title"
+                app:min="-10"
+                android:max="15" />
 
-                <!-- 太冷：-10–15 °C，默认 5 -->
-                <SeekBarPreference
-                    android:key="pref_alerts_climate_cold"
-                    android:title="@string/set_alerts_climate_cold_title"
-                    app:min="-10"
-                    android:max="15" />
+            <SwitchPreferenceCompat
+                android:key="pref_alerts_climate_safety"
+                android:title="@string/set_alerts_climate_safety_title"
+                android:summary="@string/set_alerts_climate_safety_summary" />
 
-                <SwitchPreferenceCompat
-                    android:key="pref_alerts_climate_safety"
-                    android:title="@string/set_alerts_climate_safety_title"
-                    android:summary="@string/set_alerts_climate_safety_summary" />
+            <!-- 目标温度：16–30 °C，默认 22 -->
+            <SeekBarPreference
+                android:key="pref_alerts_climate_target"
+                android:title="@string/set_alerts_climate_target_title"
+                app:min="16"
+                android:max="30" />
 
-                <!-- 目标温度：16–30 °C，默认 22 -->
-                <SeekBarPreference
-                    android:key="pref_alerts_climate_target"
-                    android:title="@string/set_alerts_climate_target_title"
-                    app:min="16"
-                    android:max="30" />
+            <ListPreference
+                android:key="pref_alerts_climate_seats"
+                android:title="@string/set_alerts_climate_seats_title" />
 
-                <ListPreference
-                    android:key="pref_alerts_climate_seats"
-                    android:title="@string/set_alerts_climate_seats_title" />
+            <ListPreference
+                android:key="pref_alerts_climate_seat_level"
+                android:title="@string/set_alerts_climate_seat_level_title" />
 
-                <ListPreference
-                    android:key="pref_alerts_climate_seat_level"
-                    android:title="@string/set_alerts_climate_seat_level_title" />
+            <ListPreference
+                android:key="pref_alerts_climate_minutes"
+                android:title="@string/set_alerts_climate_minutes_title" />
 
-                <ListPreference
-                    android:key="pref_alerts_climate_minutes"
-                    android:title="@string/set_alerts_climate_minutes_title" />
+            <!-- 电量下限：20–99 %，默认 20（车主 2026-11-19：不再是 15 / 20 / 25 三档） -->
+            <SeekBarPreference
+                android:key="pref_alerts_climate_soc_floor"
+                android:title="@string/set_alerts_climate_soc_floor_title"
+                app:min="20"
+                android:max="99" />
 
-                <!-- 电量下限：20–99 %，默认 20（车主 2026-11-19：不再是 15 / 20 / 25 三档） -->
-                <SeekBarPreference
-                    android:key="pref_alerts_climate_soc_floor"
-                    android:title="@string/set_alerts_climate_soc_floor_title"
-                    app:min="20"
-                    android:max="99" />
-
-                <!-- 这一组的实话：空调只会自己关，不会自己开；而且要哨兵模式开着才叫得动车。
-                     The honest note: the AC only ever turns itself off, never on, and Sentry Mode has to be on. -->
-                <Preference
-                    android:key="pref_alerts_climate_note"
-                    android:selectable="false"
-                    android:title="@string/set_alerts_climate_note_title"
-                    android:summary="@string/set_alerts_climate_note_summary" />
-            </PreferenceCategory>
+            <!-- 这一组的实话：空调只会自己关，不会自己开；而且要哨兵模式开着才叫得动车。
+                 The honest note: the AC only ever turns itself off, never on, and Sentry Mode has to be on. -->
+            <Preference
+                android:key="pref_alerts_climate_note"
+                android:selectable="false"
+                android:title="@string/set_alerts_climate_note_title"
+                android:summary="@string/set_alerts_climate_note_summary" />
         </PreferenceScreen>
     </PreferenceScreen>
 

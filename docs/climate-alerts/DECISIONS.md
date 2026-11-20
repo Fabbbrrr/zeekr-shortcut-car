@@ -55,7 +55,8 @@ a new wake path, Fahrenheit UI, any automatic write that is not an owner command
 | `alerts_climate_soc_floor` | int % | 20 | `pref_alerts_climate_soc_floor` (slider 20–99) |
 
 There is no `alerts_family` key and no family picker. The shipped shape is a hub
-(`screen_alerts`, four entry rows: Notifications / Sentry / Climate / checks) plus three child pages
+(`screen_alerts`, three entry rows: Notifications / Sentry / Climate — the checks live on the
+notifications page, not on the hub) plus three child pages
 under `screen_alerts_notifications`, `screen_alerts_sentry` and `screen_alerts_climate`, each one a
 nested `PreferenceScreen` of the same `preferences.xml` loaded with `setPreferencesFromResource`'s
 `rootKey`. The four numeric climate rows are `SeekBarPreference`s; the bounds and the getters'

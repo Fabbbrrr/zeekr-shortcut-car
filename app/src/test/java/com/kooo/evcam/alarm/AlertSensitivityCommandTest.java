@@ -94,6 +94,10 @@ public class AlertSensitivityCommandTest {
     public void oneStepUpAndOneStepDown() throws Exception {
         SentryAlerts.get(context).onSensitivityCommand(TelegramCommand.SensitivityAction.UP, 0);
         assertEquals(MotionSensitivity.DEFAULT + 1, config.getAlertsMotionSensitivity());
+        // 第一句回话落地之后再清计数：否则它晚到一步，就会算进第二次的条数里（曾经间歇 2 条）。
+        // Let the first reply land before zeroing the counters: a reply that arrives late would
+        // otherwise be counted in the second assertion, which used to read 2 texts at random.
+        assertOneTextAndNoPicture();
         ShadowNtfySender.reset();
         SentryAlerts.get(context).onSensitivityCommand(TelegramCommand.SensitivityAction.DOWN, 0);
         assertEquals(MotionSensitivity.DEFAULT, config.getAlertsMotionSensitivity());

@@ -135,7 +135,7 @@
     <string name="alert_climate_state_on">hidup</string>
     <string name="alert_climate_state_off">mati</string>
     <string name="alert_climate_state_unknown">tidak diketahui</string>
-    <string name="alert_climate_receipt">Penghawa dingin dihidupkan, sasaran %1$s °C%2$s. Ia mati pada %3$s melainkan anda hantar \'ac off\'.</string>
+    <string name="alert_climate_receipt">Penghawa dingin dihidupkan, sasaran %1$s °C%2$s. Mati pada %3$s, atau saya beritahu kalau tidak dapat.</string>
     <string name="alert_climate_receipt_off">Penghawa dingin dimatikan.</string>
     <string name="alert_climate_seat_heat">, pemanas tempat duduk pemandu</string>
     <string name="alert_climate_seat_vent">, pengudaraan tempat duduk pemandu</string>
@@ -148,6 +148,7 @@
     <string name="alert_climate_no_change_plain">Kereta menerima arahan tetapi kabin tidak berubah. Tiada percubaan lain dibuat.</string>
     <string name="alert_climate_moving">Kereta tidak diletakkan dalam parkir, jadi tiada apa-apa diubah.</string>
     <string name="alert_climate_stale_button">Butang itu milik amaran terdahulu. Hantar \'ac on 22\'.</string>
+    <string name="alert_climate_stale_off_button">Butang itu milik amaran terdahulu. Hantar \'ac off\'.</string>
     <string name="alert_climate_off_unconfirmed">Tidak dapat mematikan penghawa dingin — kereta tidak melaporkan ia diparkirkan. Periksa kereta.</string>
     <string name="alert_climate_low_battery">Bateri di bawah %1$d %%, jadi apa-apa tidak diubah.</string>
     <string name="alert_climate_paused">Amaran sedang dijeda. Hantar \'alerts on\' dahulu.</string>
@@ -1636,19 +1637,19 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_row_climate">Suhu kabin</string>
     <string name="set_alerts_page_notifications">Amaran · Makluman</string>
     <string name="set_alerts_page_sentry">Amaran · Sentri</string>
-    <string name="set_alerts_page_climate">Amaran · Suhu kabin</string>
+    <string name="set_alerts_page_climate">Amaran · Iklim</string>
     <string name="set_alerts_hub_two">%1$s · %2$s</string>
     <string name="set_alerts_hub_three">%1$s · %2$s · %3$s</string>
     <string name="set_alerts_hub_ready">Sudah diisi</string>
     <string name="set_alerts_hub_token_missing">Belum ada token</string>
     <string name="set_alerts_hub_chat_missing">Belum ada id sembang</string>
     <string name="set_alerts_hub_topic_missing">Belum ada topik</string>
+    <string name="set_alerts_hub_ack_missing">Amaran pelan percuma belum disahkan</string>
     <string name="set_alerts_hub_sentry_armed">Berjaga sekarang</string>
     <string name="set_alerts_hub_sentry_delay">Berjaga %1$s selepas dikunci</string>
     <string name="set_alerts_hub_watched">%1$d perkara dipantau</string>
     <string name="set_alerts_hub_climate_hot">Amaran melebihi %1$d °C</string>
     <string name="set_alerts_hub_climate_target">Sasaran %1$d °C</string>
-    <string name="set_group_alerts_climate">Suhu kabin</string>
     <string name="set_alerts_climate_title">Amaran suhu kabin</string>
     <string name="set_alerts_climate_summary">Hanya berfungsi semasa diletakkan dengan Mod Sentri hidup — ketika itulah unit kepala berjaga</string>
     <string name="set_alerts_climate_hot_title">Terlalu panas</string>
@@ -1668,7 +1669,7 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_climate_soc_floor_title">Had bawah bateri</string>
     <string name="set_alerts_climate_soc_floor_summary">Tiada apa-apa dihidupkan di bawah %1$s</string>
     <string name="set_alerts_climate_note_title">Apa kumpulan ini buat</string>
-    <string name="set_alerts_climate_note_summary">Satu arahan menjalankan penghawa dingin selama %1$d minit dan ia berhenti sendiri; tiada apa-apa dihidupkan sendiri; Mod Sentri mesti hidup supaya kereta mendengar</string>
+    <string name="set_alerts_climate_note_summary">Satu arahan menjalankan penghawa dingin selama %1$d minit dan ia berhenti sendiri, atau saya beritahu kalau tidak dapat; tiada apa-apa dihidupkan sendiri; Mod Sentri mesti hidup supaya kereta mendengar</string>
     <string name="opt_alerts_climate_seats_off">Jangan sentuh</string>
     <string name="opt_alerts_climate_seats_driver">Pemandu sahaja</string>
     <string name="opt_alerts_climate_degrees">%d °C</string>

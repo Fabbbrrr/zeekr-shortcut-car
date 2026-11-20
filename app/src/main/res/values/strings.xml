@@ -149,7 +149,7 @@
     <string name="alert_climate_state_on">开着</string>
     <string name="alert_climate_state_off">关着</string>
     <string name="alert_climate_state_unknown">不知道</string>
-    <string name="alert_climate_receipt">空调开了，目标 %1$s °C%2$s。%3$s 自动关，除非你说「ac off」。</string>
+    <string name="alert_climate_receipt">空调开了，目标 %1$s °C%2$s。%3$s 关，关不掉我会告诉你。</string>
     <string name="alert_climate_receipt_off">空调关了。</string>
     <string name="alert_climate_seat_heat">，主驾座椅加热</string>
     <string name="alert_climate_seat_vent">，主驾座椅通风</string>
@@ -162,6 +162,7 @@
     <string name="alert_climate_no_change_plain">车机受理了，但车厢状态没变。没有再做别的尝试。</string>
     <string name="alert_climate_moving">车没停稳，所以什么都没改。</string>
     <string name="alert_climate_stale_button">那颗按钮属于更早的一条警报。要开就说「ac on 22」。</string>
+    <string name="alert_climate_stale_off_button">那颗按钮属于更早的一条警报。要关就说「ac off」。</string>
     <string name="alert_climate_off_unconfirmed">关不掉空调：车一直没有报「停着」。去看一眼车。</string>
     <string name="alert_climate_low_battery">电量低于 %1$d%%，所以什么都没改。</string>
     <string name="alert_climate_paused">警报暂停着。先发「alerts on」。</string>
@@ -1658,12 +1659,12 @@
     <string name="set_alerts_hub_token_missing">还没填令牌</string>
     <string name="set_alerts_hub_chat_missing">还没填会话号</string>
     <string name="set_alerts_hub_topic_missing">还没建话题</string>
+    <string name="set_alerts_hub_ack_missing">免费方案的提醒还没确认</string>
     <string name="set_alerts_hub_sentry_armed">已布防</string>
     <string name="set_alerts_hub_sentry_delay">锁车后 %1$s布防</string>
     <string name="set_alerts_hub_watched">看着 %1$d 项</string>
     <string name="set_alerts_hub_climate_hot">高于 %1$d °C 提醒</string>
     <string name="set_alerts_hub_climate_target">目标 %1$d °C</string>
-    <string name="set_group_alerts_climate">车厢温度</string>
     <string name="set_alerts_climate_title">车厢温度警报</string>
     <string name="set_alerts_climate_summary">只在停着、哨兵模式开着时能用 —— 那时候车机才醒着</string>
     <string name="set_alerts_climate_hot_title">太热</string>
@@ -1683,7 +1684,7 @@
     <string name="set_alerts_climate_soc_floor_title">电量下限</string>
     <string name="set_alerts_climate_soc_floor_summary">电量低于 %1$s 就不开</string>
     <string name="set_alerts_climate_note_title">这一组做什么</string>
-    <string name="set_alerts_climate_note_summary">叫一次开 %1$d 分钟，到点它自己关；不会有任何东西自己开起来；要哨兵模式开着，车才听得见</string>
+    <string name="set_alerts_climate_note_summary">叫一次开 %1$d 分钟，到点它自己关，关不掉我会告诉你；不会有任何东西自己开起来；要哨兵模式开着，车才听得见</string>
     <string name="opt_alerts_climate_seats_off">不动座椅</string>
     <string name="opt_alerts_climate_seats_driver">只主驾</string>
     <string name="opt_alerts_climate_degrees">%d °C</string>

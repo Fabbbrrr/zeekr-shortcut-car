@@ -1587,12 +1587,38 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         }
     }
 
-    /** 出口那一头填好了没有（行尾用）：一句短语，不是整句话。 */
+    /**
+     * 出口那一头填好了没有（行尾用）：一句短语，不是整句话。
+     *
+     * <p>问的是真的那条出口（{@link com.kooo.evcam.alarm.AlertChannels#of}），不是「话题那个框里有没有字」：
+     * 发得出去还要求话题形状对（{@link com.kooo.evcam.alarm.ntfy.NtfyRequest#looksLikeTopic}）、
+     * 免费方案的提醒被接受过（{@link NtfyRisk}）—— 后者在换话题时会被清掉，
+     * 所以只看框里有没有字，行尾写「已填好」就是在骗人。</p>
+     *
+     * <p>The hub's exit summary asks the real exit, not whether the topic box has text: sending also needs a
+     * valid topic shape and an accepted free-plan warning (which rotating the topic clears), so reading
+     * "ready" off the box alone is a lie.</p>
+     */
     private String alertsChannelState() {
+        com.kooo.evcam.alarm.AlertChannel channel =
+                com.kooo.evcam.alarm.AlertChannels.of(appConfig);
+        switch (channel.blockedReason()) {
+            case OK:
+                return getString(R.string.set_alerts_hub_ready);
+            case NOT_ACKNOWLEDGED:
+                return getString(R.string.set_alerts_hub_ack_missing);
+            default:
+                // 「没配好」具体差哪一格按出口自己那一份设置说：Telegram 是令牌 / 会话号，ntfy 是话题。
+                // Which piece is missing comes from that exit's own settings: Telegram token / chat id,
+                // ntfy the topic.
+                return missingExitPiece();
+        }
+    }
+
+    /** 出口说「没配好」时，差的是哪一格。Which piece the exit is missing when it says it is not ready. */
+    private String missingExitPiece() {
         if (appConfig.isAlertsNtfy()) {
-            return appConfig.getAlertsNtfyTopic().isEmpty()
-                    ? getString(R.string.set_alerts_hub_topic_missing)
-                    : getString(R.string.set_alerts_hub_ready);
+            return getString(R.string.set_alerts_hub_topic_missing);
         }
         String token = appConfig.getAlertsTelegramToken();
         if (token.isEmpty()) {
@@ -1601,9 +1627,7 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         if (!com.kooo.evcam.alarm.telegram.TelegramRequest.looksLikeToken(token)) {
             return getString(R.string.set_alerts_token_bad);
         }
-        return appConfig.getAlertsTelegramChatId().isEmpty()
-                ? getString(R.string.set_alerts_hub_chat_missing)
-                : getString(R.string.set_alerts_hub_ready);
+        return getString(R.string.set_alerts_hub_chat_missing);
     }
 
     /** 两行的行尾写当前填了什么；令牌只说末四位。 */

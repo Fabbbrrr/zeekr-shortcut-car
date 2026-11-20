@@ -25,6 +25,12 @@ Nothing yet.
 - Alerts: the AC buttons under a temperature alert did nothing when pressed — each button was checked
   against the wrong row's token, then against its own token a second time as if an action were a whole
   payload. Each row now finds its own button, and a press always answers.
+- Alerts: the ten-minute auto-off keeps trying while the car is asleep and locked, and says in the chat when
+  it could not switch the AC off.
+- Alerts: a button from an earlier alert answers when you press it — and the "off" one tells you to send
+  `ac off`, not `ac on`.
+- Alerts: the receipt no longer names the driver's seat when the car refused that part of the write. The
+  temperature and the off time are still reported; only the claim the car did not accept is gone.
 
 ## [4.14.0-fab-beta] - 2026-11-20
 

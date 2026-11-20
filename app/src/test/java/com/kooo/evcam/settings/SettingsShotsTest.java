@@ -535,7 +535,25 @@ public class SettingsShotsTest {
         assertTrue("车厢温度那一行该写现在的目标温度: " + climate,
                 climate.contains(String.valueOf(now.getAlertsClimateTargetC())));
         String sentry = String.valueOf(hub.findPreference("pref_alerts_sentry").getSummary());
-        assertTrue("哨兵那一行该写看着几项: " + sentry, sentry.contains("·"));
+        AppConfig sentryNow = new AppConfig(RuntimeEnvironment.getApplication());
+        com.kooo.evcam.alarm.policy.TriggerSet watching =
+                com.kooo.evcam.alarm.policy.TriggerSet.parse(sentryNow.getAlertsTriggers());
+        int watched = 0;
+        for (String name : com.kooo.evcam.alarm.policy.TriggerSet.ALL) {
+            if (watching.has(name)) {
+                watched++;
+            }
+        }
+        assertTrue("哨兵那一行该写看着几项: " + sentry,
+                sentry.contains(hub.getString(R.string.set_alerts_hub_watched, watched)));
+        int armMinutes = sentryNow.getAlertsArmDelayMinutes();
+        String armedPhrase = armMinutes <= 0
+                ? hub.getString(R.string.set_alerts_hub_sentry_armed)
+                : hub.getString(R.string.set_alerts_hub_sentry_delay,
+                        hub.getString(armMinutes == 1 ? R.string.opt_alerts_arm_1
+                                : R.string.opt_alerts_arm_3));
+        assertTrue("哨兵那一行该写布防快不快（暗号不算）: " + sentry,
+                sentry.contains(armedPhrase));
 
         // 三块内容各自在下一层：这一屏上那三页都是收着的（列成一行会点了没处接）
         for (String key : new String[]{CHILD_NOTIFICATIONS, CHILD_SENTRY, CHILD_CLIMATE}) {
@@ -556,6 +574,43 @@ public class SettingsShotsTest {
         for (String key : rows) {
             assertFalse("总开关关着时 " + key + " 该收起来", shown(off, key));
         }
+    }
+
+    /**
+     * 通知那一行的行尾问的是真的出口：话题填了但免费方案的提醒没接受，就不许说「已填好」。
+     *
+     * <p>以前只看话题那个框里有没有字 —— 换过话题（换话题会清掉「接受过」那一条）之后，
+     * 行尾写着已填好，而每一条警报都被出口自己拒绝掉。</p>
+     *
+     * The notifications row asks the real exit: a topic with no accepted free-plan warning must not read
+     * "filled in". The old summary looked only at whether the topic box had text, so after rotating the topic
+     * (which clears the acceptance) it claimed everything was set while the exit refused every alert.
+     */
+    @Test
+    public void theHubSaysTheNtfyWarningIsNotAccepted() {
+        String topic = "zeekrsc_kymoy9m40cuQYXmHabcdefghijklmnopqrstu";
+
+        // 话题有了、提醒没接受：行尾说的是差这一格。
+        SettingsPreferenceFragment unacked = alertsPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY,
+                config -> config.setAlertsNtfyTopic(topic));
+        String unackedSummary = String.valueOf(
+                unacked.findPreference("pref_alerts_notifications").getSummary());
+        assertFalse("提醒没接受就不许说已填好: " + unackedSummary,
+                unackedSummary.contains(unacked.getString(R.string.set_alerts_hub_ready)));
+        assertTrue("要说清楚差的是那一句提醒: " + unackedSummary,
+                unackedSummary.contains(unacked.getString(R.string.set_alerts_hub_ack_missing)));
+
+        // 接受了就是已填好（否则上一条是空过：永远不写 ready 也算通过）。
+        SettingsPreferenceFragment acked = alertsPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY, config -> {
+                    config.setAlertsNtfyTopic(topic);
+                    config.setAlertsNtfyRiskAck(com.kooo.evcam.alarm.ntfy.NtfyRisk.ackFor(topic));
+                });
+        String ackedSummary = String.valueOf(
+                acked.findPreference("pref_alerts_notifications").getSummary());
+        assertTrue("接受了提醒就是已填好: " + ackedSummary,
+                ackedSummary.contains(acked.getString(R.string.set_alerts_hub_ready)));
     }
 
     /** 三页各一张图（总开关那一页的图由 {@link #everySectionByDay} 那一套出）。 */
@@ -624,10 +679,11 @@ public class SettingsShotsTest {
                 com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_climate_page",
                 CHILD_CLIMATE, R.string.set_alerts_page_climate,
                 config -> config.setAlertsClimateEnabled(true));
-        androidx.preference.PreferenceGroup group = (androidx.preference.PreferenceGroup)
-                climate.findPreference("cat_alerts_climate");
-        assertNotNull("少了车厢温度那一组", group);
-        assertEquals("第一行是这一组自己的开关", "pref_alerts_climate", group.getPreference(0).getKey());
+        androidx.preference.PreferenceGroup screen = climate.getPreferenceScreen();
+        assertNull("页名已经说了这一页是什么，组名不再重复一遍",
+                climate.findPreference("cat_alerts_climate"));
+        assertEquals("第一行是这一组自己的开关", "pref_alerts_climate",
+                screen.getPreference(0).getKey());
         sliderShows(climate, "pref_alerts_climate_hot", 25, 40, 30, "30 °C");
         sliderShows(climate, "pref_alerts_climate_cold", -10, 15, 5, "5 °C");
         sliderShows(climate, "pref_alerts_climate_target", 16, 30, 22, "22 °C");

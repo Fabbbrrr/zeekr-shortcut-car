@@ -111,8 +111,12 @@ public class StringResourceParityTest {
      *
      * <p>自动关那一轮又加了两条：{@code alert_climate_stale_button}、{@code alert_climate_off_unconfirmed}（都是停车警报的文案），
      * 395 + 2 = 397。阿语照旧留到单独一轮。</p>
+     *
+     * <p>复审第二轮又加了两条、删了一条：{@code alert_climate_stale_off_button}（过期的「关」那颗回的话）、
+     * {@code set_alerts_hub_ack_missing}（话题填了、免费方案的提醒没接受），删的是 {@code set_group_alerts_climate}
+     * （车厢温度那一页的页名已经说了，组名重复，连组一起拿掉了），397 + 2 − 1 = 398。</p>
      */
-    private static final int PENDING_ARABIC_COUNT = 397;
+    private static final int PENDING_ARABIC_COUNT = 398;
 
     @Test
     public void everyChineseStringHasATranslationWithMatchingPlaceholders() throws IOException {

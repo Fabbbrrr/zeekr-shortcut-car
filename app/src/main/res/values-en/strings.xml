@@ -135,7 +135,7 @@
     <string name="alert_climate_state_on">on</string>
     <string name="alert_climate_state_off">off</string>
     <string name="alert_climate_state_unknown">unknown</string>
-    <string name="alert_climate_receipt">AC on, target %1$s °C%2$s. Off at %3$s unless you say \'ac off\'.</string>
+    <string name="alert_climate_receipt">AC on, target %1$s °C%2$s. Off at %3$s, or I\'ll tell you if I couldn\'t.</string>
     <string name="alert_climate_receipt_off">AC off.</string>
     <string name="alert_climate_seat_heat">, driver seat heating</string>
     <string name="alert_climate_seat_vent">, driver seat ventilating</string>
@@ -148,6 +148,7 @@
     <string name="alert_climate_no_change_plain">The car accepted the command but the cabin did not change. Nothing else was tried.</string>
     <string name="alert_climate_moving">The car is not parked, so nothing was changed.</string>
     <string name="alert_climate_stale_button">That button belongs to an earlier alert. Send \'ac on 22\'.</string>
+    <string name="alert_climate_stale_off_button">That button belongs to an earlier alert. Send \'ac off\'.</string>
     <string name="alert_climate_off_unconfirmed">Could not switch the AC off — the car did not report being parked. Check the car.</string>
     <string name="alert_climate_low_battery">Battery below %1$d %%, so nothing was changed.</string>
     <string name="alert_climate_paused">Alerts are paused. Send \'alerts on\' first.</string>
@@ -1667,12 +1668,12 @@ If I forget: %3$s</string>
     <string name="set_alerts_hub_token_missing">No token yet</string>
     <string name="set_alerts_hub_chat_missing">No chat id yet</string>
     <string name="set_alerts_hub_topic_missing">No topic yet</string>
+    <string name="set_alerts_hub_ack_missing">Free-plan warning not confirmed</string>
     <string name="set_alerts_hub_sentry_armed">Armed now</string>
     <string name="set_alerts_hub_sentry_delay">Arms %1$s after locking</string>
     <string name="set_alerts_hub_watched">%1$d things watched</string>
     <string name="set_alerts_hub_climate_hot">Warns above %1$d °C</string>
     <string name="set_alerts_hub_climate_target">Targets %1$d °C</string>
-    <string name="set_group_alerts_climate">Climate</string>
     <string name="set_alerts_climate_title">Cabin temperature alerts</string>
     <string name="set_alerts_climate_summary">Works only while parked with Sentry Mode on — that is when the head unit is awake</string>
     <string name="set_alerts_climate_hot_title">Too hot</string>
@@ -1692,7 +1693,7 @@ If I forget: %3$s</string>
     <string name="set_alerts_climate_soc_floor_title">Battery floor</string>
     <string name="set_alerts_climate_soc_floor_summary">Nothing turns on below %1$s</string>
     <string name="set_alerts_climate_note_title">What this group does</string>
-    <string name="set_alerts_climate_note_summary">One command runs the AC for %1$d minutes and it stops by itself; nothing starts on its own; Sentry Mode has to be on for the car to hear you</string>
+    <string name="set_alerts_climate_note_summary">One command runs the AC for %1$d minutes and it stops by itself, or I tell you if it could not; nothing starts on its own; Sentry Mode has to be on for the car to hear you</string>
     <string name="opt_alerts_climate_seats_off">Leave them alone</string>
     <string name="opt_alerts_climate_seats_driver">Driver only</string>
     <string name="opt_alerts_climate_degrees">%d °C</string>

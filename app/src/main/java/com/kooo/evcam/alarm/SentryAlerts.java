@@ -334,6 +334,19 @@ public final class SentryAlerts implements Telemetry.Listener {
     private volatile boolean climateKnown;
     /** 这一趟停车的号：写和自动关都带着它，车开走了就当没发生。 */
     private volatile int climateSession;
+    /**
+     * 自动关这一条链的号：每排一次、每取消一次都 +1，链里的每一步先对号再动手。
+     *
+     * <p>没有它的时候两条链能同时在跑：{@code scheduleClimateOff} 在主线程上取消再赋值，而
+     * {@code alert-climate} 线程上的重试可能在那之后才赋值，于是旧链照样写车、照样说话 ——
+     * 重复的写、重复的聊天。号对不上就什么都别做。</p>
+     *
+     * The auto-off chain's generation: every schedule and every cancel bumps it, and each step checks it
+     * before doing anything. Without it two chains could run at once — a retry on the alert-climate thread
+     * can assign after the main thread has cancelled and re-armed — which means duplicate writes and
+     * duplicate chat lines.
+     */
+    private volatile int climateOffGeneration;
 
     /** {@link ClimateSource} 要的功能号与区域：名字从这里来，不写死号码。 */
     private static final ClimateSource.Names CLIMATE_NAMES = new ClimateSource.Names() {
@@ -2235,7 +2248,13 @@ public final class SentryAlerts implements Telemetry.Listener {
                 blockedChannel(staleChannel);
                 return;
             }
-            deliverText(staleChannel, app.getString(R.string.alert_climate_stale_button));
+            // 关的那一颗不能回「要开就说 ac on 22」：那是反着的动作，按下去的人会以为按钮坏了。
+            // The OFF button must not be answered "send ac on 22": that is the opposite action, and the
+            // person who pressed it reads it as a broken button.
+            deliverText(staleChannel, app.getString(
+                    AlertButton.ACTION_CLIMATE_OFF.equals(staleClimate)
+                            ? R.string.alert_climate_stale_off_button
+                            : R.string.alert_climate_stale_button));
             return;
         }
         String action = AlertButton.actionFor(data, alertToken);
@@ -3182,13 +3201,20 @@ public final class SentryAlerts implements Telemetry.Listener {
      * the reading has been over the line is the policy's own timer.</p>
      */
     private void climateCheck(VehicleState state, Readings readings) {
-        if (!config.isAlertsClimateEnabled()) {
-            return;
-        }
+        // 「开走了」先判，排在开关前面：车主把温度开关关掉再开走，也必须在离 P 那一刻把自动关那条链
+        // 取消掉。排在开关后面时这条提前返回，链留着，十分钟后重试到「丢手」，在车主开着空调开车时
+        // 说一句「没能确认为你关了」—— 假消息。
+        // Parked is judged before the switch: leaving P must cancel the auto-off chain silently even
+        // with the cabin switch off. Behind the switch this returned early, left the chain alive, and
+        // it retried to GIVE_UP — telling the owner the AC could not be switched off while they drove
+        // away with it on. A false message.
         boolean parked = parkedNow(state);
         if (!parked) {
             // 开走了：这一趟结束，热 / 冷的计时和次数全部清掉
             climateForgetSession();
+            return;
+        }
+        if (!config.isAlertsClimateEnabled()) {
             return;
         }
         if (!config.isAlertsActive()) {
@@ -3436,6 +3462,13 @@ public final class SentryAlerts implements Telemetry.Listener {
         if (targetC > 0 && (report.powerOn || report.powerWrote)) {
             scheduleClimateOff(config.getAlertsClimateMinutes());
         }
+        // 车主自己关成了：自动关那一条当场取消，不管出口通不通。放在出口判断之前 ——
+        // 出口不通就不取消，等于「空调关了还照样再写一次、再说一句」。
+        // A successful manual off cancels the chain before the channel guard: a blocked channel must not
+        // leave a chain that writes the car again and says one more line about a climate already off.
+        if (targetC == 0 && report.outcome == ClimateSource.Outcome.DONE) {
+            cancelClimateOff();
+        }
         AlertChannel channel = channel();
         if (!channel.ready()) {
             blockedChannel(channel);
@@ -3455,7 +3488,6 @@ public final class SentryAlerts implements Telemetry.Listener {
                     degrees(report.targetC), seat, offAt);
         } else if (report.outcome == ClimateSource.Outcome.DONE) {
             text = app.getString(R.string.alert_climate_receipt_off);
-            cancelClimateOff();
         } else if (report.outcome == ClimateSource.Outcome.WRONG_UNIT) {
             text = app.getString(R.string.alert_climate_wrong_unit);
         } else if (report.outcome == ClimateSource.Outcome.NO_CHANGE) {
@@ -3475,15 +3507,21 @@ public final class SentryAlerts implements Telemetry.Listener {
      * 问满 3 × minutes 还没见到停着就回一句话。锁车十分钟之后车机已经睡了，读不到是常态 ——
      * 以前把这种常态当成「车在走」，于是空调永远开着，而回执已经写了关的时间。</p>
      *
+     * <p>只对「停着但读不到」重试：车真的开走了，这一趟就结束了（{@link #climateForgetSession}
+     * 连这条链一起取消），再重试、再回一句「关不掉」是错的 —— 空调是车主自己接着开的。</p>
+     *
      * <p>Off in ten minutes, as the receipt promised. The first attempt asks whether the car is parked;
-     * an unreadable state (the normal case once the head unit sleeps) is retried, not treated as "moving".</p>
+     * an unreadable state (the normal case once the head unit sleeps) is retried, not treated as "moving".
+     * Only "parked but unreadable" is retried: a car that drove away ends the session (and its chain), and
+     * telling the owner the AC could not be switched off would be wrong — it is on because they left it on.</p>
      */
     private void scheduleClimateOff(int minutes) {
         cancelClimateOff();
         final int level = config.getAlertsClimateSeatLevel();
         final long firstAt = climateOffClock.nowMs();
+        final int generation = climateOffGeneration;
         climateOffPending = climateWork.schedule(
-                () -> attemptClimateOff(minutes, level, firstAt),
+                () -> attemptClimateOff(minutes, level, firstAt, generation),
                 minutes, java.util.concurrent.TimeUnit.MINUTES);
         BlackBox.note("alerts: climate auto-off in " + minutes + " min");
     }
@@ -3493,13 +3531,27 @@ public final class SentryAlerts implements Telemetry.Listener {
      * 并在聊天里说一句（回执上写了关的时刻，关不掉就不能闷着）。
      *
      * <p>写不写只看「是不是确实停着」，不看这一趟停车的号：关空调是安全动作，换了一趟车也照样安全。
-     * The write depends on the parked confirmation only, never on the park session: switching off is safe
-     * whatever session it is.</p>
+     * 链本身带号（{@link #climateOffGeneration}）：被取消过的那条链（车开走了、车主自己关了、重新排了一次）
+     * 每一步都先对号，对不上就停手 —— 不写车，也不说话。</p>
+     *
+     * <p>The write depends on the parked confirmation only, never on the park session: switching off is safe
+     * whatever session it is. The chain itself carries a generation: once cancelled, each step checks the
+     * number and stops — no write and no chat line.</p>
      *
      * @param firstAt 第一次尝试的时刻（{@code elapsedRealtime}）
      */
     void attemptClimateOff(final int minutes, final int level, final long firstAt) {
+        attemptClimateOff(minutes, level, firstAt, climateOffGeneration);
+    }
+
+    /** 同上，带这一条链的号（{@link #climateOffGeneration}）。The same, with this chain's generation. */
+    private void attemptClimateOff(final int minutes, final int level, final long firstAt,
+                                   final int generation) {
         try {
+            if (!climateOffCurrent(generation)) {
+                BlackBox.note("alerts: climate auto-off chain was dropped, nothing to do");
+                return;
+            }
             VehicleState state = Telemetry.get().latest();
             // 读不到挡位不等于 P：写之前要一个「确实停着」的读数。
             // An unreadable gear is not P: the write waits for a positive parked reading.
@@ -3507,18 +3559,33 @@ public final class SentryAlerts implements Telemetry.Listener {
             ClimateOffGuard.Step step = ClimateOffGuard.step(firstAt, climateOffClock.nowMs(),
                     minutes, parked);
             if (step == ClimateOffGuard.Step.RETRY) {
+                if (!climateOffCurrent(generation)) {
+                    BlackBox.note("alerts: climate auto-off chain was dropped while waiting");
+                    return;
+                }
                 BlackBox.note("alerts: climate auto-off waits for a parked reading, retrying");
                 climateOffPending = climateWork.schedule(
-                        () -> attemptClimateOff(minutes, level, firstAt),
+                        () -> attemptClimateOff(minutes, level, firstAt, generation),
                         climateOffRetryMs, java.util.concurrent.TimeUnit.MILLISECONDS);
                 return;
             }
             if (step == ClimateOffGuard.Step.GIVE_UP) {
+                // 对不上号就不许清 pending（那是新链的）也不许说话。
+                // A stale chain must not clear a newer chain's pending nor say anything.
+                if (!climateOffCurrent(generation)) {
+                    return;
+                }
                 climateOffPending = null;
                 BlackBox.note("alerts: climate auto-off gave up, the car never reported being parked");
                 // 回执上写了几点关：关不掉就要说一声。
                 // The receipt promised an off time, so not switching off has to be said out loud.
+                if (!climateOffCurrent(generation)) {
+                    return;
+                }
                 deliverText(channel(), app.getString(R.string.alert_climate_off_unconfirmed));
+                return;
+            }
+            if (!climateOffCurrent(generation)) {
                 return;
             }
             climateOffPending = null;
@@ -3526,6 +3593,12 @@ public final class SentryAlerts implements Telemetry.Listener {
                     CLIMATE_NAMES, SystemClock::sleep,
                     new ClimateSource.Plan(false, 0f, true, false, false, level));
             app.getMainExecutor().execute(() -> {
+                if (!climateOffCurrent(generation)) {
+                    // 写的时候这一条被取消了：读回的结果不归它了，也不要再说话。
+                    // Cancelled while the write was in flight: the readback belongs to nobody now.
+                    BlackBox.note("alerts: climate auto-off from a dropped chain, result dropped");
+                    return;
+                }
                 if (report.outcome == ClimateSource.Outcome.DONE) {
                     climateBelievedOn = false;
                     climateKnown = true;
@@ -3536,6 +3609,9 @@ public final class SentryAlerts implements Telemetry.Listener {
                 if (report.outcome != ClimateSource.Outcome.DONE) {
                     // 回执上写了几点关，设关掉就要说一声。
                     // The receipt promised an off time, so a failure has to be said out loud.
+                    if (!climateOffCurrent(generation)) {
+                        return;
+                    }
                     deliverText(channel(), app.getString(R.string.alert_climate_no_change_plain));
                 }
             });
@@ -3544,7 +3620,22 @@ public final class SentryAlerts implements Telemetry.Listener {
         }
     }
 
+    /** 这一条链还该不该动手：号对得上才行。Whether this chain may still act: the number has to match. */
+    private boolean climateOffCurrent(int generation) {
+        return generation == climateOffGeneration;
+    }
+
+    /**
+     * 取消自动关这一条链，并把号 +1：已经跑起来的那一步看到号变了就停手。
+     *
+     * <p>号每取消一次都 +1，所以「取消之后马上又排上一条新链」也不会让旧链以为自己还是新的。</p>
+     *
+     * Cancel the auto-off chain and bump the generation, so a step already running sees the change and stops.
+     * The bump happens even when nothing was pending, so a cancelled-then-re-armed chain cannot mistake itself
+     * for the current one.
+     */
     private void cancelClimateOff() {
+        climateOffGeneration++;
         java.util.concurrent.ScheduledFuture<?> pending = climateOffPending;
         if (pending != null) {
             pending.cancel(false);
@@ -3559,8 +3650,19 @@ public final class SentryAlerts implements Telemetry.Listener {
         climateForgetSession();
     }
 
-    /** 这一趟停车结束（开走了）：热 / 冷的计时和次数清掉，别把这一趟的警报压到下一趟。 */
+    /**
+     * 这一趟停车结束（开走了）：热 / 冷的计时和次数清掉，别把这一趟的警报压到下一趟；
+     * 排着的那一个自动关也一起取消 —— 车开走了，十分钟后回来关它是错的。
+     *
+     * <p>取消是安静的：不写车，也不在聊天里说一句。只有「停着但读不到」才值得重试。</p>
+     *
+     * The parking episode ends (the car drove off): drop this session's timers and counts, and cancel the
+     * pending auto-off too — the AC runs on because the owner is driving, so switching it off ten minutes
+     * later would be wrong. The cancel is silent: no write, no chat line. Only "parked but unreadable" is
+     * worth retrying.
+     */
     private void climateForgetSession() {
+        cancelClimateOff();
         climateBelievedOn = false;
         climateKnown = false;
         // 换一个号也叫按钮过期：昨天那条「ac 22」不能对今天这趟车起作用。
