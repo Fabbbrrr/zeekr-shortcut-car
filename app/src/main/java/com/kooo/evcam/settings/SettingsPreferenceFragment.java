@@ -1151,7 +1151,7 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             family.setValue(familySpec.sanitize(appConfig.getAlertsFamily()));
             family.setOnPreferenceChangeListener((preference, newValue) -> {
                 appConfig.setAlertsFamily(String.valueOf(newValue));
-                com.kooo.evcam.blackbox.BlackBox.noteImportant("设置变更: pref_alerts_family → " + newValue);
+                com.kooo.evcam.blackbox.BlackBox.noteImportant("setting change: alerts_family = " + newValue);
                 showAlertsRows();
                 return true;
             });
@@ -1436,9 +1436,9 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         boolean sentry = alertsOn && FAMILY_SENTRY.equals(family);
         boolean climate = alertsOn && FAMILY_CLIMATE.equals(family);
 
-        // 暂停那一行只在真暂停、总开关开着、而且这一栏看的是哨兵时出现。
-        // The paused row shows only while it really is paused, the master switch is on, and sentry is picked.
-        show("pref_alerts_paused", sentry && appConfig.isAlertsPaused());
+        // 暂停那一行和哪一栏无关：车主在聊天里关了警报，换到哪一栏都得看得见怎么打开。
+        // The paused row is family-independent: wherever the owner looks, the way back must be there.
+        show("pref_alerts_paused", alertsOn && appConfig.isAlertsPaused());
 
         // ---- 哨兵：什么时候发、照片、短视频、忘了开哨兵的那几行
         // Sentry: when it fires, the picture, the clip, and the Forgot Sentry rows.
@@ -1446,9 +1446,14 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         show("pref_alerts_arm_delay", sentry);
         show("pref_alerts_motion_sensitivity", sentry && com.kooo.evcam.alarm.policy.TriggerSet
                 .parse(appConfig.getAlertsTriggers()).has(com.kooo.evcam.alarm.policy.TriggerSet.MOTION));
-        show("pref_alerts_guard", sentry);
-        show("pref_alerts_guard_home", sentry);
-        show("pref_alerts_guard_everywhere", sentry);
+        // 忘了开哨兵那几行和哪一栏无关，但跟出口有关：按钮是 callback_query，ntfy 没有回程，
+        // 所以真正走 ntfy 时它们不出现（和 4.5 之前一样）。
+        // The Forgot Sentry rows are family-independent but transport-dependent: the buttons are
+        // callback_query, and ntfy has no return path, so they stay hidden on ntfy (unchanged).
+        boolean guardRows = alertsOn && !ntfy;
+        show("pref_alerts_guard", guardRows);
+        show("pref_alerts_guard_home", guardRows);
+        show("pref_alerts_guard_everywhere", guardRows);
         show("cat_alerts_picture", sentry);
         boolean picturesOn = sentry && appConfig.isAlertsPictureEnabled();
         show("pref_alerts_picture", picturesOn);
@@ -1463,9 +1468,12 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // Notifications: the two exits are exclusive, plus the rows inside "Checks".
         show("cat_alerts_telegram", notifications && !ntfy);
         show("cat_alerts_ntfy", notifications && ntfy);
-        show("cat_alerts_checks", notifications);
-        show("pref_alerts_probe", notifications);
-        show("pref_alerts_events", notifications);
+        // 检查那几行和哪一栏无关：配出口、看事件清单都要能随手点开。
+        // The checks rows are family-independent: configuring the exit or opening the event list should
+        // not require switching family first.
+        show("cat_alerts_checks", alertsOn);
+        show("pref_alerts_probe", alertsOn);
+        show("pref_alerts_events", alertsOn);
         show("pref_alerts_ntfy_setup", notifications && ntfy);
         show("pref_alerts_ntfy_topic", notifications && ntfy);
         show("pref_alerts_ntfy_paid", notifications && ntfy);
@@ -1479,11 +1487,12 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // 命令那一行只给开发者选项里的人；免费档上它还在，但点不动，理由就写在同一行下面，
         // 不另开一句。note 那一条只在免费档出现 —— 付费档的人已经能开，不需要那句解释。
         // The command row exists only with developer options open. On the free tier it stays and is
-        // disabled, with the reason appended to its own summary; the note row shows only on the free
-        // tier, because a paid owner can simply turn it on.
+        // disabled, with the reason appended to its own summary. The note explains that disabled row, so
+        // it shows only where the row does (developer options open) and only on the free tier.
         boolean developer = DeveloperMode.isUnlocked();
         show("pref_alerts_ntfy_commands", notifications && ntfy && developer);
-        show("pref_alerts_ntfy_commands_note", notifications && ntfy && !appConfig.isAlertsNtfyPaid());
+        show("pref_alerts_ntfy_commands_note", notifications && ntfy && developer
+                && !appConfig.isAlertsNtfyPaid());
         block("pref_alerts_ntfy_commands",
                 appConfig.isAlertsNtfyPaid() ? null : getString(R.string.set_alerts_ntfy_commands_needs_paid));
 
@@ -3398,6 +3407,11 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         if (appConfig == null || getPreferenceScreen() == null || getContext() == null) {
             return;
         }
+        // 警报那几行的可见性也照现在的设置重算：聊天里发过 alerts off、
+        // 或者哨兵开关被别处改过，回到这一页就该看见。
+        // The alert rows are recomputed here too: after `alerts off` from the chat, or a switch changed
+        // elsewhere, coming back to this page must show it.
+        showAlertsRows();
         boolean mirror = appConfig.isRearViewEnabled();
         show("pref_rearview_switch_mode", mirror);
         show("pref_rearview_camera_label", mirror);

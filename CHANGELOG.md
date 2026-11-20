@@ -9,6 +9,11 @@ commit message, not here.
 
 ## [Unreleased]
 
+- Alerts: **cabin temperature**. While parked, the car says in the chat when the cabin has been too hot
+  or too cold for ten minutes — and, with a seat occupied at 35 °C or at 40 °C regardless, whether it
+  is unfit for people. Settings → Alerts → cabin temperature, off by default. The same section answers
+  `ac`, `ac on`, `ac on 22` and `ac off`, switches the climate on at the target and off again ten
+  minutes later, and picks seat heat or ventilation from the delta. Only while the car is awake.
 - Alerts: **Forgot Sentry**. Park away from home with Sentry Mode off and the car says so in the chat,
   with a button to switch it on — and switches it on 60 s later by itself unless you say no. Four
   modes under Settings → Alerts, off by default; "Also at home" lifts the away-from-home rule.

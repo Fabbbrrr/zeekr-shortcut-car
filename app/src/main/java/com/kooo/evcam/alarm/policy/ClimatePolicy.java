@@ -325,6 +325,11 @@ public final class ClimatePolicy {
 
         if (cabin >= hotC) {
             coldHolding = false;
+            if (quietNow) {
+                // 安静时段：舒适那种到点也不发，而且不占掉这一段（占了的话天亮也不会再报）。
+                // Quiet hours: a comfort alert holds off and does not latch, so daylight still gets one.
+                return none("quiet hours");
+            }
             if (hotLatched) {
                 return none("hot latched");
             }
@@ -345,6 +350,9 @@ public final class ClimatePolicy {
         }
 
         if (cabin <= coldC) {
+            if (quietNow) {
+                return none("quiet hours");
+            }
             if (coldLatched) {
                 return none("cold latched");
             }

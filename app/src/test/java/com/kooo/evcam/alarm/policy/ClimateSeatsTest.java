@@ -76,6 +76,17 @@ public class ClimateSeatsTest {
     }
 
     @Test
+    public void aNegativeBandAsksForNeither() {
+        // 回差写错成负数（配置坏了）：加热看「车里 < 目标 + 2」、通风看「车里 > 目标 - 2」，
+        // 同一个读数两边都成立。那就哪个都不动 —— 同时加热又通风是在让两个执行器对着干。
+        float cabin = TARGET_C;
+        assertTrue("加热条件成立", cabin < TARGET_C - (-2f));
+        assertTrue("通风条件也成立", cabin > TARGET_C + (-2f));
+        Choice choice = ClimateSeats.choose(cabin, TARGET_C, 20f, -2f, 25f, 15f);
+        assertFalse("两个执行器不能对着干", choice.heat || choice.vent);
+    }
+
+    @Test
     public void heatAndVentAreNeverAskedForTogetherAcrossTheWholeMatrix() {
         boolean both = false;
         for (float cabin = -10f; cabin <= 50f; cabin += 0.5f) {

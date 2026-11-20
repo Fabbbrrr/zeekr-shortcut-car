@@ -102,7 +102,7 @@ public class ClimateSourceTest {
     @Test
     public void onRefusesWhenMinValueIsMissingAndWritesNothing() {
         FakeCar car = car();
-        car.ints.remove(TEMP_MIN + "@" + DRIVER);
+        car.floats.remove(TEMP_MIN + "@" + DRIVER);
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 
@@ -150,18 +150,41 @@ public class ClimateSourceTest {
 
     @Test
     public void onRefusesTargetOutsideTheRangeByMoreThanOneStep() {
-        FakeCar car = car();
+        FakeCar car = car();   // 16.0–31.0，一档 0.5
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(35f, true, true));
+
+        assertEquals(ClimateSource.Outcome.REFUSED, report.outcome);
+        assertNoWrites(car);
+        assertEquals("没写就没有设定温度", 0f, report.targetC, 0f);
+        assertTrue(report.detail, report.detail.contains("outside range"));
+    }
+
+    /** 以前超出一步以内夹回范围再写：那会写一个车主没要的温度。现在范围之外一律不写。 */
+    @Test
+    public void onRefusesATargetOneStepAboveTheRange() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(31.4f, false, false));
 
         assertEquals(ClimateSource.Outcome.REFUSED, report.outcome);
         assertNoWrites(car);
     }
 
     @Test
-    public void onSnapsTargetToTheCarsStep() {
+    public void onRefusesATargetOneStepBelowTheRange() {
         FakeCar car = car();
-        car.putInt(TEMP_STEP, DRIVER, 5);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(15.7f, false, false));
+
+        assertEquals(ClimateSource.Outcome.REFUSED, report.outcome);
+        assertNoWrites(car);
+    }
+
+    @Test
+    public void onSnapsToTheCarsFiveDegreeStep() {
+        FakeCar car = car();
+        car.putFloat(TEMP_STEP, DRIVER, 5f);
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.4f, false, false));
 
@@ -171,8 +194,9 @@ public class ClimateSourceTest {
     }
 
     @Test
-    public void onSnapsFractionalTargetDownToWholeStep() {
+    public void onSnapsToAWholeDegreeStep() {
         FakeCar car = car();
+        car.putFloat(TEMP_STEP, DRIVER, 1f);
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.4f, false, false));
 
@@ -181,8 +205,20 @@ public class ClimateSourceTest {
         assertTrue(car.calls.contains("writeCustom " + TEMP + "@" + DRIVER + "=22.0"));
     }
 
+    /** 这台车一档 0.5 度：22.4 落在 22.5 那一格上（不是 22.0 —— 整数通道给不出这个数）。 */
     @Test
-    public void onKeepsHalfDegreeTargetWhenTheCarHasWholeSteps() {
+    public void onSnapsToTheCarsHalfDegreeStep() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.4f, false, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22.5f, report.targetC, 1e-3f);
+        assertTrue(car.calls.contains("writeCustom " + TEMP + "@" + DRIVER + "=22.5"));
+    }
+
+    @Test
+    public void onKeepsATargetAlreadyOnTheCarsGrid() {
         FakeCar car = car();
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(23f, false, false));
@@ -192,15 +228,95 @@ public class ClimateSourceTest {
         assertTrue(car.calls.contains("writeCustom " + TEMP + "@" + DRIVER + "=23.0"));
     }
 
+    /** 半步写下去原样出现在浮点通道上：整型通道只会把 22.5 截成 22。 */
     @Test
-    public void onClampsATargetOneStepOutside() {
+    public void onWritesAHalfDegreeTargetThroughTheFloatChannel() {
         FakeCar car = car();
 
-        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(30.6f, false, false));
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.5f, false, false));
 
         assertEquals(ClimateSource.Outcome.DONE, report.outcome);
-        assertEquals(30f, report.targetC, 1e-3f);
-        assertTrue(car.calls.contains("writeCustom " + TEMP + "@" + DRIVER + "=30.0"));
+        assertEquals(22.5f, report.targetC, 1e-3f);
+        assertTrue(car.calls.contains("writeCustom " + TEMP + "@" + DRIVER + "=22.5"));
+        assertTrue("范围、步长都从浮点通道读：" + report.detail,
+                report.detail.contains("range 16.0..31.0 step 0.50"));
+    }
+
+    // ================================================================= 开：读回
+
+    /** 读回在半档以内（这里 0.4 档 = 0.2 度）算做到，正负都一样。 */
+    @Test
+    public void onReadBackWithinHalfAStepIsDone() {
+        for (float offset : new float[] {0.2f, -0.2f}) {
+            FakeCar car = car();
+            car.readBackOffset.put(TEMP + "@" + DRIVER, offset);
+            FakeClock clock = new FakeClock();
+
+            ClimateSource.Report report = ClimateSource.apply(car, names(), clock, on(22.5f, false, false));
+
+            assertEquals("读回 22.5 " + (offset > 0 ? "+" : "-") + " 0.2 该算做到",
+                    ClimateSource.Outcome.DONE, report.outcome);
+            assertEquals("第一次读回就对上了", 1, clock.sleeps);
+        }
+    }
+
+    /** 读回超过半档（这里 0.6 档 = 0.3 度）就是没做到，哪怕读数看起来也像个整档。 */
+    @Test
+    public void onReadBackBeyondHalfAStepIsNoChange() {
+        for (float offset : new float[] {0.3f, -0.3f}) {
+            FakeCar car = car();
+            car.readBackOffset.put(TEMP + "@" + DRIVER, offset);
+
+            ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.5f, false, false));
+
+            assertEquals("读回 22.5 " + (offset > 0 ? "+" : "-") + " 0.3 该算没变",
+                    ClimateSource.Outcome.NO_CHANGE, report.outcome);
+            assertTrue("开关是开的，只是温度没对上", report.powerOn);
+            assertEquals(22.5f, report.targetC, 1e-3f);
+        }
+    }
+
+    // ================================================================= 开：座椅档位
+
+    @Test
+    public void onSeatLevelZeroClampsToTheFirstStep() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(),
+                new ClimateSource.Plan(true, 22f, true, true, false, 0));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(car.calls.toString(),
+                car.calls.contains("write " + SEAT_HEAT + "@" + DRIVER + "=" + (SEAT_HEAT + 1)));
+        assertFalse(car.calls.contains("write " + SEAT_HEAT + "@" + DRIVER + "=" + SEAT_HEAT));
+    }
+
+    @Test
+    public void onSeatLevelNineClampsToTheTopStep() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(),
+                new ClimateSource.Plan(true, 22f, true, false, true, 9));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(car.calls.toString(),
+                car.calls.contains("write " + SEAT_VENT + "@" + DRIVER + "=" + (SEAT_VENT + 3)));
+    }
+
+    // ================================================================= 开：单位那个号不在
+
+    /** 车机没有 {@code HVAC_FUNC_TEMP_UNIT}：当「不报单位」，照常写（不是 WRONG_UNIT，也不是 NO_RANGE）。 */
+    @Test
+    public void onMissingUnitFunctionStillWrites() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names().without("HVAC_FUNC_TEMP_UNIT"),
+                new FakeClock(), on(22f, true, true));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.contains("writeCustom " + TEMP + "@" + DRIVER + "=22.0"));
+        assertTrue(report.detail, report.detail.contains("no HVAC_FUNC_TEMP_UNIT"));
     }
 
     // ================================================================= 开：写
@@ -311,7 +427,8 @@ public class ClimateSourceTest {
     @Test
     public void onUnknownSetpointReadbackIsNoChange() {
         FakeCar car = car();
-        car.customReads = false;
+        // 范围读得到、设定值读不回：通道在，那几个温度号就是不回值。
+        car.nullCustomReads.add(TEMP);
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 
@@ -357,15 +474,15 @@ public class ClimateSourceTest {
     }
 
     @Test
-    public void defaultFloatChannelMeansTheUnitCannot() {
+    public void defaultFloatChannelMeansNoRangeSoNothingIsWritten() {
         FakeCar car = car();
         car.customWrites = false;
         car.customReads = false;
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 
-        assertEquals(ClimateSource.Outcome.REFUSED, report.outcome);
-        assertFalse(car.calls.contains("write " + POWER + "@" + FRONT + "=1"));
+        assertEquals("读不到范围就不写", ClimateSource.Outcome.NO_RANGE, report.outcome);
+        assertNoWrites(car);
     }
 
     @Test
@@ -414,7 +531,7 @@ public class ClimateSourceTest {
         }
         assertTrue(report.detail, report.detail.contains("0x" + Integer.toHexString(POWER).toUpperCase()));
         assertTrue(report.detail, report.detail.contains("0x" + Integer.toHexString(TEMP).toUpperCase()));
-        assertTrue(report.detail, report.detail.contains("read min@0x1=16"));
+        assertTrue(report.detail, report.detail.contains("read min@0x1=16.00"));
         assertTrue(report.detail, report.detail.contains("write temp"));
     }
 
@@ -438,9 +555,14 @@ public class ClimateSourceTest {
         assertEquals(Float.valueOf(22f), ClimateSource.snapped(22f, 16, 30, 1));
         assertEquals(Float.valueOf(22f), ClimateSource.snapped(22.4f, 16, 30, 1));
         assertEquals(Float.valueOf(21f), ClimateSource.snapped(22.4f, 16, 30, 5));
-        assertEquals(Float.valueOf(30f), ClimateSource.snapped(30.6f, 16, 30, 1));
-        assertEquals(Float.valueOf(16f), ClimateSource.snapped(15.4f, 16, 30, 1));
+        assertEquals("半步的车把 22.4 对到 22.5", Float.valueOf(22.5f),
+                ClimateSource.snapped(22.4f, 16, 31, 0.5f));
+        assertEquals("整数通道给不出这个值", Float.valueOf(22.5f),
+                ClimateSource.snapped(22.5f, 16, 31, 0.5f));
+        assertEquals(Float.valueOf(30f), ClimateSource.snapped(30f, 16, 30, 1));
+        assertEquals("范围外一步都不行", null, ClimateSource.snapped(30.6f, 16, 30, 1));
         assertEquals(null, ClimateSource.snapped(31.5f, 16, 30, 1));
+        assertEquals(null, ClimateSource.snapped(15.4f, 16, 30, 1));
         assertEquals(null, ClimateSource.snapped(14.9f, 16, 30, 1));
         assertEquals(null, ClimateSource.snapped(22f, 16, 30, 0));
         assertEquals(null, ClimateSource.snapped(22f, 30, 16, 1));
@@ -467,12 +589,12 @@ public class ClimateSourceTest {
         }
     }
 
-    /** 车机照 {@link #car()} 给的范围：16–30，一档一度。 */
+    /** 车机照 {@link #car()} 给的范围：16.0–31.0，一档 0.5（温度类的号走浮点通道，整数读会把 0.5 截成 0）。 */
     private static FakeCar car() {
         FakeCar car = new FakeCar();
-        car.putInt(TEMP_MIN, DRIVER, 16);
-        car.putInt(TEMP_MAX, DRIVER, 30);
-        car.putInt(TEMP_STEP, DRIVER, 1);
+        car.putFloat(TEMP_MIN, DRIVER, 16f);
+        car.putFloat(TEMP_MAX, DRIVER, 31f);
+        car.putFloat(TEMP_STEP, DRIVER, 0.5f);
         car.putInt(TEMP_UNIT, DRIVER, UNIT_C);
         car.putInt(POWER, FRONT, 0);
         car.putFloat(TEMP, DRIVER, 21f);
@@ -537,16 +659,21 @@ public class ClimateSourceTest {
 
     /**
      * 假的车辆接口：值按「号@区域」存；写了照写进去，也可以不受理（{@link #refused}）、受理了不变（{@link #ignored}）、
-     * 读的时候抛（{@link #throwOn}）。浮点通道可以整个没有（{@link #customWrites}、{@link #customReads}）。
+     * 读的时候抛（{@link #throwOn}）。浮点通道可以整个没有（{@link #customWrites}、{@link #customReads}）；
+     * 读回可以比写下去的多（少）一点（{@link #readBackOffset}）。
      */
     private static final class FakeCar implements CarAccess {
         final FakeNames names = new FakeNames();
         final Map<String, Integer> ints = new HashMap<>();
         final Map<String, Float> floats = new HashMap<>();
+        /** 读回时加上的零头：车机把设定值存成了不是原样的数。 */
+        final Map<String, Float> readBackOffset = new HashMap<>();
         final List<String> calls = new ArrayList<>();
         final Set<String> refused = new HashSet<>();
         final Set<String> ignored = new HashSet<>();
         final Set<Integer> throwOn = new HashSet<>();
+        /** 浮点通道里少数几个号不回报值（范围报、设定值不报）。 */
+        final Set<Integer> nullCustomReads = new HashSet<>();
         boolean customWrites = true;
         boolean customReads = true;
         String throwText = "boom";
@@ -605,7 +732,18 @@ public class ClimateSourceTest {
         @Override
         public Float readCustom(int id, int zone) {
             calls.add("readCustom " + id + "@" + zone);
-            return customReads ? floats.get(writeKey(id, zone)) : null;
+            if (throwOn.contains(id)) {
+                throw new IllegalStateException(throwText);
+            }
+            if (!customReads || nullCustomReads.contains(id)) {
+                return null;
+            }
+            Float value = floats.get(writeKey(id, zone));
+            Float offset = readBackOffset.get(writeKey(id, zone));
+            if (value == null || offset == null) {
+                return value;
+            }
+            return Float.valueOf(value + offset);
         }
 
         @Override

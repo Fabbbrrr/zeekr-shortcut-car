@@ -97,6 +97,10 @@ Optional, in the same section:
   switches it on 60 s later unless you say no. It only works while the car is awake — about five
   minutes — so a button refuses politely after three. "Also at home" makes it apply everywhere.
 - **Quiet hours**: no alerts between two times, for the nights the car is at home.
+- **Cabin temperature**: the car also reports how hot or cold it is inside, and says so while it is
+  parked — ten minutes of fresh readings first, so it does not shout about a single hot minute. It
+  also answers `ac on 22` (or `ac`, `ac off`) in the chat and switches the climate on with a
+  ten-minute auto-off. That reply needs the head unit awake, which is what Sentry Mode keeps it.
 
 **What it cannot see.** The car reports no impact, horn or tamper signal, so a knock that lights nothing
 and opens nothing stays invisible. Cameras also need Sentry Mode to keep the head unit awake.

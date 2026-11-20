@@ -128,14 +128,14 @@ Two facts that matter more than the ids:
 ### 3.3 The wake question
 
 `SentryAlerts` already knows the head unit only stays awake while sentry mode is on
-(`sentryOn()` at `:1793`). Every alert feature therefore assumes sentry mode, and the Sentry page
-already sells that to the user. Climate alerts ride the same window:
+(`sentryOn()` at `:1793`). Climate alerts ride the same window for **reading**:
 
-> **Sentry off = car asleep = we cannot read the cabin, and an `AC ON` reply would never be heard.**
+> **Sentry off = car asleep = we cannot read the cabin, so there is nothing to alert on.**
 
-That is not a defect to fix; it is the same contract the rest of the feature already has. It does
-mean the climate page must state it, and the help text should say it, in the same words the
-existing `alert_cmd_no_sentry` string uses.
+The reply half of that sentence did not survive the branch: `SentryAlerts.syncPoller()` no longer
+requires sentry mode at all (corrected in §7 item 5). Reading still needs an awake head unit, so
+the climate page must say the reading half, in the same words the existing `alert_cmd_no_sentry`
+string uses.
 
 ---
 
@@ -150,7 +150,7 @@ seat occupancy, quiet-hours state, minutes since the last climate alert.
 |---|---|---|---|
 | **Comfort hot** | parked, HVAC **off**, cabin ≥ `hotLimit` (default 30 °C), held for ≥ 10 min of fresh samples | respected | once per park session; re-arms 3 °C below the limit |
 | **Comfort cold** | same, cabin ≤ `coldLimit` (default 5 °C) | respected | same |
-| **Safety** | parked, cabin ≥ 35 °C **and** a seat occupied (`SEAT_*` ≠ empty/unknown), or cabin ≥ 40 °C regardless | **bypassed** | every 15 min while true, max 4 |
+| **Safety** | parked, cabin ≥ 35 °C **and** a seat occupied (`SEAT_*` ≠ empty/unknown), or cabin ≥ 40 °C regardless | **bypassed** | every 15 min while true, max 3 |
 
 Design rules that are not negotiable:
 
@@ -244,11 +244,18 @@ an *automatic* path (see §8).
 4. **A sleeping car cannot be monitored.** Sentry off, or the bus asleep, means the 42 °C afternoon
    goes unreported. The alert can only promise "while the car is awake and sentry is on". Say it in
    the settings summary.
-5. **The reply path has a gate and a window.** Telegram polling only runs while sentry is on
-   (`pollerOn = sentryOn()`, `SentryAlerts:1222`); ntfy only listens for 5 minutes after a message
-   (`NTFY_COMMAND_WINDOW_MS`, `:289`). So on ntfy, an `AC ON` sent 20 minutes after the alert is
-   never read. Fix options: extend the ntfy window for climate alerts, or accept Telegram as the
-   only transport where a delayed reply works. Neither is a foundation change; both are policy.
+5. **The reply path has a gate and a window.** Telegram polling is gated on settings only, not on
+   sentry mode: `syncPoller()` asks for alerts on, token and chat id filled, command replies
+   allowed, and ntfy not the chosen transport — `boolean want = config.isAlertsEnabled() &&
+   config.hasAlertsTelegramConfig() && config.isAlertsCommands() && !config.isAlertsNtfy()`
+   (`SentryAlerts.java:600` in `syncPoller`, `:595`). The comment above it records why the old
+   sentry requirement was wrong: after locking, the bus sleeps, the sentry reading comes back null,
+   and the poller never started. The ntfy five-minute window still holds
+   (`NTFY_COMMAND_WINDOW_MS = 5 * 60_000L`, `SentryAlerts.java:367`, window opened in
+   `startNtfyCommands` at `:3039`), so on ntfy an `AC ON` sent 20 minutes after the alert is never
+   read, while on Telegram it is read while the process is alive. Fix options: extend the ntfy
+   window for climate alerts, or accept Telegram as the only transport where a delayed reply works.
+   Neither is a foundation change; both are policy.
 6. **Process death leaves the climate on.** The scheduled off dies with the process. The car's own
    remote-climate timeout may cover it (most do, ~30 min) — **unknown**. Keep the command window
    short and say the cap in the receipt.
@@ -352,6 +359,10 @@ and the master switch needs a home.
 **Recommendation: A**, with B as the fallback if the segmented row reads badly on the car screen.
 A solves the clutter without spending the one remaining level.
 
+The branch shipped **A**: one segmented family picker (`pref_alerts_family`,
+`SettingsRegistry.ALERTS_FAMILY`: notifications / sentry / climate) and every family's rows hidden
+in one place, `showAlertsRows` (`SettingsPreferenceFragment.java:1411`).
+
 Where the rows go under A:
 
 | Segment | Rows |
@@ -368,23 +379,25 @@ A/B/C are mocked side by side in `docs/climate-alerts/settings-shapes.html`.
 
 ---
 
-## 11. Work, sliced (disjoint file ownership)
+## 11. What shipped
 
-Only new files unless stated; the two edits to big existing files are called out.
+The slice table is gone; this is the code on the branch.
 
-| # | Slice | Files | Test gate |
-|---|---|---|---|
-| 1 | Read/write the climate surface | `alarm/climate/ClimateSource.java` (new), `telemetry/EcarxSource.java` (edit: two reflected methods + float read) | `ClimateSourceTest` with a fake function interface; decode test for clamp/step |
-| 2 | Policy | `alarm/policy/ClimatePolicy.java` (new), `alarm/policy/ClimateSeats.java` (new, pure matrix) | `ClimatePolicyTest`, `ClimateSeatsTest` — freshness, hysteresis, quiet hours, safety bypass, `alerts off` |
-| 3 | Command | `alarm/telegram/TelegramCommand.java` (edit: verb + target), `TelegramCommandTest` | parse table incl. `ac on 23`, `ac 23`, garbage |
-| 4 | Wire | `alarm/SentryAlerts.java` (edit), `alarm/AlertEvent.java` (edit), `SentryFacts` untouched | `TelegramReplyTest` extension |
-| 5 | Settings | `preferences.xml`, `SettingsPreferenceFragment.java`, `AppConfig.java`, `SettingsRegistry.java`, strings ×3 | `PreferenceKeysTest`, `StringResourceParityTest`, `SettingsShotsTest` (look at the PNG) |
-| 6 | Docs | `docs/climate-alerts/` (case, decisions), `docs/sentry-alerts-spec.md` §1.9, README, CHANGELOG | — |
+- Read and write the climate surface: `app/src/main/java/com/kooo/evcam/alarm/climate/ClimateSource.java`;
+  float channel added in `telemetry/CarAccess.java` (`readCustom` / `writeCustom`) and
+  `telemetry/EcarxSource.java`.
+- Policy: `alarm/policy/ClimatePolicy.java`, `alarm/policy/ClimateSeats.java`.
+- Command: `alarm/telegram/TelegramCommand.java` (`Verb.CLIMATE`, `parseClimate`, `ClimateAction`,
+  `Climate`); ntfy reuses `parseText` as before.
+- Glue: `alarm/SentryAlerts.java` — `climateCheck`, `sendClimateAlert`, `climateMarkup`,
+  `onClimateCommand`, `startClimate`, `onClimateReport`, `scheduleClimateOff`.
+- Settings: family picker `pref_alerts_family` in `res/xml/preferences.xml`, wiring and visibility in
+  `settings/SettingsPreferenceFragment.java` (`showAlertsRows`), keys in `AppConfig.java` and
+  `settings/SettingsRegistry.java`, strings in `values`, `values-en`, `values-ms`.
+- Tests: `ClimateSourceTest`, `ClimatePolicyTest`, `ClimateSeatsTest`, `TelegramCommandTest`.
 
-Estimate: **alert-only** ≈ 1.5–2 focused days including the settings collapse. **Writes** +1–2 days,
-plus the on-car tests, which are the real schedule item. Slice 1 and 2 can run in parallel with
-disjoint files; slices 4 and 5 are the two that touch shared files, so they go last and one at a
-time.
+Not shipped, because it is not a code question: the on-car write test (§9 test 2). §9 and §13 keep
+that gap open.
 
 ---
 

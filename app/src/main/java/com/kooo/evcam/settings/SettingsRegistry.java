@@ -144,8 +144,7 @@ public final class SettingsRegistry {
     public static final SettingSpec ALERTS_CLIMATE_SEATS = SettingSpec.of(
             "alerts_climate_seats", "座椅", "driver",
             entry("off", "不动座椅", R.string.opt_alerts_climate_seats_off),
-            entry("driver", "只主驾", R.string.opt_alerts_climate_seats_driver),
-            entry("front", "主驾和副驾", R.string.opt_alerts_climate_seats_front));
+            entry("driver", "只主驾", R.string.opt_alerts_climate_seats_driver));
 
     public static final SettingSpec SIDE_VIEW_MODE = SettingSpec.of(
             "side_view_mode", "盲区画面情境", com.kooo.evcam.AppConfig.SIDE_VIEW_MODE_STANDARD,

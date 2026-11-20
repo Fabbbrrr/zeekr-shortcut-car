@@ -55,6 +55,21 @@ public class ClimatePolicyTest {
         return read(policy, cabinC, nowMs).kind;
     }
 
+    /** 空调开着时的读数：热 / 冷不发，而且计时作废。 */
+    private static Verdict hvacOn(ClimatePolicy policy, Float cabinC, long nowMs) {
+        return policy.decide(cabinC, null, SOC_OK, true, true, false, false, false, nowMs);
+    }
+
+    /** 电量见底时的读数。 */
+    private static Verdict lowBattery(ClimatePolicy policy, Float cabinC, long nowMs) {
+        return policy.decide(cabinC, null, SOC_FLOOR - 1, true, false, false, false, false, nowMs);
+    }
+
+    /** 安静时段里的读数（舒适那一类不发，安全那一类照发）。 */
+    private static Verdict quiet(ClimatePolicy policy, Float cabinC, long nowMs) {
+        return policy.decide(cabinC, null, SOC_OK, true, false, false, false, true, nowMs);
+    }
+
     @Test
     public void aMovingCarNeverAlertsEvenAtFiftyDegrees() {
         assertEquals(Kind.NONE, policy().decide(50f, null, SOC_OK, false, false, true, false, true, 0)
@@ -145,6 +160,96 @@ public class ClimatePolicyTest {
             last = policy.decide(0f, null, SOC_FLOOR - 1, true, false, false, false, false, now);
         }
         assertEquals(Kind.NONE, last.kind);
+    }
+
+    /**
+     * 空调在半天里打开：那几分钟不能算进那一窗。只看「最后一句是不是 NONE」的测试会把这条错过去 ——
+     * 旧写法到点就发，因为计时从前面那次热一直数着。
+     */
+    @Test
+    public void switchingHvacOnMidHoldRestartsTheHold() {
+        ClimatePolicy policy = policy();
+        read(policy, 33f, 0);
+        read(policy, 33f, 300_000L);
+        assertEquals(Kind.NONE, hvacOn(policy, 33f, 350_000L).kind);
+        assertEquals("空调开着那一段时间不能算进那一窗", Kind.NONE, kind(policy, 33f, 600_000L));
+        read(policy, 33f, 800_000L);
+        read(policy, 33f, 1_000_000L);
+        assertEquals("从空调关掉那一刻重新数满", Kind.NONE, kind(policy, 33f, 1_199_999L));
+        assertEquals(Kind.HOT, kind(policy, 33f, 1_200_000L));
+    }
+
+    /** 同上，电量见底也把那一窗作废。 */
+    @Test
+    public void aBatteryUnderTheFloorMidHoldRestartsTheHold() {
+        ClimatePolicy policy = policy();
+        read(policy, 33f, 0);
+        read(policy, 33f, 300_000L);
+        assertEquals(Kind.NONE, lowBattery(policy, 33f, 350_000L).kind);
+        assertEquals("电量见底那一段时间不能算进那一窗", Kind.NONE, kind(policy, 33f, 600_000L));
+        read(policy, 33f, 800_000L);
+        read(policy, 33f, 1_000_000L);
+        assertEquals(Kind.NONE, kind(policy, 33f, 1_199_999L));
+        assertEquals(Kind.HOT, kind(policy, 33f, 1_200_000L));
+    }
+
+    /** 停一趟回来，上一个停车段的「发过了」不能跟着过来。 */
+    @Test
+    public void resetClearsTheHotLatch() {
+        ClimatePolicy policy = policy();
+        read(policy, 33f, 0);
+        assertEquals(Kind.HOT, kind(policy, 33f, HOLD_MS));
+        assertEquals("发过了，这一趟不再发", Kind.NONE, kind(policy, 33f, HOLD_MS + 60_000L));
+        policy.reset();
+        read(policy, 33f, HOLD_MS + 120_000L);
+        assertEquals("重置之后要重新数满一窗", Kind.NONE,
+                kind(policy, 33f, 2 * HOLD_MS + 60_000L));
+        assertEquals(Kind.HOT, kind(policy, 33f, 2 * HOLD_MS + 120_000L));
+    }
+
+    @Test
+    public void resetClearsTheColdLatch() {
+        ClimatePolicy policy = policy();
+        read(policy, 0f, 0);
+        assertEquals(Kind.COLD, kind(policy, 0f, HOLD_MS));
+        assertEquals("发过了", Kind.NONE, kind(policy, 0f, HOLD_MS + 60_000L));
+        policy.reset();
+        read(policy, 0f, HOLD_MS + 120_000L);
+        assertEquals(Kind.NONE, kind(policy, 0f, 2 * HOLD_MS + 60_000L));
+        assertEquals(Kind.COLD, kind(policy, 0f, 2 * HOLD_MS + 120_000L));
+    }
+
+    /**
+     * 安全那条的间隔从上一条算起，不是从「条件又成立」算起：中间降下来一趟再热回去，
+     * 不能把上限绕过去（不然清一下就是一条新警报）。
+     */
+    @Test
+    public void theSafetyRepeatCountsFromTheLastAlertNotFromTheCondition() {
+        ClimatePolicy policy = policy();
+        assertEquals(Kind.SAFETY, kind(policy, 45f, 0));
+        assertEquals("读数是下来了", Kind.NONE, kind(policy, 22f, 60_000L));
+        assertEquals("还没到一个间隔，回来也不发", Kind.NONE, kind(policy, 45f, 120_000L));
+        assertEquals(Kind.SAFETY, kind(policy, 45f, REPEAT_MS));
+    }
+
+    /**
+     * 安静时段只压舒适那一类，而且不占掉那一段：天亮以后重新数满一窗就发。
+     * 锁上的话（旧写法）安静时段一结束就立刻发，因为「发过了」的标记已经立起来了。
+     */
+    @Test
+    public void quietHoursSuppressComfortWithoutLatching() {
+        ClimatePolicy policy = policy();
+        assertEquals("quiet hours", quiet(policy, 33f, 0).reason);
+        assertEquals("quiet hours", quiet(policy, 33f, 300_000L).reason);
+        assertEquals("满窗也不发", Kind.NONE, quiet(policy, 33f, 600_000L).kind);
+        assertEquals("安全那条不看安静时段", Kind.SAFETY, quiet(policy, 45f, 660_000L).kind);
+
+        ClimatePolicy later = policy();
+        quiet(later, 33f, 0);
+        quiet(later, 33f, 300_000L);
+        read(later, 33f, 660_000L);
+        assertEquals("安静结束以后要重新数满一窗", Kind.NONE, kind(later, 33f, 1_199_999L));
+        assertEquals(Kind.HOT, kind(later, 33f, 1_260_000L));
     }
 
     @Test

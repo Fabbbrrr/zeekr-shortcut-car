@@ -143,10 +143,12 @@
     <string name="alert_climate_hot">车厢 %1$s °C，车外 %2$s °C，空调关着。回「ac on 22」降温，或者点按钮。</string>
     <string name="alert_climate_cold">车厢 %1$s °C，车外 %2$s °C，空调关着。回「ac on 22」升温，或者点按钮。</string>
     <string name="alert_climate_safety">车厢 %1$s °C，座椅上有人。车里有人就马上开空调。</string>
+    <string name="alert_climate_safety_empty">车厢 %1$s °C，车里没人。能开窗就开窗，或者把空调打开。</string>
     <string name="alert_climate_report">车厢 %1$s °C，车外 %2$s °C，目标 %3$s °C，空调%4$s。</string>
     <string name="alert_climate_report_unknown">车厢 ? °C，车外 ? °C，目标 %1$s °C，空调%2$s。</string>
     <string name="alert_climate_state_on">开着</string>
     <string name="alert_climate_state_off">关着</string>
+    <string name="alert_climate_state_unknown">不知道</string>
     <string name="alert_climate_receipt">空调开了，目标 %1$s °C%2$s。%3$s 自动关，除非你说「ac off」。</string>
     <string name="alert_climate_receipt_off">空调关了。</string>
     <string name="alert_climate_seat_heat">，主驾座椅加热</string>
@@ -156,11 +158,12 @@
     <string name="alert_climate_no_range">这台车机不报温度范围，所以什么都没改。</string>
     <string name="alert_climate_wrong_unit">车报的是华氏度，这个版本只设摄氏度。</string>
     <string name="alert_climate_refused">车机不受理这次写入（%1$s）。</string>
+    <string name="alert_climate_refused_plain">车机不受理这条命令，什么都没改。</string>
     <string name="alert_climate_no_change">车机受理了，但车上没变（%1$s）。</string>
+    <string name="alert_climate_no_change_plain">车机受理了，但车厢状态没变。没有再做别的尝试。</string>
     <string name="alert_climate_moving">车没停稳，所以什么都没改。</string>
     <string name="alert_climate_low_battery">电量低于 %1$d%%，所以什么都没改。</string>
     <string name="alert_climate_paused">警报暂停着。先发「alerts on」。</string>
-    <string name="alert_climate_needs_sentry">哨兵模式关着，车机听不到回话。</string>
     <string name="alert_climate_already">车厢 %1$s °C，离 %3$s °C 不到 %2$s °C，不用动。</string>
     <string name="alert_cmd_alerts_on">警报已恢复：车又开始看着了，有动静就发</string>
     <string name="alert_cmd_alerts_off">警报已暂停：车不再看信号，也不会发消息。发 alerts on 恢复</string>
@@ -1561,7 +1564,6 @@
     <string name="set_alerts_climate_note_summary">叫一次开 %1$d 分钟，到点它自己关；不会有任何东西自己开起来；要哨兵模式开着，车才听得见</string>
     <string name="opt_alerts_climate_seats_off">不动座椅</string>
     <string name="opt_alerts_climate_seats_driver">只主驾</string>
-    <string name="opt_alerts_climate_seats_front">主驾和副驾</string>
     <string name="opt_alerts_climate_degrees">%d °C</string>
     <string name="opt_alerts_climate_minutes">%d 分钟</string>
     <string name="opt_alerts_climate_soc">%d%%</string>

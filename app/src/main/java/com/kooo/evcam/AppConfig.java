@@ -2790,7 +2790,7 @@ public class AppConfig {
 
     public void setAlertsClimateEnabled(boolean enabled) {
         prefs.edit().putBoolean(KEY_ALERTS_CLIMATE_ENABLED, enabled).apply();
-        AppLog.i(TAG, "车厢温度警报设为 " + (enabled ? "开" : "关"));
+        AppLog.i(TAG, "alerts climate " + (enabled ? "on" : "off"));
     }
 
     /** 车厢「太热」那一档（°C）：26 / 28 / 30 / 32 / 35，默认 30。 */

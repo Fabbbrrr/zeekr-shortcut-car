@@ -257,14 +257,19 @@ public final class ClimateSource {
                 return report(Outcome.UNAVAILABLE, 0f, false);
             }
 
-            // 范围从车上读：读不到就不写。
-            Integer min = read(minId, driver, "min");
-            Integer max = read(maxId, driver, "max");
-            Integer step = read(stepId, driver, "step");
-            if (min == null || max == null || step == null || step <= 0 || min > max) {
+            // 范围从车上读：读不到就不写。走浮点通道 —— 步长在厂商源码里是 0.5，
+            // 整型读会把它截成 0，于是每一次开空调都被当成「车机不报范围」。
+            // The range is read from the car; a missing range means no write. Through the float channel:
+            // the vendor's step is 0.5, and an integer read truncates it to 0, which would turn every
+            // "ac on" into "the head unit reports no range".
+            Float min = readFloat(minId, driver, "min");
+            Float max = readFloat(maxId, driver, "max");
+            Float step = readFloat(stepId, driver, "step");
+            if (min == null || max == null || step == null || step <= 0f || min > max) {
                 note("no range");
                 return report(Outcome.NO_RANGE, 0f, false);
             }
+            note(String.format(Locale.US, "range %.1f..%.1f step %.2f", min, max, step));
 
             // 单位：读不到当这台车机没有这个号；读到的不是摄氏度就不写（不换算、不猜）。
             Integer unit = unitId == null ? null : access.read(unitId, driver);
@@ -323,7 +328,7 @@ public final class ClimateSource {
         }
 
         /** 读回：{@link #BACK_MS} 内开关读到 1、设定温度在半档以内算做成。 */
-        private Report back(int power, int front, int temp, int driver, float target, int step) {
+        private Report back(int power, int front, int temp, int driver, float target, float step) {
             Integer seenPower = null;
             Float seenTemp = null;
             float half = step / 2f + EPSILON;
@@ -372,6 +377,17 @@ public final class ClimateSource {
             return v;
         }
 
+        /** 读一个浮点通道的号、记一笔（范围、步长走它：温度类只有这个通道带着小数）。 */
+        Float readFloat(Integer id, int zone, String label) {
+            if (id == null) {
+                return null;
+            }
+            Float v = access.readCustom(id, zone);
+            note(String.format(Locale.US, "read %s@%s=%s", label, hex(zone),
+                    v == null ? "?" : String.format(Locale.US, "%.2f", v)));
+            return v;
+        }
+
         /** 写一个整型的号、记一笔。车机受理了返回 true。 */
         boolean write(int id, int zone, int value) {
             boolean accepted = access.write(id, zone, value);
@@ -387,22 +403,35 @@ public final class ClimateSource {
      * 照车上的范围、步长算要写的温度：超出最小、最大一步以上是不写（返回 null），一步以内算量测的零头，
      * 夹进范围再照步长对齐（对齐的起点是最小值）。
      */
-    static Float snapped(float targetC, int min, int max, int step) {
-        if (step <= 0 || min > max) {
+    /**
+     * 照车上的范围、步长算要写的温度：范围之外就是不写（返回 null，车要的是它自己的范围），
+     * 范围内的零头照步长对齐，对齐的起点是最小值。
+     *
+     * <p>以前允许「超出一步以内」，夹回范围再写：那会写一个车主没要的温度（他要 17，车给 16，还是写了）。
+     * 范围是从车上读的，超出就是不写。</p>
+     *
+     * Work out the setpoint from the car's own range and step: outside the range is a refusal (null — the
+     * car's range is the authority), and a fraction inside it snaps to the grid anchored at the minimum.
+     *
+     * <p>It used to tolerate one step outside and clamp, which writes a temperature the owner did not ask
+     * for. The range comes from the car, so outside it means no write.</p>
+     */
+    static Float snapped(float targetC, float min, float max, float step) {
+        if (step <= 0f || min > max || Float.isNaN(targetC)) {
             return null;
         }
-        if (targetC < min - step - EPSILON || targetC > max + step + EPSILON || Float.isNaN(targetC)) {
+        if (targetC < min - EPSILON || targetC > max + EPSILON) {
             return null;
         }
         float clamped = Math.max(min, Math.min(max, targetC));
-        int n = Math.round((clamped - min) / (float) step);
+        int n = Math.round((clamped - min) / step);
         if (n < 0) {
             n = 0;
         }
-        float snapped = min + n * (float) step;
+        float snapped = min + n * step;
         while (snapped > max + EPSILON && n > 0) {
             n--;
-            snapped = min + n * (float) step;
+            snapped = min + n * step;
         }
         return snapped;
     }
