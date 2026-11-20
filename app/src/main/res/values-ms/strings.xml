@@ -147,6 +147,8 @@
     <string name="alert_climate_no_change">Kereta menerimanya tetapi tidak berubah (%1$s).</string>
     <string name="alert_climate_no_change_plain">Kereta menerima arahan tetapi kabin tidak berubah. Tiada percubaan lain dibuat.</string>
     <string name="alert_climate_moving">Kereta tidak diletakkan dalam parkir, jadi tiada apa-apa diubah.</string>
+    <string name="alert_climate_stale_button">Butang itu milik amaran terdahulu. Hantar \'ac on 22\'.</string>
+    <string name="alert_climate_off_unconfirmed">Tidak dapat mematikan penghawa dingin — kereta tidak melaporkan ia diparkirkan. Periksa kereta.</string>
     <string name="alert_climate_low_battery">Bateri di bawah %1$d %%, jadi apa-apa tidak diubah.</string>
     <string name="alert_climate_paused">Amaran sedang dijeda. Hantar \'alerts on\' dahulu.</string>
     <string name="alert_climate_already">Kabin %1$s °C, sudah dalam %2$s °C daripada %3$s °C. Tiada apa yang perlu dibuat.</string>

@@ -147,6 +147,8 @@
     <string name="alert_climate_no_change">The car accepted it but did not change (%1$s).</string>
     <string name="alert_climate_no_change_plain">The car accepted the command but the cabin did not change. Nothing else was tried.</string>
     <string name="alert_climate_moving">The car is not parked, so nothing was changed.</string>
+    <string name="alert_climate_stale_button">That button belongs to an earlier alert. Send \'ac on 22\'.</string>
+    <string name="alert_climate_off_unconfirmed">Could not switch the AC off — the car did not report being parked. Check the car.</string>
     <string name="alert_climate_low_battery">Battery below %1$d %%, so nothing was changed.</string>
     <string name="alert_climate_paused">Alerts are paused. Send \'alerts on\' first.</string>
     <string name="alert_climate_already">Cabin %1$s °C, already within %2$s °C of %3$s °C. Nothing to do.</string>

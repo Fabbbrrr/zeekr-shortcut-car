@@ -43,7 +43,7 @@ android {
         versionCode = 402
         // 版本号从 0.1.0 重新起算；代码基座为 EVCam 1.6.6 (0876b97)
         // 每次同步上游后把第二段抬到上游之上：上游 4.12.1 → fork 4.13.0-fab-beta
-        versionName = "4.14.1-fab-beta"
+        versionName = "4.15.0-fab-beta"
     }
 
     buildTypes {

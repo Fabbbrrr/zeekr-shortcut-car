@@ -713,12 +713,12 @@ public class SettingsShotsTest {
         new AppConfig(RuntimeEnvironment.getApplication()).setAlertsPaused(false);
     }
 
-    /** 车厢温度那一组的九行（开关自己不在里面）：这一组自己的开关关着时一起收起来。 */
+    /** 车厢温度那一组的八行（开关自己不在里面）：这一组自己的开关关着时一起收起来。那一行实话不在里面 —— 它开关关着也要看得到。 */
     private static final String[] CLIMATE_ROWS = {
             "pref_alerts_climate_hot", "pref_alerts_climate_cold", "pref_alerts_climate_safety",
             "pref_alerts_climate_target", "pref_alerts_climate_seats",
             "pref_alerts_climate_seat_level", "pref_alerts_climate_minutes",
-            "pref_alerts_climate_soc_floor", "pref_alerts_climate_note"};
+            "pref_alerts_climate_soc_floor"};
 
     /**
      * 车厢温度那一页：开关一直在，开着才有下面九行；总开关关着时整页都收起来（那一页也就进不去）。
@@ -750,7 +750,7 @@ public class SettingsShotsTest {
         assertTrue("说明里要写开着几分钟: " + note.getSummary(),
                 String.valueOf(note.getSummary()).contains("10"));
 
-        // 这一组自己的开关关着：九行一起收起来，开关自己留着。
+        // 这一组自己的开关关着：八行一起收起来，开关自己留着，那一行实话也留着（它说的是实话，不是选项）。
         SettingsPreferenceFragment climateOff = alertsChildPage(Shots.DAY_EN, true,
                 com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_climate_page",
                 CHILD_CLIMATE, R.string.set_alerts_page_climate,
@@ -759,6 +759,7 @@ public class SettingsShotsTest {
         for (String key : CLIMATE_ROWS) {
             assertFalse("这一组的开关关着时 " + key + " 该收起来", shown(climateOff, key));
         }
+        assertTrue("那一行实话开关关着也要看得到", shown(climateOff, "pref_alerts_climate_note"));
 
         // 收尾：这些都在同一份设置里，别把后面的测试带跑。
         AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());

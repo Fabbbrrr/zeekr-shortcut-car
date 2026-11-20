@@ -11,8 +11,12 @@ commit message, not here.
 
 Nothing yet.
 
-## [4.14.1-fab-beta] - 2026-11-20
+## [4.15.0-fab-beta] - 2026-11-20
 
+- Alerts: **Alerts is now a hub** with three sub-pages — Notifications (the bot, the topic and the checks),
+  Sentry (what it watches, the picture, the clip, the forgotten-Sentry switch) and Climate. The segmented
+  "which alerts to set up" row is gone. Climate's page starts with its own switch; the four numbers on it
+  (too hot, too cold, target, battery floor) are sliders, and the floor now goes from 20 % to 99 %.
 - Alerts: `ac on` answered "This head unit will not report its temperature range, so I did not change
   anything" on the 7X. 4.14.0 refused to write until the car reported its setpoint range, and this adapter
   answers that on neither channel — so the command never ran. It now writes the target you asked for and

@@ -146,13 +146,18 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
 
     /**
      * 车厢温度那一组自己的开关关着时一起收起来的几行（开关自己不在里面，它一直在）。
-     * The cabin-temperature rows; they collapse together with the group's own switch.
+     *
+     * <p>那一行实话（{@code pref_alerts_climate_note}）不在里面：开关关着也是实话 ——「空调只会自己关」
+     * 不因为这一项关着就不是真的。它自己一行 {@code show(...)}（开关关着也要看得到）。</p>
+     *
+     * The cabin-temperature rows; they collapse together with the group's own switch. The honest note is
+     * not one of them: it stays visible with the switch off, and has its own show(...).
      */
     private static final String[] CLIMATE_ROWS = {
             "pref_alerts_climate_hot", "pref_alerts_climate_cold", "pref_alerts_climate_safety",
             "pref_alerts_climate_target", "pref_alerts_climate_seats",
             "pref_alerts_climate_seat_level", "pref_alerts_climate_minutes",
-            "pref_alerts_climate_soc_floor", "pref_alerts_climate_note"};
+            "pref_alerts_climate_soc_floor"};
 
     /**
      * 只显示某一个分区。
@@ -1204,10 +1209,11 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // （总开关 + 这一组自己的开关）。
         // Wiring only; whether the rows show is decided in showAlertsRows.
 
-        // 车厢温度警报的总开关：关着时下面九行全部收起来，只留这一行。
-        // The climate switch; with it off the nine rows below collapse.
+        // 车厢温度警报的总开关：关着时下面八行全部收起来，只留这一行和那一行实话。
+        // The climate switch; with it off the eight rows below collapse.
         bindSwitch("pref_alerts_climate", appConfig.isAlertsClimateEnabled(), value -> {
             appConfig.setAlertsClimateEnabled(value);
+            refreshAlerts();
             showAlertsRows();
         });
 
@@ -1239,7 +1245,10 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // What 'ac on' does: seats, level, minutes.
         bindEnum("pref_alerts_climate_seats", SettingsRegistry.ALERTS_CLIMATE_SEATS,
                 appConfig.getAlertsClimateSeats(),
-                value -> appConfig.setAlertsClimateSeats(value),
+                value -> {
+                    appConfig.setAlertsClimateSeats(value);
+                    refreshAlerts();
+                },
                 () -> showAlertsClimateRow("pref_alerts_climate_seats",
                         R.string.set_alerts_climate_seats_summary));
         bindAlertsClimateList("pref_alerts_climate_seat_level", AppConfig.ALERTS_CLIMATE_SEAT_LEVEL_CHOICES,
@@ -1449,9 +1458,25 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             }
             setter.set(chosen);
             com.kooo.evcam.blackbox.BlackBox.noteImportant("设置变更: " + key + " → " + chosen);
+            refreshAlerts();
             showAlertsRows();
             return true;
         });
+    }
+
+    /**
+     * 车厢温度那几行的改动要当场告诉跑着的那一套：阀值、座椅、分钟数、开关全在它手里，
+     * 而 {@link com.kooo.evcam.alarm.SentryAlerts#refresh()} 是唯一重建策略、也是唯一开始只盯温度的地方。
+     *
+     * <p>不调它的话，改完设置要等下一次重启才生效 —— 看起来像「设置没存上」。</p>
+     *
+     * A climate row changed: tell the running alerts. refresh() is the only place the policy is rebuilt
+     * and the only place a climate-only watcher starts, so without this the change waits for a restart.
+     */
+    private void refreshAlerts() {
+        if (isAdded()) {
+            com.kooo.evcam.alarm.SentryAlerts.get(requireContext()).refresh();
+        }
     }
 
     /**
@@ -1482,7 +1507,12 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             int value = newValue instanceof Integer ? (Integer) newValue : current;
             setter.set(value);
             com.kooo.evcam.blackbox.BlackBox.noteImportant("设置变更: " + key + " → " + value);
-            pref.setSummary(getString(summaryRes, pref.getValue()));
+            // 行尾写的是「刚拖到的那一格」：列表里那个值由 androidx 在监听器返回之后才提交，
+            // 这里读 pref.getValue() 拿到的是上一格，行尾就会一直慢一格。
+            // The summary shows the value that was just chosen: androidx commits the new value after this
+            // listener returns, so reading pref.getValue() here would write the previous step.
+            pref.setSummary(getString(summaryRes, value));
+            refreshAlerts();
             return true;
         });
     }
@@ -1679,6 +1709,10 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         for (String key : CLIMATE_ROWS) {
             show(key, climateRows);
         }
+        // 那一行实话开关关着也留着：它说的是这一组只关不开（还有它靠哨兵叫得动车），
+        // 恰恰是开关关着的时候最该看到的。
+        // The note stays even with the switch off: it is exactly what someone reading that page needs.
+        show("pref_alerts_climate_note", alertsOn);
         showAlertsClimateRow("pref_alerts_climate_seats", R.string.set_alerts_climate_seats_summary);
         showAlertsClimateRow("pref_alerts_climate_seat_level",
                 R.string.set_alerts_climate_seat_level_summary);

@@ -391,10 +391,37 @@ public class ClimateSourceTest {
 
         assertEquals(ClimateSource.Outcome.NO_CHANGE, report.outcome);
         assertFalse(report.powerOn);
+        assertTrue("开关那一笔车机受理了：读回看不到也是我们让它开的，自动关靠的就是这一位",
+                report.powerWrote);
+        assertTrue("座椅那一笔写了也受理了", report.seatWrote);
         assertEquals(22f, report.targetC, 1e-3f);
         assertEquals(12, clock.sleeps);
         assertTrue(report.detail, report.detail.contains("back power 0x0"));
         assertTrue(report.detail, report.detail.contains("want 22.0"));
+    }
+
+    /** 开关一笔写下去、车机拒了：{@code powerWrote} 必须说「没受理」（否则自动关会排在一个根本没开的车上，无害；
+     * 反过来才是坏事 —— 受理了却说没受理，自动关就没了）。 */
+    @Test
+    public void aRefusedPowerWriteSaysSoInTheReport() {
+        FakeCar car = car();
+        car.refused.add(writeKey(POWER, FRONT));
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
+
+        assertEquals(ClimateSource.Outcome.REFUSED, report.outcome);
+        assertFalse(report.powerWrote);
+    }
+
+    /** 关：开关那一笔受理了就是 accepted，接到 {@code powerWrote} 上。 */
+    @Test
+    public void anAcceptedOffWriteReportsPowerWrote() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), off(true));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(report.powerWrote);
     }
 
     @Test
@@ -418,6 +445,29 @@ public class ClimateSourceTest {
         assertEquals(ClimateSource.Outcome.DONE, report.outcome);
         assertTrue(report.detail, report.detail.contains("seat write refused"));
         assertTrue(report.detail, report.detail.contains("climate kept"));
+        assertFalse("座椅没写进去：回执就不许说它", report.seatWrote);
+    }
+
+    /** 反方向：座椅真的写了并受理了，{@code seatWrote} 就是 true（否则上面那一条是空过）。 */
+    @Test
+    public void anAcceptedSeatWriteIsReportedAsSuch() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(report.seatWrote);
+    }
+
+    /** 不需要座椅时就不能声称写了座椅。 */
+    @Test
+    public void noSeatPlanMeansSeatWroteIsFalse() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, false, true));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertFalse(report.seatWrote);
     }
 
     @Test
@@ -454,17 +504,60 @@ public class ClimateSourceTest {
         assertTrue(report.detail, report.detail.contains("no seat heating"));
     }
 
+    /**
+     * 开关读到 1、设定值读不回：结果是 {@code DONE}（空调确实开了），不是「没变」。
+     *
+     * <p>以前这里回 NO_CHANGE，两个后果：聊天里说了一句假话（车其实开了），自动关也排不上。
+     * 读到的值仍然记在 detail 里。</p>
+     */
     @Test
-    public void onUnknownSetpointReadbackIsNoChange() {
+    public void onUnknownSetpointReadbackIsDoneWithANote() {
         FakeCar car = car();
         // 范围读得到、设定值读不回：通道在，那几个温度号就是不回值。
         car.nullCustomReads.add(TEMP);
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 
-        assertEquals(ClimateSource.Outcome.NO_CHANGE, report.outcome);
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
         assertTrue(report.powerOn);
         assertTrue(report.detail, report.detail.contains("setpoint ?"));
+        assertTrue(report.detail, report.detail.contains("power on, setpoint unreadable"));
+    }
+
+    /**
+     * 开关读到 1、设定温度那个号整个适配层都不回值（这台 7X 就是）：空调确实开了，结果是 {@code DONE}，
+     * 不是「没变」。当成没变会回一句假话，而且自动关排不上。
+     *
+     * Power reads 1 and the setpoint id answers nothing at all on this adapter: the climate is on, so this is
+     * DONE with a note, not NO_CHANGE — which would be a false receipt and would lose the auto-off.
+     */
+    @Test
+    public void powerOnWithAnUnreadableSetpointIsDoneNotNoChange() {
+        FakeCar car = car();
+        car.nullCustomReads.add(TEMP);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(report.powerOn);
+        assertTrue(report.powerWrote);
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(report.detail, report.detail.contains("power on, setpoint unreadable"));
+    }
+
+    /** 设定值读得到但不对（22.0 → 26.0）：这是「没做到」，不是「读不到」。 */
+    @Test
+    public void aMismatchedSetpointStaysNoChangeEvenWithPowerOn() {
+        FakeCar car = car();
+        // 设定值写下去是 22.0，读回却是 26.0：读到的是个数，只是不对 —— 这就是「没做到」。
+        car.readBackOffset.put(TEMP + "@" + DRIVER, 4f);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, false, false));
+
+        assertEquals(ClimateSource.Outcome.NO_CHANGE, report.outcome);
+        assertTrue("开关读回是 1", report.powerOn);
+        assertFalse(report.seatWrote);
+        assertTrue(report.detail, report.detail.contains("want 22.0"));
     }
 
     // ================================================================= 缺东西、出问题

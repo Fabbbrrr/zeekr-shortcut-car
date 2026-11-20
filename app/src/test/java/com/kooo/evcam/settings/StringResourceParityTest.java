@@ -108,8 +108,11 @@ public class StringResourceParityTest {
      * deliberately instead of the check being weakened. 4.6 split the alerts page into three: 17 new
      * rows/titles/summary phrases, 5 family-picker strings gone, and one string that had already been
      * deleted from Chinese without the number following it: 384 + 17 − 5 − 1 = 395.
+     *
+     * <p>自动关那一轮又加了两条：{@code alert_climate_stale_button}、{@code alert_climate_off_unconfirmed}（都是停车警报的文案），
+     * 395 + 2 = 397。阿语照旧留到单独一轮。</p>
      */
-    private static final int PENDING_ARABIC_COUNT = 395;
+    private static final int PENDING_ARABIC_COUNT = 397;
 
     @Test
     public void everyChineseStringHasATranslationWithMatchingPlaceholders() throws IOException {

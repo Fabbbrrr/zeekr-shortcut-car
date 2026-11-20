@@ -126,7 +126,13 @@ public class SettingsShellFragment extends Fragment {
      * 右栏切到某个分区。
      *
      * <p>不进返回栈：左栏一直看得见，切分区就像换个标签页，
-     * 不该让返回键一段一段倒回去。分区里再往下的子界面才进返回栈。</p>
+     * 不该让返回键一段一段倒回去。分区里再往下的子界面才进返回栈 ——
+     * 所以换分区之前要先把子界面那一层收掉：不收的话返回栈里还留着上一页，标题区的返回键也还亮着，
+     * 左栏再点同一个分区就叠出第二层子页（{@link #showRow} 一直是这么做的）。</p>
+     *
+     * <p>Switching sections does not enter the back stack, so any child page has to be popped first:
+     * otherwise the back arrow and the stack still belong to the previous section, and re-tapping the
+     * same section in the left rail stacks a second child page. {@link #showRow} has always done this.</p>
      */
     void showSection(String screenKey) {
         showSection(screenKey, -1);
@@ -141,6 +147,12 @@ public class SettingsShellFragment extends Fragment {
         if (DEVELOPER_SECTION.equals(screenKey) && !DeveloperMode.isUnlocked()) {
             screenKey = DEFAULT_SECTION;
             order = -1;
+        }
+        // 先把下层页收掉：分区这一层永远在返回栈的第零层。
+        // Pop the child page first, so the section itself is the bottom of the stack.
+        if (getChildFragmentManager().getBackStackEntryCount() > 0) {
+            getChildFragmentManager().popBackStackImmediate(null,
+                    androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
         }
         boolean down = order < 0 || order >= currentOrder;
         currentSection = screenKey;

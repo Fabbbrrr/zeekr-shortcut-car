@@ -63,7 +63,7 @@ public final class AlertButton {
     /**
      * 这颗按钮要多少度。
      *
-     * @return 20..30 之内的度数；不是空调按钮是 -1；是「关掉」那颗是 0
+     * @return 10..35 之内的度数；不是空调按钮是 -1；是「关掉」那颗是 0
      */
     public static int climateTarget(String action) {
         if (ACTION_CLIMATE_OFF.equals(action)) {
@@ -79,6 +79,33 @@ public final class AlertButton {
         } catch (NumberFormatException e) {
             return -1;
         }
+    }
+
+    /**
+     * 这串 callback_data 里的空调动作，<b>不看号码</b>。
+     *
+     * <p>只回答一件事：「这是一颗空调按钮」。号码不对的时候要用它 —— 回一句「那是上一条警报的按钮」，
+     * 而不是把它当成照片那一排的按钮、最后闷声不响。</p>
+     *
+     * <p>The climate action inside a payload, <b>without checking the token</b>. It answers one question
+     * only — "is this an AC button" — so a stale press can be answered instead of ignored. Nothing is
+     * ever acted on from this: {@link #actionFor} still holds the strict check.</p>
+     *
+     * @return {@link #ACTION_CLIMATE_OFF} / {@code ac10..ac35}；不是空调动作是 {@code null}
+     */
+    public static String climateActionOf(String data) {
+        if (data == null) {
+            return null;
+        }
+        String[] parts = data.trim().split(":");
+        if (parts.length != 3 || !PREFIX.equals(parts[0])) {
+            return null;
+        }
+        String action = parts[1];
+        if (ACTION_CLIMATE_OFF.equals(action)) {
+            return action;
+        }
+        return climateTarget(action) >= 10 ? action : null;
     }
 
     private static final String PREFIX = "a";

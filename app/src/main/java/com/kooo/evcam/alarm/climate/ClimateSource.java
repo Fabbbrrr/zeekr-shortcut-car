@@ -133,19 +133,33 @@ public final class ClimateSource {
         public final float targetC;
         /** 读回来的开关。 */
         public final boolean powerOn;
+        /**
+         * 开关那一笔车机受理了（读回不一定看到）。读回读不到的时候，这是「我们确实让它开了」的唯一凭据 ——
+         * 自动关就靠它排上（车机睡了之后读回全是空的，按读回排就等于永不关）。
+         *
+         * The power write was accepted by the head unit. The readback may still be unreadable, and after
+         * the head unit sleeps it always is, so this is what the auto-off hangs on.
+         */
+        public final boolean powerWrote;
+        /** 写座椅那一笔（有的话）车机受理了。没写座椅、或者被拒了，都是 false。 */
+        public final boolean seatWrote;
         /** ASCII，只进黑匣子：功能号（号码用十六进制）和读到的值。 */
         public final String detail;
 
-        public Report(Outcome outcome, float targetC, boolean powerOn, String detail) {
+        public Report(Outcome outcome, float targetC, boolean powerOn, boolean powerWrote,
+                      boolean seatWrote, String detail) {
             this.outcome = outcome;
             this.targetC = targetC;
             this.powerOn = powerOn;
+            this.powerWrote = powerWrote;
+            this.seatWrote = seatWrote;
             this.detail = detail;
         }
 
         @Override
         public String toString() {
-            return String.format(Locale.US, "%s target=%.1f power=%s (%s)", outcome, targetC, powerOn, detail);
+            return String.format(Locale.US, "%s target=%.1f power=%s wrote=%s seat=%s (%s)",
+                    outcome, targetC, powerOn, powerWrote, seatWrote, detail);
         }
     }
 
@@ -157,7 +171,7 @@ public final class ClimateSource {
      */
     public static Report apply(CarAccess access, Names names, Clock clock, Plan plan) {
         if (access == null || names == null || clock == null || plan == null) {
-            return new Report(Outcome.UNAVAILABLE, 0f, false, "missing argument");
+            return new Report(Outcome.UNAVAILABLE, 0f, false, false, false, "missing argument");
         }
         Run run = new Run(access, names, clock);
         try {
@@ -176,6 +190,10 @@ public final class ClimateSource {
         private final Names names;
         private final Clock clock;
         private final StringBuilder detail = new StringBuilder();
+        /** 开关那一笔受理了没有（{@link Report#powerWrote}）。 */
+        private boolean powerWrote;
+        /** 座椅那一笔写了并且受理了没有（{@link Report#seatWrote}）。 */
+        private boolean seatWrote;
 
         Run(CarAccess access, Names names, Clock clock) {
             this.access = access;
@@ -191,7 +209,7 @@ public final class ClimateSource {
         }
 
         Report report(Outcome outcome, float target, boolean powerOn) {
-            return new Report(outcome, target, powerOn, ascii(detail.toString()));
+            return new Report(outcome, target, powerOn, powerWrote, seatWrote, ascii(detail.toString()));
         }
 
         Report go(Plan plan) {
@@ -211,6 +229,7 @@ public final class ClimateSource {
         /** 关：开关写 0，座椅写 0；读回开关是 0 算做成，别的都是没生效。 */
         private Report off(Plan plan, int power, int front, int driver) {
             boolean accepted = write(power, front, 0);
+            powerWrote = accepted;
             if (plan.seats) {
                 seatOff(driver);
             } else {
@@ -233,11 +252,19 @@ public final class ClimateSource {
         private void seatOff(int driver) {
             Integer heat = function("HVAC_FUNC_SEAT_HEATING");
             Integer vent = function("HVAC_FUNC_SEAT_VENTILATION");
-            if (heat != null && !write(heat, driver, 0)) {
-                note("seat heating off refused");
+            if (heat != null) {
+                if (write(heat, driver, 0)) {
+                    seatWrote = true;
+                } else {
+                    note("seat heating off refused");
+                }
             }
-            if (vent != null && !write(vent, driver, 0)) {
-                note("seat ventilation off refused");
+            if (vent != null) {
+                if (write(vent, driver, 0)) {
+                    seatWrote = true;
+                } else {
+                    note("seat ventilation off refused");
+                }
             }
         }
 
@@ -316,6 +343,7 @@ public final class ClimateSource {
             }
 
             boolean powered = write(power, front, 1);
+            powerWrote = powered;
             if (!powered) {
                 return report(Outcome.REFUSED, target, false);
             }
@@ -343,7 +371,9 @@ public final class ClimateSource {
                 return;
             }
             int level = Math.max(1, Math.min(MAX_LEVEL, plan.level));
-            if (!write(id, driver, id + level)) {
+            if (write(id, driver, id + level)) {
+                seatWrote = true;
+            } else {
                 note("seat write refused, climate kept");
             }
         }
@@ -365,6 +395,14 @@ public final class ClimateSource {
             note(String.format(Locale.US, "back power %s setpoint %s want %.1f after %d ms",
                     hex(seenPower), seenTemp == null ? "?" : String.format(Locale.US, "%.1f", seenTemp),
                     target, BACK_MS));
+            if (seenPower != null && seenPower == 1 && seenTemp == null) {
+                // 开关读到 1、设定值这个号这台车机就是不回（208 号这类 id 在整个适配层上是空的）：
+                // 空调确实开了。把它当成「没变」等于回一句假话，还会让自动关排不上。
+                // Power reads 1 and the setpoint id simply answers nothing on this adapter: the climate is
+                // on. Calling that NO_CHANGE would be a false receipt and would lose the auto-off.
+                note("power on, setpoint unreadable");
+                return report(Outcome.DONE, target, true);
+            }
             return report(Outcome.NO_CHANGE, target, seenPower != null && seenPower == 1);
         }
 

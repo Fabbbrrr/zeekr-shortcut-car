@@ -15,8 +15,9 @@ Ships:
 3. **Writes** — power, setpoint (float channel), driver seat heat or ventilation; bounded by a
    10-minute auto-off, an SoC floor, and `gear != P` refusal. Every write is verified by readback and
    every failure is reported honestly to the chat.
-4. **Settings** — the Alerts page collapses into `Notifications | Sentry | Climate`, plus the climate
-   rows.
+4. **Settings** — the Alerts page is a hub with three child pages (`Notifications`, `Sentry`,
+   `Climate`); the climate page holds its own switch, four sliders, the seat/level/minutes lists and the
+   honest note.
 
 Does not ship: rear or passenger seat writes, restoring recirculation/rear zone after a power cycle,
 a new wake path, Fahrenheit UI, any automatic write that is not an owner command.
@@ -43,19 +44,22 @@ a new wake path, Fahrenheit UI, any automatic write that is not an owner command
 
 | Key | Type | Default | Row |
 |---|---|---|---|
-| `alerts_family` | string enum `notifications\|sentry\|climate` | `sentry` | segmented row `pref_alerts_family` (not an AppConfig alert key; a UI choice, still persisted) |
-| `alerts_climate_enabled` | bool | false | `pref_alerts_climate` |
-| `alerts_climate_hot_c` | int °C | 30 | `pref_alerts_climate_hot` (list 26/28/30/32/35) |
-| `alerts_climate_cold_c` | int °C | 5 | `pref_alerts_climate_cold` (list 0/5/10/15) |
+| `alerts_climate_enabled` | bool | false | `pref_alerts_climate` (the page's own switch) |
+| `alerts_climate_hot_c` | int °C | 30 | `pref_alerts_climate_hot` (slider 25–40) |
+| `alerts_climate_cold_c` | int °C | 5 | `pref_alerts_climate_cold` (slider −10–15) |
 | `alerts_climate_safety` | bool | true | `pref_alerts_climate_safety` |
-| `alerts_climate_target_c` | int °C | 22 | `pref_alerts_climate_target` (list 20..24) |
+| `alerts_climate_target_c` | int °C | 22 | `pref_alerts_climate_target` (slider 16–30) |
 | `alerts_climate_seats` | string enum `off\|driver\|front` | `driver` | `pref_alerts_climate_seats` |
 | `alerts_climate_seat_level` | int 1..3 | 2 | `pref_alerts_climate_seat_level` |
 | `alerts_climate_minutes` | int | 10 | `pref_alerts_climate_minutes` (list 5/10/15) |
-| `alerts_climate_soc_floor` | int % | 20 | `pref_alerts_climate_soc_floor` (list 15/20/25) |
+| `alerts_climate_soc_floor` | int % | 20 | `pref_alerts_climate_soc_floor` (slider 20–99) |
 
-`alerts_family` is stored in the normal preferences file (not secrets) and belongs to neither
-`DEVELOPER_KEYS` nor `RUNTIME_KEYS`.
+There is no `alerts_family` key and no family picker. The shipped shape is a hub
+(`screen_alerts`, four entry rows: Notifications / Sentry / Climate / checks) plus three child pages
+under `screen_alerts_notifications`, `screen_alerts_sentry` and `screen_alerts_climate`, each one a
+nested `PreferenceScreen` of the same `preferences.xml` loaded with `setPreferencesFromResource`'s
+`rootKey`. The four numeric climate rows are `SeekBarPreference`s; the bounds and the getters'
+clamping share the constants in `AppConfig` (`ALERTS_CLIMATE_*_MIN/MAX`).
 
 ## Contracts
 
@@ -88,6 +92,8 @@ public final class ClimateSource {
         public final Outcome outcome;
         public final float targetC;      // what was actually written (after clamp/snap)
         public final boolean powerOn;    // read back
+        public final boolean powerWrote; // the power write was accepted (the auto-off hangs on this)
+        public final boolean seatWrote;  // the seat write, if any, was accepted
         public final String detail;      // ASCII, for the black box only
     }
 
@@ -109,7 +115,12 @@ public final class ClimateSource {
 6. seats (only when `seats`): heating level or ventilation level on the driver zone. A refused seat
    write does not fail the climate; it is recorded in `detail`.
 7. read back power and setpoint for up to 3 s. `DONE` when power reads 1 and the setpoint is within
-   half a step; otherwise `NO_CHANGE` with the values in `detail`.
+   half a step; power reading 1 with an unreadable setpoint is also `DONE` (this adapter answers nothing
+   for some ids) with `power on, setpoint unreadable` in `detail`; a mismatched setpoint is `NO_CHANGE`.
+8. the auto-off is scheduled when the power was read on **or** the power write was accepted
+   (`Report.powerWrote`): ten minutes after locking the head unit is asleep, so the readback is empty and
+   the accepted write is the only evidence. The task writes off only on a positive parked reading, retries
+   every 30 s, and after 3 × minutes without one sends `alert_climate_off_unconfirmed`.
 
 Front zone is `names.zone("ROW_1")` (0x08); the driver seat zone is `names.zone("ROW_1_LEFT")` (0x01).
 

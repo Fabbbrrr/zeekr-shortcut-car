@@ -2909,7 +2909,7 @@ public class AppConfig {
                 snapToChoices(ALERTS_CLIMATE_MINUTES_CHOICES, minutes, 10)).apply();
     }
 
-    /** 电量低于这个百分比就不开空调：15 / 20 / 25，默认 20。 */
+    /** 电量低于这个百分比就不开空调：20–99，默认 20。 */
     public int getAlertsClimateSocFloor() {
         return clampTo(readInt(KEY_ALERTS_CLIMATE_SOC_FLOOR, ALERTS_CLIMATE_SOC_DEFAULT),
                 ALERTS_CLIMATE_SOC_MIN, ALERTS_CLIMATE_SOC_MAX);

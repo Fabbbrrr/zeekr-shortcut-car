@@ -13,6 +13,7 @@ import static org.junit.Assert.assertTrue;
 import android.content.Context;
 
 import com.kooo.evcam.AppConfig;
+import com.kooo.evcam.R;
 import com.kooo.evcam.alarm.guard.GuardToken;
 import com.kooo.evcam.alarm.ntfy.NtfyGate;
 import com.kooo.evcam.alarm.ntfy.NtfyRisk;
@@ -35,7 +36,7 @@ import java.util.concurrent.TimeUnit;
  * 照片那一排的号码去比空调那一排的按钮，第二道又把「动作」当成「整串 callback_data」再比一次，
  * 两次都必然对不上。车里看不到这两处，只有按一下才知道，所以这里按一下。</p>
  *
- * <p>钉住三件事：<b>刚发出去的那条能按</b>、<b>号码不对的不响应</b>、<b>按下去必有回话</b>
+ * <p>钉住三件事：<b>刚发出去的那条能按</b>、<b>号码不对的不办</b>、<b>按下去必有回话</b>
  * （回的是「车没停」也好，是回执也好 —— 静默就是那个 bug）。</p>
  *
  * <p>The AC buttons under a temperature alert did nothing in 4.14.0: the first routing compared the photo
@@ -97,15 +98,29 @@ public class AlertClimateButtonTest {
         assertEquals(1, ShadowNtfySender.texts);
     }
 
+    /**
+     * 号码不对的那颗：不办，但要回句话。
+     *
+     * <p>「不办」和「不吭声」是两件事：以前这里默默丢掉，车上看起来就是按钮坏了。现在回一句
+     * 「那是上一条警报的按钮」，而且必须确认它没去办事 —— 办了的话回的是「车没停稳」那张字，
+     * 两张回话不一样，所以这一句本身就是凭据。</p>
+     *
+     * A stale AC button is not acted on, but it is answered: silence reads as a broken button. The wording
+     * is the evidence that the command path was never entered (that path answers "the car is not parked").
+     */
     @Test
-    public void aButtonFromAnotherAlertIsIgnored() throws Exception {
+    public void aButtonFromAnotherAlertIsAnsweredNotActedOn() throws Exception {
         setClimateToken(GuardToken.mint(1L));
         String payload = AlertButton.data(AlertButton.climateAction(22), GuardToken.mint(2L));
 
         SentryAlerts.get(context).onAlertButton(payload);
 
-        assertEquals("号码不对就不响应：一周前那条消息上的按钮不能开今天的空调",
-                0, ShadowNtfySender.texts);
+        assertTrue("按了就得有回话（不吭声就是 4.14.0 那个 bug）",
+                ShadowNtfySender.latch.await(5, TimeUnit.SECONDS));
+        assertEquals("只发一句", 1, ShadowNtfySender.texts);
+        assertEquals("说的是「那是上一条警报的按钮」：一周前那条消息上的按钮不能开今天的空调",
+                context.getString(R.string.alert_climate_stale_button),
+                ShadowNtfySender.sent.get(0));
     }
 
     /** 单例活在整个沙箱里：清掉它，下一次 {@code get()} 才用这一次的 Application。 */

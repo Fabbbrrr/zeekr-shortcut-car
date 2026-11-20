@@ -37,10 +37,21 @@ public class ShadowNtfySender {
     public static volatile java.util.concurrent.CountDownLatch latch =
             new java.util.concurrent.CountDownLatch(1);
 
+    /**
+     * 发出去的那几句原文，按先后。字本身就是断言的对象（「回执里不许写座椅」、「过期按钮要回话」），
+     * 所以不能只数条数。
+     *
+     * The exact bodies that went out, in order: the wording itself is what some tests assert on (a receipt
+     * must not claim the seat; a stale button must be answered), so counting is not enough.
+     */
+    public static final java.util.List<String> sent =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
     public static void reset() {
         accepted = true;
         texts = 0;
         photos = 0;
+        sent.clear();
         latch = new java.util.concurrent.CountDownLatch(1);
     }
 
@@ -48,6 +59,7 @@ public class ShadowNtfySender {
     public static AlertChannel.Result sendText(String server, String topic, String token,
                                               String text, String title) {
         texts++;
+        sent.add(text);
         latch.countDown();
         return AlertChannel.Result.ok();
     }

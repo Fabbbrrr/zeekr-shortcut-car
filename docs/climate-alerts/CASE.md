@@ -359,7 +359,10 @@ and the master switch needs a home.
 **Recommendation: A**, with B as the fallback if the segmented row reads badly on the car screen.
 A solves the clutter without spending the one remaining level.
 
-The branch shipped **A**: one segmented family picker (`pref_alerts_family`,
+The branch first shipped **A** (a segmented family picker) and 4.15 replaced it with **B**: the Alerts page
+is a hub with three sub-pages (`pref_alerts_notifications` / `_sentry` / `_climate` → nested
+`PreferenceScreen`s opened through the same fragment with a root key). Old text, kept for the record: **A**
+was one segmented family picker (`pref_alerts_family`,
 `SettingsRegistry.ALERTS_FAMILY`: notifications / sentry / climate) and every family's rows hidden
 in one place, `showAlertsRows` (`SettingsPreferenceFragment.java:1411`).
 
@@ -391,7 +394,8 @@ The slice table is gone; this is the code on the branch.
   `Climate`); ntfy reuses `parseText` as before.
 - Glue: `alarm/SentryAlerts.java` — `climateCheck`, `sendClimateAlert`, `climateMarkup`,
   `onClimateCommand`, `startClimate`, `onClimateReport`, `scheduleClimateOff`.
-- Settings: family picker `pref_alerts_family` in `res/xml/preferences.xml`, wiring and visibility in
+- Settings: hub with three sub-pages in `res/xml/preferences.xml` (`screen_alerts_notifications` /
+  `screen_alerts_sentry` / `screen_alerts_climate`), wiring and visibility in
   `settings/SettingsPreferenceFragment.java` (`showAlertsRows`), keys in `AppConfig.java` and
   `settings/SettingsRegistry.java`, strings in `values`, `values-en`, `values-ms`.
 - Tests: `ClimateSourceTest`, `ClimatePolicyTest`, `ClimateSeatsTest`, `TelegramCommandTest`.
