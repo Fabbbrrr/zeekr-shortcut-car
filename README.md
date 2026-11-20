@@ -1,14 +1,46 @@
 # Zeekr Shortcut (Car Version)
 
-An app for the ZEEKR 7X head unit that puts the car's own surround cameras to work: it records them as a
-dash cam and shows them where they help while driving.
+> [!WARNING]
+> **This is a fork, and it is beta software.** The APK comes from Fabbbrrr's fork of Zeekr Shortcut, not
+> from dts88's repository. It is one person's build for his own car: upstream does not review it, does not
+> release it, and will not support it.
+>
+> **Install and use it at your own risk.** It is experimental, unofficial, and not certified for any vehicle
+> function. To the extent the licence allows, the maintainer of this fork accepts no responsibility and no
+> liability for any damage, data loss, injury or cost that comes from installing or using it — the car, the
+> head unit, the cameras, the recordings on the USB drive, anything. Back up what matters first, and try
+> anything new in a stationary car.
 
-**[Download](../../releases/latest)** · [Features (wiki)](../../wiki) · [Discussions](../../discussions) ·
+**[Download](../../releases)** · [Features (wiki)](../../wiki) · [Discussions](../../discussions) ·
 [中文说明](README.zh-CN.md) · [Credits](NOTICE.md)
 
 ---
 
+## What this fork adds over dts88's build
+
+Everything upstream ships is in here — this build contains upstream 4.12.1-alpha, with the fork's number
+one minor above it — plus the features below, which upstream's build does not have as of 4.12.1-alpha.
+Big features only; the commit history is the record for smaller things.
+
+| Feature | dts88's build | This fork |
+|---|---|---|
+| Alerts while parked — a picture, an optional clip around the moment, quiet hours — sent to a Telegram chat | — | Yes |
+| The same alerts sent to ntfy.sh instead: a free topic with no account, or a paid account's protected one | — | Yes |
+| **Forgot Sentry** — parked away with Sentry Mode off, the car says so in the chat and switches it on itself if nobody answers | — | Yes |
+| Answering the car from the chat — `pic`, `pic front/rear/left/right`, `status`, `alerts off` / `alerts on`, `sens` | — | Yes |
+| Update check follows | upstream's releases | this fork's releases |
+
+Both alert transports are off by default and are set up once from the car screen; nothing is sent until
+you send a test picture and see it arrive. Everything else — recording, Super mirror, blind spot view,
+playback, smart buttons, sounds — works as upstream documents it in the [wiki](../../wiki) and in the
+sections below.
+
+---
+
 ## What it is
+
+An app for the ZEEKR 7X head unit that puts the car's own surround cameras to work: it records them as a
+dash cam and shows them where they help while driving.
 
 Through App Lab, a third-party app gets the 7X's four surround cameras as one pre-stitched stream, which on
 its own previews as a distorted strip. Zeekr Shortcut splits it back into four views and builds on that:
@@ -138,8 +170,10 @@ the four cameras as one picture.
 
 ## Download
 
-Get the APK from **[Releases](../../releases/latest)**. Once installed, the app can check for newer
-versions itself: Settings → Updates & about → Check for updates.
+Get the APK from **[Releases](../../releases)**. Once installed, the app can check for newer versions
+itself: Settings → Updates & about → Check for updates. In this fork the check asks this fork's releases:
+with **Update from the fork** on (Developer options, off by default) an upstream version is never offered,
+whatever number it carries.
 
 - The first install goes through App Lab (sideloading): see [First install](../../wiki/First-install) in the wiki,
   or brotatochip's [video guide](https://youtu.be/m2o2HcqdsOY).

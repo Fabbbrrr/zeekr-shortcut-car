@@ -43,10 +43,20 @@ not silently point a car back at upstream releases.
 
 ## Releasing
 
+There are two branches and they carry the same thing:
+
+- `feat/fork-build` — where upstream is merged and everything is built and tested.
+- `main` — what a visitor to the fork reads and downloads. It is fast-forwarded to
+  `feat/fork-build` after each release, never merged into, so it cannot drift.
+
 1. Sync: `git merge origin/main` on `feat/fork-build`, resolve, bump the version as above.
 2. `./gradlew :app:testDebugUnitTest assembleRelease` — 2200+ unit tests, no failures.
 3. Commit, push the branch.
-4. **Tag the merge commit, not `main`.** This is the mistake that produced `v4.5.18-beta` …
+4. Fast-forward `main` to the same commit and push it: `git push fork feat/fork-build:main`.
+   (The Alerts feature reaches `main` this way, not by merging `alerts/01`…`alerts/04` — those are the
+   split-PR versions of the same work, older than what shipped, and merging them would walk the code
+   back.)
+5. **Tag the merge commit, not `main`.** This is the mistake that produced `v4.5.18-beta` …
    `v4.5.21-beta` all pointing at `1e591f4f` (Release 4.4.1-alpha): the tags were made while
    `main` was checked out, so those four tags point at the wrong commit and name the wrong
    version.
@@ -54,7 +64,7 @@ not silently point a car back at upstream releases.
    git tag v4.13.0-fab-beta <merge-commit>
    git push fork v4.13.0-fab-beta
    ```
-5. **The release must be published, not left as a draft.** `.github/workflows/build.yml` creates
+6. **The release must be published, not left as a draft.** `.github/workflows/build.yml` creates
    releases as drafts (upstream's policy: nothing public). The app's update check uses the
    anonymous GitHub API, which never returns drafts — a draft release is invisible, so the car
    reports "no update" forever. The fork branch sets `draft: false`: a tag push publishes the
