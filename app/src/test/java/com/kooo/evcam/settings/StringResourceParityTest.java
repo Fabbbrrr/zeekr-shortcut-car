@@ -115,8 +115,11 @@ public class StringResourceParityTest {
      * <p>复审第二轮又加了两条、删了一条：{@code alert_climate_stale_off_button}（过期的「关」那颗回的话）、
      * {@code set_alerts_hub_ack_missing}（话题填了、免费方案的提醒没接受），删的是 {@code set_group_alerts_climate}
      * （车厢温度那一页的页名已经说了，组名重复，连组一起拿掉了），397 + 2 − 1 = 398。</p>
+     *
+     * <p>单位那一轮删了一条：{@code alert_climate_wrong_unit}（「车报的是华氏度」）—— 单位改成按设定值判，
+     * 这句话不会再有，{@code Outcome.WRONG_UNIT} 也一起没了。398 − 1 = 397。</p>
      */
-    private static final int PENDING_ARABIC_COUNT = 398;
+    private static final int PENDING_ARABIC_COUNT = 397;
 
     @Test
     public void everyChineseStringHasATranslationWithMatchingPlaceholders() throws IOException {

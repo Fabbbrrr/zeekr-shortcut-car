@@ -155,7 +155,6 @@
     <string name="alert_climate_seat_vent">，主驾座椅通风</string>
     <string name="alert_climate_btn">空调 %1$d°</string>
     <string name="alert_climate_btn_off">关</string>
-    <string name="alert_climate_wrong_unit">车报的是华氏度，这个版本只设摄氏度。</string>
     <string name="alert_climate_refused">车机不受理这次写入（%1$s）。</string>
     <string name="alert_climate_refused_plain">车机不受理这条命令，什么都没改。</string>
     <string name="alert_climate_no_change">车机受理了，但车上没变（%1$s）。</string>

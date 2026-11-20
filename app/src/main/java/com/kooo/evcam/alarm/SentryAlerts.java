@@ -3488,8 +3488,6 @@ public final class SentryAlerts implements Telemetry.Listener {
                     degrees(report.targetC), seat, offAt);
         } else if (report.outcome == ClimateSource.Outcome.DONE) {
             text = app.getString(R.string.alert_climate_receipt_off);
-        } else if (report.outcome == ClimateSource.Outcome.WRONG_UNIT) {
-            text = app.getString(R.string.alert_climate_wrong_unit);
         } else if (report.outcome == ClimateSource.Outcome.NO_CHANGE) {
             // 技术细节（十六进制、读到的值）只进黑匣子；聊天里说的是人话。
             // The hex and the values stay in the black box; the chat says it in plain words.

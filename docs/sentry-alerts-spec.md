@@ -339,8 +339,10 @@ triggers present. It answers "what does it send" once configured; the three setu
   写完用读回说话。4.14.0 的规矩是「读不到范围就不写」，车上就是这个 7X 的日常：每一条 `ac on` 都回
   「车机不报温度范围」，整条路走不通 —— 4.14.1 改掉。16–31 这种数仍然不写死在代码里：车上有 19.5，
   说明步长至少到半度，那是读出来的事实，不是猜的。
-- **单位不是摄氏度就不写。** 读 `HVAC_FUNC_TEMP_UNIT`，读到而且不是 `TEMPERATURE_UNIT_C` 就拒（`WRONG_UNIT`），
-  不换算也不猜。
+- **单位看车现在设的是多少度，不看单位那个号。** 这台 7X 的 `HVAC_FUNC_TEMP_UNIT` 回的是华氏，
+  可它的设定值是 19.5 —— 华氏车不可能有 19.5°F 的设定。所以按设定值判：10–45 是摄氏度，超过 45 是华氏；
+  单位号只在设定值读不到时兜底。判成华氏就换算后写，回执仍然用摄氏度。4.15.0「不是摄氏就拒」
+  在车上就是每一条 `ac` 都回 `The car reports Fahrenheit`，4.15.1 改掉。
 - **开关和座椅走整型。** 开关是 `HVAC_FUNC_POWER`，写前排（`ROW_1`）；座椅是
   `HVAC_FUNC_SEAT_HEATING` / `HVAC_FUNC_SEAT_VENTILATION`，档位的值是功能号加档位，1–3 档。
 - **回执说的是车读回来什么。** 写完三秒内每 250 毫秒读回开关和设定温度（`ClimateSource.BACK_MS` /

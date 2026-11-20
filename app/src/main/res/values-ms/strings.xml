@@ -141,7 +141,6 @@
     <string name="alert_climate_seat_vent">, pengudaraan tempat duduk pemandu</string>
     <string name="alert_climate_btn">AC %1$d°</string>
     <string name="alert_climate_btn_off">Mati</string>
-    <string name="alert_climate_wrong_unit">Kereta melaporkan Fahrenheit; versi ini hanya menetapkan Celsius.</string>
     <string name="alert_climate_refused">Kereta menolak perubahan itu (%1$s).</string>
     <string name="alert_climate_refused_plain">Kereta menolak arahan itu. Tiada apa-apa diubah.</string>
     <string name="alert_climate_no_change">Kereta menerimanya tetapi tidak berubah (%1$s).</string>

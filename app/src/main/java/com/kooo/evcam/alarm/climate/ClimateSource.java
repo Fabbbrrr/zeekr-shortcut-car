@@ -21,7 +21,7 @@ import java.util.Locale;
  *   <li>能设多少度、一档多少度是从车上读的（{@code HVAC_FUNC_TEMP_MIN/MAX/STEP}，主驾区域）：车不同、地区不同，
  *       16–31 这种数不能写死在代码里。车机不说（这台 7X 就不说）就照车主说的整度写，写完用读回说话 ——
  *       4.14.0 要「先读到范围才肯写」，在车上就是每一条 ac on 都回「车机不报温度范围」。单位同理，读到的不是
- *       摄氏度（{@code TEMPERATURE_UNIT_C}）就不写（{@link Outcome#WRONG_UNIT}）。</li>
+ *       单位按设定值判（见 {@link #speaksFahrenheit}），判成华氏就换算后写。</li>
  *   <li>车机说受理了不等于做到了：写完 3 秒内每 250 毫秒读回开关和设定温度，都对上才算做成（{@link Outcome#DONE}），
  *       否则是 {@link Outcome#NO_CHANGE}，读到的值记在 {@link Report#detail} 里。</li>
  *   <li>功能号、区域照系统的常量名取（{@link Names}），这台车机上没有的就是做不了。纯 Java，没有安卓的东西：车接口、
@@ -42,7 +42,7 @@ import java.util.Locale;
  * 16–31 would be a guess; a guess that is wrong writes a temperature the unit clamps or rejects silently. A missing
  * range is used when it answers (the integer channel is tried too); when it does not, the owner's whole degree is
  * written and the readback reports what the car actually holds, which is what 4.14.1 fixes. A non-Celsius unit
- * reading is still {@link Outcome#WRONG_UNIT}.</p>
+ * reading is inferred from the setpoint it holds (10–45 Celsius, above 45 Fahrenheit) and converted when needed.</p>
  *
  * <p>Every car call sits in one try/catch: a {@link RuntimeException} coming out of the vendor binding (or a reflection
  * failure inside it) becomes {@link Outcome#UNAVAILABLE}, never a crash. A {@code null} from
@@ -85,8 +85,6 @@ public final class ClimateSource {
         REFUSED,
         /** 做不了：没有这个功能号，或者车辆接口出了错。 */
         UNAVAILABLE,
-        /** 温度单位不是摄氏度：不写（不换算，也不猜）。 */
-        WRONG_UNIT
     }
 
     /** 功能号、区域从哪来（真的是 {@code CarNames}；测试里换成假的）。 */
@@ -316,15 +314,25 @@ public final class ClimateSource {
                 note("range unknown, writing the requested target");
             }
 
-            // 单位：读不到当这台车机没有这个号；读到的不是摄氏度就不写（不换算、不猜）。
+            // 说话用哪种单位：**看车现在设的是多少度**，不是看单位那个号。
+            // 这台 7X 报的是华氏（HVAC_FUNC_TEMP_UNIT 回 TEMPERATURE_UNIT_F），可它的设定值是 19.5 ——
+            // 华氏车不可能有 19.5°F 的设定，所以按设定值判：10–45 是摄氏度，超过 45 是华氏。
+            // 单位号只在设定值读不到时当兜底，而且不再「不是摄氏就拒」：4.15.0 就是那样把
+            // 一辆摄氏度显示的车判成华氏，每一条 ac 都回「The car reports Fahrenheit」。
+            //
+            // Which unit the car speaks: **from the setpoint it currently holds**, not from the unit id.
+            // This 7X reports TEMPERATURE_UNIT_F while its setpoint is 19.5, and a Fahrenheit car cannot
+            // hold 19.5 °F, so 10–45 means Celsius and above 45 means Fahrenheit. The unit id is only a
+            // fallback when the setpoint is unreadable — and it no longer refuses on its own, which is
+            // what 4.15.0 did to a Celsius-displaying car.
             Integer unit = unitId == null ? null : access.read(unitId, driver);
-            if (unit != null) {
-                note("read unit@" + hex(driver) + "=" + hex(unit) + ", c=" + hex(unitC));
-                if (unitC == null || !unit.equals(unitC)) {
-                    note("not celsius");
-                    return report(Outcome.WRONG_UNIT, 0f, false);
-                }
-            }
+            Integer unitF = function("TEMPERATURE_UNIT_F");
+            Float before = access.readFloat(temp, driver);
+            boolean fahrenheit = speaksFahrenheit(before, unit, unitF);
+            note(String.format(Locale.US, "unit id %s (c=%s f=%s), setpoint before %s, %s",
+                    hex(unit), hex(unitC), hex(unitF),
+                    before == null ? "?" : String.format(Locale.US, "%.1f", before),
+                    fahrenheit ? "fahrenheit" : "celsius"));
 
             Float target = rangeKnown ? snapped(plan.targetC, min, max, step) : atLeastPlausible(plan.targetC);
             if (target == null) {
@@ -332,12 +340,10 @@ public final class ClimateSource {
                 return report(Outcome.REFUSED, 0f, false);
             }
 
-            Float before = access.readFloat(temp, driver);
-            note(String.format(Locale.US, "setpoint before %s",
-                    before == null ? "?" : String.format(Locale.US, "%.1f", before)));
-            boolean written = access.writeFloat(temp, driver, target);
-            note(String.format(Locale.US, "write temp %s@%s=%.1f %s", hex(temp), hex(driver), target,
-                    written ? "ok" : "refused"));
+            float written_value = fahrenheit ? celsiusToFahrenheit(target) : target;
+            boolean written = access.writeFloat(temp, driver, written_value);
+            note(String.format(Locale.US, "write temp %s@%s=%.1f %s %s", hex(temp), hex(driver),
+                    written_value, fahrenheit ? "F" : "C", written ? "ok" : "refused"));
             if (!written) {
                 return report(Outcome.REFUSED, 0f, false);
             }
@@ -350,7 +356,9 @@ public final class ClimateSource {
 
             seatOn(plan, driver, heat, vent);
 
-            return back(power, front, temp, driver, target, rangeKnown ? step / 2f : 0.5f);
+            float tolerance = rangeKnown ? step / 2f : 0.5f;
+            return back(power, front, temp, driver, target, written_value,
+                    fahrenheit ? tolerance * 9f / 5f : tolerance);
         }
 
         /** 座椅：只写一个号（加热优先），档位的值是功能号加档位；不受理不影响空调。 */
@@ -379,14 +387,16 @@ public final class ClimateSource {
         }
 
         /** 读回：{@link #BACK_MS} 内开关读到 1、设定温度在容差以内算做成。 */
-        private Report back(int power, int front, int temp, int driver, float target, float half) {
+        private Report back(int power, int front, int temp, int driver, float target,
+                           float writtenValue, float half) {
             Integer seenPower = null;
             Float seenTemp = null;
             for (long waited = BACK_STEP_MS; waited <= BACK_MS; waited += BACK_STEP_MS) {
                 clock.sleep(BACK_STEP_MS);
                 seenPower = read(power, front);
                 seenTemp = access.readFloat(temp, driver);
-                if (seenPower != null && seenPower == 1 && seenTemp != null && Math.abs(seenTemp - target) <= half + EPSILON) {
+                if (seenPower != null && seenPower == 1 && seenTemp != null
+                        && Math.abs(seenTemp - writtenValue) <= half + EPSILON) {
                     note(String.format(Locale.US, "back power %s setpoint %.1f after %d ms",
                             hex(seenPower), seenTemp, waited));
                     return report(Outcome.DONE, target, true);
@@ -481,6 +491,26 @@ public final class ClimateSource {
      * number; here the owner asked for 22 and 22 is written, and the car's own refusal shows up in the
      * readback.
      */
+    /**
+     * 车说哪种单位：设定值 10–45 是摄氏度，超过 45 是华氏；设定值读不到时才看单位号。
+     *
+     * <p>45 这个分界来自「人不会把空调设到 45 °C」：车上的最高档是 31–32，45 以上一定是华氏。</p>
+     *
+     * Which unit: a 10–45 setpoint is Celsius, above 45 is Fahrenheit; the unit id is the fallback only
+     * when the setpoint cannot be read. Nobody sets a cabin to 45 °C — the top stop is 31–32 — so above
+     * 45 must be Fahrenheit.
+     */
+    static boolean speaksFahrenheit(Float setpointBefore, Integer unit, Integer unitF) {
+        if (setpointBefore != null) {
+            return setpointBefore > 45f;
+        }
+        return unit != null && unitF != null && unit.equals(unitF);
+    }
+
+    static float celsiusToFahrenheit(float celsius) {
+        return celsius * 9f / 5f + 32f;
+    }
+
     static Float atLeastPlausible(float targetC) {
         if (Float.isNaN(targetC) || targetC < 10f || targetC > 35f) {
             return null;

@@ -141,7 +141,6 @@
     <string name="alert_climate_seat_vent">, driver seat ventilating</string>
     <string name="alert_climate_btn">AC %1$d°</string>
     <string name="alert_climate_btn_off">Off</string>
-    <string name="alert_climate_wrong_unit">The car reports Fahrenheit; this build only sets Celsius.</string>
     <string name="alert_climate_refused">The car refused the change (%1$s).</string>
     <string name="alert_climate_refused_plain">The car refused the command. Nothing was changed.</string>
     <string name="alert_climate_no_change">The car accepted it but did not change (%1$s).</string>

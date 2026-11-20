@@ -154,26 +154,150 @@ public class ClimateSourceTest {
 
     // ================================================================= 开：单位
 
+    /**
+     * 实车报的那一台，就是 4.15.0 的 bug：{@code HVAC_FUNC_TEMP_UNIT} 回华氏，可它的设定值是 19.5。
+     *
+     * <p>4.15.0 只看单位号就拒，于是这辆摄氏度显示的车每一条 {@code ac} 都回「车报的是华氏度」。
+     * 现在单位按设定值判：19.5 °F 这种设定不存在，所以是摄氏度 —— 写 22.0，不换算，也不拒。</p>
+     *
+     * The car that reported this, and the whole of 4.15.0's bug: the unit id answers Fahrenheit while the
+     * setpoint holds 19.5. 4.15.0 refused on the unit id, so every "ac" from this Celsius car answered
+     * "the car reports Fahrenheit". The unit now comes from the setpoint — 19.5 °F is not a setpoint anyone
+     * can hold — so 22.0 is written in Celsius.
+     */
     @Test
-    public void onRefusesWhenUnitIsNotCelsiusAndWritesNothing() {
+    public void aFahrenheitUnitIdWithACelsiusSetpointWritesCelsius() {
         FakeCar car = car();
         car.putInt(TEMP_UNIT, DRIVER, UNIT_F);
+        car.putFloat(TEMP, DRIVER, 19.5f);
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 
-        assertEquals(ClimateSource.Outcome.WRONG_UNIT, report.outcome);
-        assertNoWrites(car);
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.0"));
+        assertFalse("判成华氏就会写 71.6：" + car.calls,
+                car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=71.6"));
+        assertTrue(report.detail, report.detail.contains("setpoint before 19.5, celsius"));
     }
 
+    /**
+     * 单位号读得到、可 {@code TEMPERATURE_UNIT_C} 那个常量不在：以前一律拒。
+     *
+     * <p>设定值读得到的时候单位号根本没参与判断，缺这个常量就什么都不影响。</p>
+     *
+     * The unit id reads a value but the {@code TEMPERATURE_UNIT_C} constant is missing: this used to be a
+     * blanket refusal. When the setpoint is readable the unit id plays no part at all, so a missing Celsius
+     * constant changes nothing.
+     */
     @Test
-    public void onRefusesWhenUnitReadsAValueButCelsiusConstantIsMissing() {
+    public void aMissingCelsiusConstantDoesNotBlockACelsiusSetpoint() {
         FakeCar car = car();
+        car.putInt(TEMP_UNIT, DRIVER, UNIT_F);
+        car.putFloat(TEMP, DRIVER, 19.5f);
 
         ClimateSource.Report report = ClimateSource.apply(car, names().without("TEMPERATURE_UNIT_C"),
                 new FakeClock(), on(22f, true, true));
 
-        assertEquals(ClimateSource.Outcome.WRONG_UNIT, report.outcome);
-        assertNoWrites(car);
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.0"));
+        assertTrue(report.detail, report.detail.contains("unit id 0x10 (c=?"));
+    }
+
+    /** 设定值 68 就是华氏车：写下去的是换算过的 71.6，回执还是 22 °C。 */
+    @Test
+    public void aFahrenheitSetpointGetsTheConvertedTargetAndACelsiusReceipt() {
+        FakeCar car = car();
+        car.putFloat(TEMP, DRIVER, 68f);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals("回执说的是摄氏度", 22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=71.6"));
+        assertTrue(report.detail, report.detail.contains("setpoint before 68.0, fahrenheit"));
+    }
+
+    /** 设定值读不到，单位号才有话语权：单位号说华氏，就按华氏换算着写。 */
+    @Test
+    public void anUnreadableSetpointFallsBackToTheFahrenheitUnitId() {
+        FakeCar car = car();
+        car.putInt(TEMP_UNIT, DRIVER, UNIT_F);
+        car.nullCustomReads.add(TEMP);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=71.6"));
+        assertTrue(report.detail, report.detail.contains("setpoint before ?, fahrenheit"));
+    }
+
+    /** 设定值读不到、单位号也读不到：按摄氏度写，不猜华氏。 */
+    @Test
+    public void anUnreadableSetpointAndNoUnitIdMeansCelsius() {
+        FakeCar car = car();
+        car.nullCustomReads.add(TEMP);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names().without("HVAC_FUNC_TEMP_UNIT"),
+                new FakeClock(), on(22f, true, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.0"));
+        assertTrue(report.detail, report.detail.contains("setpoint before ?, celsius"));
+    }
+
+    /**
+     * 单位的分界：设定值 10–45 是摄氏度，45 以上是华氏，设定值读不到才看单位号。
+     *
+     * The boundary: a 10–45 setpoint is Celsius, above 45 is Fahrenheit, and the unit id only speaks when
+     * the setpoint cannot be read.
+     */
+    @Test
+    public void theUnitComesFromTheSetpointWithTheUnitIdAsTheFallback() {
+        assertFalse("19.5 在摄氏范围里", ClimateSource.speaksFahrenheit(19.5f, UNIT_F, UNIT_F));
+        assertFalse("45 还算摄氏度", ClimateSource.speaksFahrenheit(45f, UNIT_F, UNIT_F));
+        assertTrue("46 以上一定是华氏", ClimateSource.speaksFahrenheit(46f, UNIT_C, UNIT_F));
+        assertTrue("读不到才看单位号", ClimateSource.speaksFahrenheit(null, UNIT_F, UNIT_F));
+        assertFalse(ClimateSource.speaksFahrenheit(null, UNIT_C, UNIT_F));
+        assertFalse("两个都没有就是摄氏度", ClimateSource.speaksFahrenheit(null, null, null));
+        assertEquals(32f, ClimateSource.celsiusToFahrenheit(0f), 1e-4f);
+        assertEquals(71.6f, ClimateSource.celsiusToFahrenheit(22f), 1e-4f);
+    }
+
+    /** 华氏车的读回也按华氏比：半档 0.25 °C 的容差换算成 0.45 °F，±0.4 算做到。 */
+    @Test
+    public void aFahrenheitReadBackWithinToleranceIsDone() {
+        for (float offset : new float[] {0.4f, -0.4f}) {
+            FakeCar car = car();
+            car.putFloat(TEMP, DRIVER, 68f);
+            car.readBackOffset.put(TEMP + "@" + DRIVER, offset);
+            FakeClock clock = new FakeClock();
+
+            ClimateSource.Report report = ClimateSource.apply(car, names(), clock, on(22f, true, false));
+
+            assertEquals("读回 71.6 " + offset + " 该算做到", ClimateSource.Outcome.DONE, report.outcome);
+            assertEquals(22f, report.targetC, 1e-3f);
+            assertEquals("第一次读回就对上了", 1, clock.sleeps);
+        }
+    }
+
+    /** 华氏车的读回超出容差（±0.5 °F）就是没做到，哪怕读数看起来也像个整度。 */
+    @Test
+    public void aFahrenheitReadBackBeyondToleranceIsNoChange() {
+        for (float offset : new float[] {0.5f, -0.5f}) {
+            FakeCar car = car();
+            car.putFloat(TEMP, DRIVER, 68f);
+            car.readBackOffset.put(TEMP + "@" + DRIVER, offset);
+
+            ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, false));
+
+            assertEquals("读回 71.6 " + offset + " 该算没变", ClimateSource.Outcome.NO_CHANGE, report.outcome);
+            assertTrue("开关是开的，只是温度没对上", report.powerOn);
+            assertEquals(22f, report.targetC, 1e-3f);
+        }
     }
 
     // ================================================================= 开：范围
@@ -335,7 +459,7 @@ public class ClimateSourceTest {
 
     // ================================================================= 开：单位那个号不在
 
-    /** 车机没有 {@code HVAC_FUNC_TEMP_UNIT}：当「不报单位」，照常写（不是 WRONG_UNIT，也不是 NO_RANGE）。 */
+    /** 车机没有 {@code HVAC_FUNC_TEMP_UNIT}：当「不报单位」，照常写（设定值读得到，单位就不看它）。 */
     @Test
     public void onMissingUnitFunctionStillWrites() {
         FakeCar car = car();
@@ -748,6 +872,7 @@ public class ClimateSourceTest {
             functions.put("IHvac.HVAC_FUNC_TEMP_STEP", TEMP_STEP);
             functions.put("IHvac.HVAC_FUNC_TEMP_UNIT", TEMP_UNIT);
             functions.put("IHvac.TEMPERATURE_UNIT_C", UNIT_C);
+            functions.put("IHvac.TEMPERATURE_UNIT_F", UNIT_F);
             functions.put("IHvac.HVAC_FUNC_SEAT_HEATING", SEAT_HEAT);
             functions.put("IHvac.HVAC_FUNC_SEAT_VENTILATION", SEAT_VENT);
             zones.put("ROW_1", FRONT);

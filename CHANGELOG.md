@@ -11,6 +11,14 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.15.1-fab-beta] - 2026-11-20
+
+- Alerts: `ac 22` answered "The car reports Fahrenheit; this build only sets Celsius" on the 7X, because the
+  car's temperature-unit id says Fahrenheit while its setpoint is 19.5 °C. The unit is now read from what
+  the car actually holds — a 10–45 setpoint is Celsius, above 45 is Fahrenheit — and the unit id is only a
+  fallback when the setpoint cannot be read. A genuinely Fahrenheit car gets the target converted, and the
+  receipt still speaks Celsius.
+
 ## [4.15.0-fab-beta] - 2026-11-20
 
 - Alerts: **Alerts is now a hub** with three sub-pages — Notifications (the bot, the topic and the checks),
