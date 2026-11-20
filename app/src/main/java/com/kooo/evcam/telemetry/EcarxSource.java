@@ -153,6 +153,9 @@ final class EcarxSource {
     /** 写只走 {@link #access}：灵动贴的动作。 */
     private Method setFunctionValue;
     private Method setFunctionValueZoned;
+    /** 浮点通道：温度这种只收小数的号（{@link CarAccess#readCustom}、{@link CarAccess#writeCustom}）。 */
+    private Method getCustomizeFunctionValue;
+    private Method setCustomizeFunctionValue;
     /** 车机说某个号某个区域现在能不能用：关门前问（{@link CarAccess#status}）。 */
     private Method isFunctionSupportedZoned;
     /** 连着时给灵动贴读写用的那一份（{@link #access}）；没连上、断了、停了是 null。 */
@@ -478,6 +481,8 @@ final class EcarxSource {
                 setFunctionValue = findMethod(function, "setFunctionValue", int.class, int.class);
                 setFunctionValueZoned = findMethod(function, "setFunctionValue", int.class, int.class, int.class);
                 isFunctionSupportedZoned = findMethod(function, "isFunctionSupported", int.class, int.class);
+                getCustomizeFunctionValue = findMethod(function, "getCustomizeFunctionValue", int.class, int.class);
+                setCustomizeFunctionValue = findMethod(function, "setCustomizeFunctionValue", int.class, int.class, float.class);
             }
             if (sensor != null) {
                 getSensorEvent = findMethod(sensor, "getSensorEvent", int.class);
@@ -509,7 +514,8 @@ final class EcarxSource {
             }
             sleptAtLastPass = sleptMs();
             access = new Access(function, getFunctionValue, getFunctionValueZoned, setFunctionValue, setFunctionValueZoned,
-                    isFunctionSupportedZoned, sensor, getSensorLatestValue);
+                    isFunctionSupportedZoned, getCustomizeFunctionValue, setCustomizeFunctionValue,
+                    sensor, getSensorLatestValue);
             status = String.format(Locale.US,
                     "connected in %d ms; function=%s zoned=%s sensorEvent=%s sensorValue=%s; driver %s; %s",
                     SystemClock.elapsedRealtime() - start, getFunctionValue != null, getFunctionValueZoned != null,
@@ -1444,17 +1450,21 @@ final class EcarxSource {
         private final Method set;
         private final Method setZoned;
         private final Method supportedZoned;
+        private final Method getCustom;
+        private final Method setCustom;
         private final Object sensor;
         private final Method sensorValue;
 
         Access(Object function, Method get, Method getZoned, Method set, Method setZoned, Method supportedZoned,
-               Object sensor, Method sensorValue) {
+               Method getCustom, Method setCustom, Object sensor, Method sensorValue) {
             this.function = function;
             this.get = get;
             this.getZoned = getZoned;
             this.set = set;
             this.setZoned = setZoned;
             this.supportedZoned = supportedZoned;
+            this.getCustom = getCustom;
+            this.setCustom = setCustom;
             this.sensor = sensor;
             this.sensorValue = sensorValue;
         }
@@ -1477,6 +1487,26 @@ final class EcarxSource {
         @Override
         public boolean write(int id, int zone, int value) {
             return accepted(setZoned, id, zone, value);
+        }
+
+        /** 浮点通道读：温度这类号只走它，整型读对它会回占位值（253）。 */
+        @Override
+        public Float readCustom(int id, int zone) {
+            if (getCustom == null || function == null) {
+                return null;
+            }
+            try {
+                Object v = getCustom.invoke(function, id, zone);
+                return v instanceof Number ? Signal.floatOrNull(((Number) v).floatValue()) : null;
+            } catch (Throwable t) {
+                return null;
+            }
+        }
+
+        /** 浮点通道写：受理了是真；区域号必须是真区域（0 被车机当“不是有效区域”）。 */
+        @Override
+        public boolean writeCustom(int id, int zone, float value) {
+            return accepted(setCustom, id, zone, value);
         }
 
         /** 回的是 ECARX 的 {@code FunctionStatus}，写成它自己的名字（同 {@link DarkScreenProbes#status}）。 */
