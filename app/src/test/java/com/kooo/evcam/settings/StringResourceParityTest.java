@@ -97,11 +97,19 @@ public class StringResourceParityTest {
      * （alert_climate_* / alert_event_climate_* / alert_headline_climate_* / set_alerts_climate_* /
      * opt_alerts_*），阿语照 4.13 的已知缺口留到单独一轮，所以这里跟着加，不是放宽。
      *
+     * <p>4.6 的分页：停车警报拆成三页（通知 / 哨兵 / 车厢温度），加了三行入口、三个页名和几条行尾的短语
+     * （{@code set_alerts_row_*} / {@code set_alerts_page_*} / {@code set_alerts_hub_*}，共 17 条），
+     * 删掉了原来的分类选择器 5 条（{@code set_alerts_family_*} / {@code opt_alerts_family_*}）；
+     * 384 + 17 − 5 − 1 = 395（那 1 条是本次之前从中文里删掉、一直没算进来的 {@code alert_climate_no_range}）。
+     * 每一条都是停车警报的文案，阿语照旧留到单独一轮。</p>
+     *
      * How many strings still have no Arabic. 319 was 4.13; the cabin-temperature feature added 65,
      * and Arabic for the Alerts screens is the documented separate pass, so the number follows
-     * deliberately instead of the check being weakened.
+     * deliberately instead of the check being weakened. 4.6 split the alerts page into three: 17 new
+     * rows/titles/summary phrases, 5 family-picker strings gone, and one string that had already been
+     * deleted from Chinese without the number following it: 384 + 17 − 5 − 1 = 395.
      */
-    private static final int PENDING_ARABIC_COUNT = 384;
+    private static final int PENDING_ARABIC_COUNT = 395;
 
     @Test
     public void everyChineseStringHasATranslationWithMatchingPlaceholders() throws IOException {

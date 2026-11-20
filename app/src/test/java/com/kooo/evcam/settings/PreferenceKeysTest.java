@@ -7,6 +7,7 @@
 
 package com.kooo.evcam.settings;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
@@ -16,7 +17,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -109,6 +112,67 @@ public class PreferenceKeysTest {
             }
         }
         return found;
+    }
+
+    /**
+     * 停车警报下面那三页：声明成 {@code CHILD_*} 常量、当 {@code withRoot} 的 rootKey 用。
+     * 这一类 key 不是行，所以 {@link #CODE_KEY} 看不到它们 —— 它只认 {@code findPreference("…")} 这种写法。
+     * The three child pages' keys: declared as CHILD_* and used as a rootKey, which CODE_KEY cannot see.
+     */
+    private static final Pattern CHILD_ROOT_DECL = Pattern.compile(
+            "private static final String (CHILD_[A-Z_]+) = \"([^\"]+)\"");
+    private static final Pattern CHILD_ROOT_OPENED = Pattern.compile(
+            "openAlertsChild\\((CHILD_[A-Z_]+),");
+
+    /**
+     * 停车警报：总开关那一页的三行入口，和它们各自打开的那一页。
+     *
+     * <p>三行入口是普通 {@code <Preference>}，找不到 key 时同样只是安静地不响应；下层页的 rootKey 写错时
+     * {@code setPreferencesFromResource} 会直接抛异常（找不到那一棵子树）。两边都要拦下来。</p>
+     *
+     * The three entry rows and the pages they open: a wrong key on either side is a tap that does nothing.
+     */
+    @Test
+    public void everyAlertsChildPageKeyExistsAndIsOpened() throws IOException {
+        File moduleRoot = findModuleRoot();
+        assumeTrue("定位不到模块根目录，跳过", moduleRoot != null);
+        File fragment = new File(moduleRoot,
+                "src/main/java/com/kooo/evcam/settings/SettingsPreferenceFragment.java");
+        assumeTrue("读不到片段源码，跳过", fragment.isFile());
+        String source = new String(Files.readAllBytes(fragment.toPath()), StandardCharsets.UTF_8);
+        Set<String> declared = extract(
+                new File(moduleRoot, "src/main/res/xml/preferences.xml"), XML_KEY);
+
+        // 三页：常量写了一份真 key，XML 里真有，而且有一行会打开它
+        Map<String, String> children = new LinkedHashMap<>();
+        Matcher decl = CHILD_ROOT_DECL.matcher(source);
+        while (decl.find()) {
+            children.put(decl.group(1), decl.group(2));
+        }
+        assertEquals("停车警报下面该有三页：" + children, 3, children.size());
+        Set<String> opened = new LinkedHashSet<>();
+        Matcher open = CHILD_ROOT_OPENED.matcher(source);
+        while (open.find()) {
+            opened.add(open.group(1));
+        }
+        for (Map.Entry<String, String> child : children.entrySet()) {
+            assertTrue(child.getValue() + " 在 preferences.xml 里不存在",
+                    declared.contains(child.getValue()));
+            assertTrue("没有哪一行会打开 " + child.getKey(), opened.contains(child.getKey()));
+        }
+        assertTrue("车厢温度那一页的 rootKey 叫 " + children.values(),
+                children.containsValue("screen_alerts_climate"));
+
+        // 三行入口：XML 里有 key，代码里点了要接上（onClick 那一行）
+        for (String row : new String[] {"pref_alerts_notifications", "pref_alerts_sentry",
+                "pref_alerts_climate_page"}) {
+            assertTrue(row + " 在 preferences.xml 里不存在", declared.contains(row));
+            assertTrue(row + " 没有接线（点了没反应）", source.contains("onClick(\"" + row + "\""));
+        }
+
+        // 下层页靠一个可选的参数认自己读哪一棵子树；父页那一条路（ARG_SECTION）不变
+        assertTrue("下一层该用 ARG_ROOT 当 rootKey", source.contains("getString(ARG_ROOT)"));
+        assertTrue("父页那条路还在", source.contains("getString(ARG_SECTION)"));
     }
 
     /** 从工作目录往上找，直到看见 {@code src/main/res/xml/preferences.xml}。 */

@@ -11,6 +11,17 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.14.1-fab-beta] - 2026-11-20
+
+- Alerts: `ac on` answered "This head unit will not report its temperature range, so I did not change
+  anything" on the 7X. 4.14.0 refused to write until the car reported its setpoint range, and this adapter
+  answers that on neither channel — so the command never ran. It now writes the target you asked for and
+  reports what the car read back; a range the car does report is still used to snap the step and to refuse
+  a request outside it. The diagnostics line also prints the setpoint the car held before the write.
+- Alerts: the AC buttons under a temperature alert did nothing when pressed — each button was checked
+  against the wrong row's token, then against its own token a second time as if an action were a whole
+  payload. Each row now finds its own button, and a press always answers.
+
 ## [4.14.0-fab-beta] - 2026-11-20
 
 - Alerts: **cabin temperature**. While parked, the car says in the chat when the cabin has been too hot

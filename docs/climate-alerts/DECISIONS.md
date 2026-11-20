@@ -26,8 +26,11 @@ a new wake path, Fahrenheit UI, any automatic write that is not an owner command
 - Never write a heater or the climate system automatically. Automatic **off** is allowed. Owner
   commands are the only start.
 - Never write while moving (`Parked` false or `gear != P`).
-- The temperature range and step are **read from the car** (`HVAC_FUNC_TEMP_MIN/MAX/STEP`). A missing
-  range is a refusal, not a default. No guessed 16–31 anywhere in Java.
+- The temperature range and step are **read from the car** when the car answers (`HVAC_FUNC_TEMP_MIN/MAX/STEP`,
+  float channel, integer channel as a fallback). 4.14.0 refused to write when the range was unreadable and
+  that made `ac on` dead on the real 7X (its adapter answers neither channel), so 4.14.1 writes the owner's
+  whole degree and lets the readback report what the car holds. No guessed 16–31 anywhere in Java: the
+  plausibility window (10–35 whole degrees) is the parser's own limit, not a claim about the car.
 - The setpoint goes through the **float** channel. The integer channel is refused by the vendor; do
   not add an integer fallback.
 - Alerts are text only. No picture, no clip, no new transport.
@@ -68,7 +71,7 @@ default boolean writeCustom(int id, int zone, float value) { return false; }
 
 ```java
 public final class ClimateSource {
-    public enum Outcome { DONE, NO_CHANGE, REFUSED, UNAVAILABLE, NO_RANGE, WRONG_UNIT }
+    public enum Outcome { DONE, NO_CHANGE, REFUSED, UNAVAILABLE, WRONG_UNIT }
     public interface Names { Integer function(String iface, String field); int zone(String name); }
     public interface Clock { void sleep(long ms); }
 
@@ -97,7 +100,8 @@ public final class ClimateSource {
    `HVAC_FUNC_TEMP_MAX`, `HVAC_FUNC_TEMP_STEP`, `HVAC_FUNC_TEMP_UNIT`, `TEMPERATURE_UNIT_C`,
    `HVAC_FUNC_SEAT_HEATING`, `HVAC_FUNC_SEAT_VENTILATION`. Missing `POWER` → `UNAVAILABLE`.
 2. off: power 0 on the front zone, seats 0 when `seats`; read back power within 3 s → `DONE`, else `NO_CHANGE`.
-3. on: read min/max/step (driver zone). Any null → `NO_RANGE` (no write at all). Unit read, when
+3. on: read min/max/step (driver zone) best-effort; unreadable → write the requested whole degree
+   (`atLeastPlausible`, 10–35) instead of refusing. Unit read, when
    non-null and not `TEMPERATURE_UNIT_C` → `WRONG_UNIT`. Target outside min..max → `REFUSED`.
    Snap to step.
 4. write setpoint float on the **driver** zone; false → `REFUSED`.

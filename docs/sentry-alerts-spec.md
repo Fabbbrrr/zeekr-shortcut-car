@@ -334,9 +334,11 @@ triggers present. It answers "what does it send" once configured; the three setu
 设定温度只能走浮点通道：`CarAccess.writeCustom`（`setCustomizeFunctionValue`，`CarAccess.java:69`）。
 整型的 `setFunctionValue` 车机对 `HVAC_FUNC_TEMP` 一律回 false，读回来是占位值 253，所以没有整数回退。
 
-- **范围从车上读，读不到就不写。** 每次写之前读 `HVAC_FUNC_TEMP_MIN` / `MAX` / `STEP`（主驾区域
-  `ROW_1_LEFT`），缺一个就整条拒掉（`ClimateSource.Outcome.NO_RANGE`），一个度数也不发；写下去的度数照
-  步长对齐。16–31 这种数不写死在代码里。
+- **范围是车上「说过的话」，不是开空调的前提。** 每次写之前试读 `HVAC_FUNC_TEMP_MIN` / `MAX` / `STEP`
+  （主驾区域 `ROW_1_LEFT`，浮点通道，取不到再试整型）。读到了就照它夹、照步长对齐；读不到就照车主说的整度写，
+  写完用读回说话。4.14.0 的规矩是「读不到范围就不写」，车上就是这个 7X 的日常：每一条 `ac on` 都回
+  「车机不报温度范围」，整条路走不通 —— 4.14.1 改掉。16–31 这种数仍然不写死在代码里：车上有 19.5，
+  说明步长至少到半度，那是读出来的事实，不是猜的。
 - **单位不是摄氏度就不写。** 读 `HVAC_FUNC_TEMP_UNIT`，读到而且不是 `TEMPERATURE_UNIT_C` 就拒（`WRONG_UNIT`），
   不换算也不猜。
 - **开关和座椅走整型。** 开关是 `HVAC_FUNC_POWER`，写前排（`ROW_1`）；座椅是

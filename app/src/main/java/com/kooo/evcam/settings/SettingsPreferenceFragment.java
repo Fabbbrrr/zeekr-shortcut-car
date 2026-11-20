@@ -119,21 +119,34 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
 
     private static final String ARG_SECTION = "section";
     private static final String ARG_ROWS = "rows";
-
     /**
-     * 停车警报那一栏的三个类别（{@link SettingsRegistry#ALERTS_FAMILY}）：上面那一栏选一个，下面就只出现那一组。
+     * 只摆某一个下层页（停车警报的通知 / 哨兵 / 车厢温度）：值是嵌套 {@code PreferenceScreen} 的 key，
+     * 传给 {@code setPreferencesFromResource} 的 rootKey，只把那一棵子树读进来。
      *
-     * <p>名字写在这里，不另抄一份字面量到判可见性的地方 —— 三处对不上就会有一组永远出不来。
-     * The three families of the alerts section. Declared once, because a mismatched literal would leave
-     * one group permanently hidden.</p>
+     * <p>父页（{@code screen_alerts}）仍然整份读进来、再按 key 取分区，那一条路不变。</p>
+     *
+     * <p>Only one nested page: the value is the key of a nested PreferenceScreen and is handed to
+     * setPreferencesFromResource as rootKey. The parent page still loads the whole file.</p>
      */
-    private static final String FAMILY_NOTIFICATIONS = "notifications";
-    private static final String FAMILY_SENTRY = "sentry";
-    private static final String FAMILY_CLIMATE = "climate";
+    private static final String ARG_ROOT = "arg_root";
+    /** 这一页叫什么（只有外壳不在的时候用得上：退回整屏替换时写到活动标题上）。 */
+    private static final String ARG_TITLE = "arg_title";
 
     /**
-     * 车厢温度那九行：这一组自己的开关关着时一起收起来（开关本身不在这里，它一直在）。
-     * The nine cabin-temperature rows; they collapse together with the group's own switch.
+     * 停车警报那一页下面三页的 key（{@code preferences.xml} 里的嵌套 PreferenceScreen）。
+     *
+     * <p>三个都从这里取，不另抄一份字面量 —— 对不上就会有一页永远打不开，而 {@code findPreference}
+     * 找不到时只返回 null，不报错。
+     * The three child pages of the alerts section, declared once: a mismatched literal would leave one
+     * page permanently unopenable, silently.</p>
+     */
+    private static final String CHILD_NOTIFICATIONS = "screen_alerts_notifications";
+    private static final String CHILD_SENTRY = "screen_alerts_sentry";
+    private static final String CHILD_CLIMATE = "screen_alerts_climate";
+
+    /**
+     * 车厢温度那一组自己的开关关着时一起收起来的几行（开关自己不在里面，它一直在）。
+     * The cabin-temperature rows; they collapse together with the group's own switch.
      */
     private static final String[] CLIMATE_ROWS = {
             "pref_alerts_climate_hot", "pref_alerts_climate_cold", "pref_alerts_climate_safety",
@@ -168,7 +181,31 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         return fragment;
     }
 
-    /** 整份设置读进来以后，只留下要的那几行：从各自的组里摘下来，照给的先后放进一个新的屏。接线在这之后做，和平时一样。 */
+    /**
+     * 只摆一份文件里的某一棵子树：停车警报下面的通知 / 哨兵 / 车厢温度三页（4.6，ui-spec §十六）。
+     *
+     * <p>用同一份 {@code preferences.xml}、同一份接线：{@code setPreferencesFromResource} 的 rootKey
+     * 接受任意嵌套 key，所以三页不需要三个文件、三份绑定。开关、下拉框、拖动条的读写全走
+     * {@link AppConfig}，和父页一模一样。</p>
+     *
+     * <p>One nested subtree of the same file, with the same bindings: rootKey takes any nested key, so
+     * the three pages need neither three files nor three sets of wiring.</p>
+     *
+     * @param rootKey  嵌套 PreferenceScreen 的 key（{@code screen_alerts_*}）
+     * @param titleRes 这一页叫什么；只有外壳不在、退回整屏替换时才写到活动标题上
+     */
+    public static SettingsPreferenceFragment withRoot(String rootKey, int titleRes) {
+        SettingsPreferenceFragment fragment = new SettingsPreferenceFragment();
+        Bundle args = new Bundle();
+        args.putString(ARG_ROOT, rootKey);
+        args.putInt(ARG_TITLE, titleRes);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
+    /**
+     * 整份设置读进来以后，只留下要的那几行：从各自的组里摘下来，照给的先后放进一个新的屏。接线在这之后做，和平时一样。
+     */
     private void keepOnly(String[] keys) {
         androidx.preference.PreferenceScreen all = getPreferenceScreen();
         androidx.preference.PreferenceScreen picked =
@@ -208,6 +245,10 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     public void onCreatePreferences(@Nullable Bundle savedInstanceState, @Nullable String rootKey) {
         String section = rootKey;
         if (section == null && getArguments() != null) {
+            // 下层页先问（通知 / 哨兵 / 车厢温度），再退回左边的分区
+            section = getArguments().getString(ARG_ROOT);
+        }
+        if (section == null && getArguments() != null) {
             section = getArguments().getString(ARG_SECTION);
         }
         String[] only = getArguments() != null ? getArguments().getStringArray(ARG_ROWS) : null;
@@ -218,6 +259,11 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         hideSubPages(getPreferenceScreen());
         if (getContext() == null) {
             return;
+        }
+        // 外壳不在时（退回整屏替换的那一条路）这一页没有别的地方写标题，标题区就在活动上
+        int titleRes = getArguments() != null ? getArguments().getInt(ARG_TITLE) : 0;
+        if (titleRes != 0 && shell() == null) {
+            requireActivity().setTitle(titleRes);
         }
         appConfig = new AppConfig(getContext());
         boundUnlocked = DeveloperMode.isUnlocked();
@@ -886,21 +932,24 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
      * 不进设置导出、不进诊断报告；设置页只显示末四位。</p>
      */
     private void bindAlerts() {
+        // 总开关只在总开关那一页上：下面三页上没有这一行，但它们的行照样要接线 ——
+        // 所以这里不能因为找不到它就整个返回（前三页就全成死的了）。
+        // The master switch exists on the hub page only; the child pages still need their rows wired,
+        // so a missing master switch must not end this method.
         SwitchPreferenceCompat on = findPreference("pref_alerts");
-        if (on == null) {
-            return;
+        if (on != null) {
+            on.setPersistent(false);
+            on.setChecked(appConfig.isAlertsEnabled());
+            on.setOnPreferenceChangeListener((preference, newValue) -> {
+                boolean enabled = Boolean.TRUE.equals(newValue);
+                appConfig.setAlertsEnabled(enabled);
+                com.kooo.evcam.blackbox.BlackBox.noteImportant("开关变更: pref_alerts → "
+                        + (enabled ? "开" : "关"));
+                com.kooo.evcam.alarm.SentryAlerts.get(requireContext()).refresh();
+                showAlertsRows();
+                return true;
+            });
         }
-        on.setPersistent(false);
-        on.setChecked(appConfig.isAlertsEnabled());
-        on.setOnPreferenceChangeListener((preference, newValue) -> {
-            boolean enabled = Boolean.TRUE.equals(newValue);
-            appConfig.setAlertsEnabled(enabled);
-            com.kooo.evcam.blackbox.BlackBox.noteImportant("开关变更: pref_alerts → "
-                    + (enabled ? "开" : "关"));
-            com.kooo.evcam.alarm.SentryAlerts.get(requireContext()).refresh();
-            showAlertsRows();
-            return true;
-        });
 
         // 聊天里 alerts off 之后那一行：点一下恢复，不依赖聊天能不能进来。
         // The row after "alerts off" in the chat: one tap resumes, without depending on the chat.
@@ -1137,25 +1186,23 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             });
         }
 
+        // ------------------------------------------------------------------ 下层页（4.6）
+        // 三行入口：通知、哨兵、车厢温度各占下一层的一页（ui-spec §十六）。行尾写在 showAlertsRows 里，
+        // 点一下就用同一份 XML 的那一棵子树开一页 —— 同一份接线，不另写三套。
+        // Three entry rows, one child page each; the summary is live, the page is one subtree of the
+        // same file with the same wiring.
+        onClick("pref_alerts_notifications", pref ->
+                openAlertsChild(CHILD_NOTIFICATIONS, R.string.set_alerts_page_notifications));
+        onClick("pref_alerts_sentry", pref ->
+                openAlertsChild(CHILD_SENTRY, R.string.set_alerts_page_sentry));
+        // 车厢温度那一行的 key 是 …_page：pref_alerts_climate 是那一页自己的开关（两个 Preference 不能共用 key）
+        onClick("pref_alerts_climate_page", pref ->
+                openAlertsChild(CHILD_CLIMATE, R.string.set_alerts_page_climate));
+
         // ------------------------------------------------------------------ 车厢温度（climate alerts）
         // 契约见 docs/climate-alerts/DECISIONS.md。这里只接线；出现不出现由 showAlertsRows 一处判
-        // （总开关 + 上面那一栏选的是不是车厢温度 + 这一组自己的开关）。
+        // （总开关 + 这一组自己的开关）。
         // Wiring only; whether the rows show is decided in showAlertsRows.
-
-        // 上面那一栏先配哪一类：三段的切换行，选了就立刻收起 / 展开下面几组。
-        // The family picker: three segments, and picking one re-runs the visibility rules at once.
-        SegmentedPreference family = findPreference("pref_alerts_family");
-        if (family != null) {
-            SettingSpec familySpec = SettingsRegistry.ALERTS_FAMILY.offeredTo(DeveloperMode.isUnlocked());
-            family.setOptions(localizedNames(familySpec), familySpec.values());
-            family.setValue(familySpec.sanitize(appConfig.getAlertsFamily()));
-            family.setOnPreferenceChangeListener((preference, newValue) -> {
-                appConfig.setAlertsFamily(String.valueOf(newValue));
-                com.kooo.evcam.blackbox.BlackBox.noteImportant("setting change: alerts_family = " + newValue);
-                showAlertsRows();
-                return true;
-            });
-        }
 
         // 车厢温度警报的总开关：关着时下面九行全部收起来，只留这一行。
         // The climate switch; with it off the nine rows below collapse.
@@ -1164,24 +1211,32 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             showAlertsRows();
         });
 
-        // 太热 / 太冷：可选的那几档在 AppConfig 里只有一份（读的时候也按它兜底）。
-        // Too hot / too cold: the allowed steps are declared once, in AppConfig.
-        bindAlertsClimateList("pref_alerts_climate_hot", AppConfig.ALERTS_CLIMATE_HOT_CHOICES,
-                R.string.opt_alerts_climate_degrees, appConfig.getAlertsClimateHotC(),
+        // 太热 / 太冷 / 目标温度 / 电量下限：四根拖动条（车主 2026-11-19），范围在 AppConfig 一处，
+        // 行尾写「30 °C」这样的当前值。拖动条自己不存值（setPersistent(false)），松手时写回 AppConfig。
+        // Four sliders; the bounds live in AppConfig, the summary is the value, and AppConfig stores it.
+        bindAlertsClimateSlider("pref_alerts_climate_hot",
+                AppConfig.ALERTS_CLIMATE_HOT_MIN_C, AppConfig.ALERTS_CLIMATE_HOT_MAX_C,
+                appConfig.getAlertsClimateHotC(), R.string.opt_alerts_climate_degrees,
                 appConfig::setAlertsClimateHotC);
-        bindAlertsClimateList("pref_alerts_climate_cold", AppConfig.ALERTS_CLIMATE_COLD_CHOICES,
-                R.string.opt_alerts_climate_degrees, appConfig.getAlertsClimateColdC(),
+        bindAlertsClimateSlider("pref_alerts_climate_cold",
+                AppConfig.ALERTS_CLIMATE_COLD_MIN_C, AppConfig.ALERTS_CLIMATE_COLD_MAX_C,
+                appConfig.getAlertsClimateColdC(), R.string.opt_alerts_climate_degrees,
                 appConfig::setAlertsClimateColdC);
+        bindAlertsClimateSlider("pref_alerts_climate_target",
+                AppConfig.ALERTS_CLIMATE_TARGET_MIN_C, AppConfig.ALERTS_CLIMATE_TARGET_MAX_C,
+                appConfig.getAlertsClimateTargetC(), R.string.opt_alerts_climate_degrees,
+                appConfig::setAlertsClimateTargetC);
+        bindAlertsClimateSlider("pref_alerts_climate_soc_floor",
+                AppConfig.ALERTS_CLIMATE_SOC_MIN, AppConfig.ALERTS_CLIMATE_SOC_MAX,
+                appConfig.getAlertsClimateSocFloor(), R.string.opt_alerts_climate_soc,
+                appConfig::setAlertsClimateSocFloor);
 
         // 高温安全提醒：35 °C 且座椅上有人、或 40 °C，安静时段也发。默认开。
         bindSwitch("pref_alerts_climate_safety", appConfig.isAlertsClimateSafety(),
                 appConfig::setAlertsClimateSafety);
 
-        // 叫车开空调时那几项：设成多少度、动不动座椅、座椅档位、开多久、电量下限。
-        // What 'ac on' does: setpoint, seats, level, minutes, and the battery floor.
-        bindAlertsClimateList("pref_alerts_climate_target", AppConfig.ALERTS_CLIMATE_TARGET_CHOICES,
-                R.string.opt_alerts_climate_degrees, appConfig.getAlertsClimateTargetC(),
-                appConfig::setAlertsClimateTargetC);
+        // 叫车开空调时那几项：动不动座椅、座椅档位、开多久。
+        // What 'ac on' does: seats, level, minutes.
         bindEnum("pref_alerts_climate_seats", SettingsRegistry.ALERTS_CLIMATE_SEATS,
                 appConfig.getAlertsClimateSeats(),
                 value -> appConfig.setAlertsClimateSeats(value),
@@ -1193,14 +1248,10 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         bindAlertsClimateList("pref_alerts_climate_minutes", AppConfig.ALERTS_CLIMATE_MINUTES_CHOICES,
                 R.string.opt_alerts_climate_minutes, appConfig.getAlertsClimateMinutes(),
                 appConfig::setAlertsClimateMinutes);
-        bindAlertsClimateList("pref_alerts_climate_soc_floor", AppConfig.ALERTS_CLIMATE_SOC_CHOICES,
-                R.string.opt_alerts_climate_soc, appConfig.getAlertsClimateSocFloor(),
-                appConfig::setAlertsClimateSocFloor);
 
-        // 这一栏的显示规则全写在 showAlertsRows 一处（ui-spec §三：可见性只在一处）：总开关、上面那一栏选的是
-        // 哪一类（通知 / 哨兵 / 车厢温度）、下面每一行自己的开关，三层条件都在那里判。这里只管接线，不管显示。
-        // Every visibility rule for this section lives in showAlertsRows: the master switch, the family pick,
-        // and each row's own switch. This method only wires rows.
+        // 这一栏的显示规则全写在 showAlertsRows 一处（ui-spec §三：可见性只在一处）：总开关、
+        // 下面每一行自己的开关。这里只管接线，不管显示。
+        // Every visibility rule for this section lives in showAlertsRows. This method only wires rows.
 
         Preference triggersRow = findPreference("pref_alerts_triggers");
         if (triggersRow != null) {
@@ -1346,7 +1397,22 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             });
         }
 
+        // 诊断信息（"检查"那一组的第三行）：发不出去时看的就是这一份，和「通用」里那一行开同一页
+        onClick("pref_alerts_diagnostics", pref ->
+                startActivity(new android.content.Intent(getContext(), DiagnosticsActivity.class)));
+
         showAlertsRows();
+    }
+
+    /**
+     * 开辟一层的一页：同一份 XML 的那一棵子树，同一份接线。
+     *
+     * <p>{@code openFragment} 走的是外壳的返回栈（左栏不动），所以点标题区左边就退回来；
+     * 外壳不在时退回整屏替换，标题写在活动上。</p>
+     * One level down: the subtree of the same file. The shell keeps the left rail; its back arrow pops.
+     */
+    private void openAlertsChild(String rootKey, int titleRes) {
+        openFragment(withRoot(rootKey, titleRes), titleRes);
     }
 
     /**
@@ -1389,6 +1455,39 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     }
 
     /**
+     * 车厢温度那几根拖动条（车主 2026-11-19）：范围在 {@link AppConfig} 一处，行尾写当前值。
+     *
+     * <p>拖动条自己不存值（{@code setPersistent(false)}），松手时写回 {@link AppConfig}；
+     * 和别的滑块一样只在松手时落盘（{@code updatesContinuously = false}），拖动过程中不会一路写配置。</p>
+     *
+     * <p>A climate slider: bounds from AppConfig, the summary is the value, and AppConfig stores it.
+     * Persisted on release only, same as every other slider here.</p>
+     */
+    private void bindAlertsClimateSlider(String key, int min, int max, int current, int summaryRes,
+                                         IntSetter setter) {
+        androidx.preference.SeekBarPreference pref = findPreference(key);
+        if (pref == null) {
+            return;
+        }
+        pref.setPersistent(false);
+        pref.setMin(min);
+        pref.setMax(Math.max(min, max));
+        pref.setSeekBarIncrement(1);
+        // 行尾已经写着「30 °C」，拖动条右边那个裸数字就不用再写一遍
+        pref.setShowSeekBarValue(false);
+        pref.setUpdatesContinuously(false);
+        pref.setValue(Math.max(min, Math.min(max, current)));
+        pref.setSummary(getString(summaryRes, pref.getValue()));
+        pref.setOnPreferenceChangeListener((preference, newValue) -> {
+            int value = newValue instanceof Integer ? (Integer) newValue : current;
+            setter.set(value);
+            com.kooo.evcam.blackbox.BlackBox.noteImportant("设置变更: " + key + " → " + value);
+            pref.setSummary(getString(summaryRes, pref.getValue()));
+            return true;
+        });
+    }
+
+    /**
      * 车厢温度那一行的行尾：说明里带上当前选中的那一档（说明句子本身是资源，三种语言都有）。
      *
      * <p>用 {@code SummaryProvider} 而不是 {@code setSummary}：{@code ListPreference.getSummary()} 会把
@@ -1407,6 +1506,76 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         }
     }
 
+    /**
+     * 三行入口的行尾写现在的情形（{@code screen_alerts} 那一页上是这三行）。
+     *
+     * <p>和下面那些组一样，每一行都先问 {@code findPreference} 有没有：这一份方法在四页上都跑，
+     * 没读进来的行就是 null。
+     * Every access is null-guarded because this runs on all four pages; rows not loaded are null.</p>
+     */
+    private void showAlertsHubRows(boolean alertsOn) {
+        // 通知：哪条出口 + 它填好了没有（Telegram 令牌 / 会话号，ntfy 话题）
+        Preference notifications = findPreference("pref_alerts_notifications");
+        if (notifications != null) {
+            String transport = appConfig.isAlertsNtfy()
+                    ? getString(R.string.set_alerts_transport_ntfy)
+                    : getString(R.string.set_alerts_transport_telegram);
+            notifications.setSummary(getString(R.string.set_alerts_hub_two, transport,
+                    alertsChannelState()));
+        }
+        // 哨兵：布防得快不快 + 看着几项；一项都不看就是关着
+        Preference sentry = findPreference("pref_alerts_sentry");
+        if (sentry != null) {
+            com.kooo.evcam.alarm.policy.TriggerSet set =
+                    com.kooo.evcam.alarm.policy.TriggerSet.parse(appConfig.getAlertsTriggers());
+            int watched = 0;
+            for (String name : com.kooo.evcam.alarm.policy.TriggerSet.ALL) {
+                if (set.has(name)) {
+                    watched++;
+                }
+            }
+            if (watched == 0) {
+                sentry.setSummary(R.string.opt_off);
+            } else {
+                int minutes = appConfig.getAlertsArmDelayMinutes();
+                String armed = minutes <= 0 ? getString(R.string.set_alerts_hub_sentry_armed)
+                        : getString(R.string.set_alerts_hub_sentry_delay,
+                                getString(minutes == 1 ? R.string.opt_alerts_arm_1
+                                        : R.string.opt_alerts_arm_3));
+                sentry.setSummary(getString(R.string.set_alerts_hub_two, armed,
+                        getString(R.string.set_alerts_hub_watched, watched)));
+            }
+        }
+        // 车厢温度：开没开 + 两个现在存着的数
+        Preference climate = findPreference("pref_alerts_climate_page");
+        if (climate != null) {
+            climate.setSummary(getString(R.string.set_alerts_hub_three,
+                    getString(appConfig.isAlertsClimateEnabled()
+                            ? R.string.header_alerts_on : R.string.header_alerts_off),
+                    getString(R.string.set_alerts_hub_climate_hot, appConfig.getAlertsClimateHotC()),
+                    getString(R.string.set_alerts_hub_climate_target, appConfig.getAlertsClimateTargetC())));
+        }
+    }
+
+    /** 出口那一头填好了没有（行尾用）：一句短语，不是整句话。 */
+    private String alertsChannelState() {
+        if (appConfig.isAlertsNtfy()) {
+            return appConfig.getAlertsNtfyTopic().isEmpty()
+                    ? getString(R.string.set_alerts_hub_topic_missing)
+                    : getString(R.string.set_alerts_hub_ready);
+        }
+        String token = appConfig.getAlertsTelegramToken();
+        if (token.isEmpty()) {
+            return getString(R.string.set_alerts_hub_token_missing);
+        }
+        if (!com.kooo.evcam.alarm.telegram.TelegramRequest.looksLikeToken(token)) {
+            return getString(R.string.set_alerts_token_bad);
+        }
+        return appConfig.getAlertsTelegramChatId().isEmpty()
+                ? getString(R.string.set_alerts_hub_chat_missing)
+                : getString(R.string.set_alerts_hub_ready);
+    }
+
     /** 两行的行尾写当前填了什么；令牌只说末四位。 */
     private void showAlertsRows() {
         // 真的发到哪儿：读生效的出口，和发送那边是同一个函数，说法不会打架。
@@ -1423,32 +1592,38 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             }
         }
 
-        // 三个类别（总开关 → 上面那一栏选的哪一类 → 下面每一行自己的开关）：只出现选中的那一组。
-        // 总开关关着时，屏上只剩开关、出口、状态行和这个选择器 —— 一屏里不再同时摆三套互不相干的东西。
+        // 四页共用这一处（ui-spec §三：可见性只写在一处）：总开关 → 这一页自己的开关。
+        // 总开关关着时，屏上只剩开关、出口、状态行和暂停那一行；三行入口一起收起来。
         //
-        // Three layers: the master switch, the family picked at the top, and each row's own switch. Only the
-        // chosen family renders; with the master switch off just the switch, the exit, the status row and
-        // the family picker are left.
+        // Two layers on every page: the master switch, then each page's own switch. With the master
+        // switch off only the switch, the exit, the status row and the paused row are left.
         boolean alertsOn = appConfig.isAlertsEnabled();
         boolean ntfy = appConfig.isAlertsNtfy();
-        String family = appConfig.getAlertsFamily();
-        boolean notifications = alertsOn && FAMILY_NOTIFICATIONS.equals(family);
-        boolean sentry = alertsOn && FAMILY_SENTRY.equals(family);
-        boolean climate = alertsOn && FAMILY_CLIMATE.equals(family);
 
-        // 暂停那一行和哪一栏无关：车主在聊天里关了警报，换到哪一栏都得看得见怎么打开。
-        // The paused row is family-independent: wherever the owner looks, the way back must be there.
+        // 暂停那一行和哪一页无关：车主在聊天里关了警报，在哪一页都得看得见怎么打开。
+        // The paused row is page-independent: wherever the owner looks, the way back must be there.
         show("pref_alerts_paused", alertsOn && appConfig.isAlertsPaused());
 
-        // ---- 哨兵：什么时候发、照片、短视频、忘了开哨兵的那几行
-        // Sentry: when it fires, the picture, the clip, and the Forgot Sentry rows.
+        // 三行入口：总开关关着时一起收起来，行尾按现在的设置写。
+        // The three entry rows, with their live summaries.
+        for (String key : new String[] {"pref_alerts_notifications", "pref_alerts_sentry",
+                "pref_alerts_climate_page"}) {
+            show(key, alertsOn);
+        }
+        showAlertsHubRows(alertsOn);
+
+        // ---- 哨兵那一页：什么时候发、照片、短视频、忘了开哨兵的那几行
+        // The Sentry page: when it fires, the picture, the clip, and the Forgot Sentry rows.
+        boolean sentry = alertsOn;
         show("cat_alerts_when", sentry);
+        show("pref_alerts_triggers", sentry);
         show("pref_alerts_arm_delay", sentry);
+        show("pref_alerts_quiet", sentry);
         show("pref_alerts_motion_sensitivity", sentry && com.kooo.evcam.alarm.policy.TriggerSet
                 .parse(appConfig.getAlertsTriggers()).has(com.kooo.evcam.alarm.policy.TriggerSet.MOTION));
-        // 忘了开哨兵那几行和哪一栏无关，但跟出口有关：按钮是 callback_query，ntfy 没有回程，
+        // 忘了开哨兵那几行跟哪一页无关，但跟出口有关：按钮是 callback_query，ntfy 没有回程，
         // 所以真正走 ntfy 时它们不出现（和 4.5 之前一样）。
-        // The Forgot Sentry rows are family-independent but transport-dependent: the buttons are
+        // The Forgot Sentry rows are page-independent but transport-dependent: the buttons are
         // callback_query, and ntfy has no return path, so they stay hidden on ntfy (unchanged).
         boolean guardRows = alertsOn && !ntfy;
         show("pref_alerts_guard", guardRows);
@@ -1456,6 +1631,7 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         show("pref_alerts_guard_everywhere", guardRows);
         show("cat_alerts_picture", sentry);
         boolean picturesOn = sentry && appConfig.isAlertsPictureEnabled();
+        show("pref_alerts_send_picture", sentry);
         show("pref_alerts_picture", picturesOn);
         show("pref_alerts_straighten", picturesOn);
         show("cat_alerts_clip", sentry);
@@ -1463,17 +1639,17 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         show("pref_alerts_clip_audio", clipOn);
         show("pref_alerts_clip_data", clipOn);
 
-        // ---- 通知：两条出口各自的组二选一（车主 2026-11-15），加上「检查」里那几行。
-        // 组里那两个“现在没用”的说明因此不再需要，随组一起去掉了。
-        // Notifications: the two exits are exclusive, plus the rows inside "Checks".
+        // ---- 通知那一页：两条出口各自的组二选一（车主 2026-11-15），加上「检查」里那几行。
+        // 检查只在通知这一页（车主 2026-11-19）：要查的就是出口通不通。
+        // Notifications: the two exits are exclusive, plus the rows inside "Checks" — which live on
+        // this page only, because what they check is the exit itself.
+        boolean notifications = alertsOn;
         show("cat_alerts_telegram", notifications && !ntfy);
         show("cat_alerts_ntfy", notifications && ntfy);
-        // 检查那几行和哪一栏无关：配出口、看事件清单都要能随手点开。
-        // The checks rows are family-independent: configuring the exit or opening the event list should
-        // not require switching family first.
-        show("cat_alerts_checks", alertsOn);
-        show("pref_alerts_probe", alertsOn);
-        show("pref_alerts_events", alertsOn);
+        show("cat_alerts_checks", notifications);
+        show("pref_alerts_probe", notifications);
+        show("pref_alerts_events", notifications);
+        show("pref_alerts_diagnostics", notifications);
         show("pref_alerts_ntfy_setup", notifications && ntfy);
         show("pref_alerts_ntfy_topic", notifications && ntfy);
         show("pref_alerts_ntfy_paid", notifications && ntfy);
@@ -1496,22 +1672,17 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         block("pref_alerts_ntfy_commands",
                 appConfig.isAlertsNtfyPaid() ? null : getString(R.string.set_alerts_ntfy_commands_needs_paid));
 
-        // ---- 车厢温度：这一组自己那个开关关着时，下面九行全部收起来（开关本身留着）。
+        // ---- 车厢温度那一页：这一组自己那个开关关着时，下面九行全部收起来（开关本身留着）。
         // Climate: with the group's own switch off the nine rows collapse; the switch itself stays.
-        show("cat_alerts_climate", climate);
-        show("pref_alerts_climate", climate);
-        boolean climateRows = climate && appConfig.isAlertsClimateEnabled();
+        show("pref_alerts_climate", alertsOn);
+        boolean climateRows = alertsOn && appConfig.isAlertsClimateEnabled();
         for (String key : CLIMATE_ROWS) {
             show(key, climateRows);
         }
-        showAlertsClimateRow("pref_alerts_climate_hot", R.string.set_alerts_climate_hot_summary);
-        showAlertsClimateRow("pref_alerts_climate_cold", R.string.set_alerts_climate_cold_summary);
-        showAlertsClimateRow("pref_alerts_climate_target", R.string.set_alerts_climate_target_summary);
         showAlertsClimateRow("pref_alerts_climate_seats", R.string.set_alerts_climate_seats_summary);
         showAlertsClimateRow("pref_alerts_climate_seat_level",
                 R.string.set_alerts_climate_seat_level_summary);
         showAlertsClimateRow("pref_alerts_climate_minutes", R.string.set_alerts_climate_minutes_summary);
-        showAlertsClimateRow("pref_alerts_climate_soc_floor", R.string.set_alerts_climate_soc_floor_summary);
         Preference climateNote = findPreference("pref_alerts_climate_note");
         if (climateNote != null) {
             climateNote.setSummary(getString(R.string.set_alerts_climate_note_summary,

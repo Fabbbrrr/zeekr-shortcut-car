@@ -141,7 +141,6 @@
     <string name="alert_climate_seat_vent">, driver seat ventilating</string>
     <string name="alert_climate_btn">AC %1$d°</string>
     <string name="alert_climate_btn_off">Off</string>
-    <string name="alert_climate_no_range">This head unit will not report its temperature range, so I did not change anything.</string>
     <string name="alert_climate_wrong_unit">The car reports Fahrenheit; this build only sets Celsius.</string>
     <string name="alert_climate_refused">The car refused the change (%1$s).</string>
     <string name="alert_climate_refused_plain">The car refused the command. Nothing was changed.</string>
@@ -1652,11 +1651,25 @@ If I forget: %3$s</string>
     <string name="set_alerts_transport_summary">A Telegram bot, or an ntfy topic</string>
     <string name="set_alerts_transport_telegram">Telegram</string>
     <string name="set_alerts_transport_ntfy">ntfy</string>
-    <string name="set_alerts_family_title">Which alerts to set up</string>
-    <string name="set_alerts_family_summary">Pick one family and the other groups fold away: Notifications, Sentry, or Climate</string>
-    <string name="opt_alerts_family_notifications">Notifications</string>
-    <string name="opt_alerts_family_sentry">Sentry</string>
-    <string name="opt_alerts_family_climate">Climate</string>
+    <!-- 4.6: the alerts section is three pages; these three rows open them. The summary is written live
+         in showAlertsRows, so the XML has none. -->
+    <string name="set_alerts_row_notifications">Notifications</string>
+    <string name="set_alerts_row_sentry">Sentry</string>
+    <string name="set_alerts_row_climate">Climate</string>
+    <string name="set_alerts_page_notifications">Alerts · Notifications</string>
+    <string name="set_alerts_page_sentry">Alerts · Sentry</string>
+    <string name="set_alerts_page_climate">Alerts · Climate</string>
+    <string name="set_alerts_hub_two">%1$s · %2$s</string>
+    <string name="set_alerts_hub_three">%1$s · %2$s · %3$s</string>
+    <string name="set_alerts_hub_ready">Filled in</string>
+    <string name="set_alerts_hub_token_missing">No token yet</string>
+    <string name="set_alerts_hub_chat_missing">No chat id yet</string>
+    <string name="set_alerts_hub_topic_missing">No topic yet</string>
+    <string name="set_alerts_hub_sentry_armed">Armed now</string>
+    <string name="set_alerts_hub_sentry_delay">Arms %1$s after locking</string>
+    <string name="set_alerts_hub_watched">%1$d things watched</string>
+    <string name="set_alerts_hub_climate_hot">Warns above %1$d °C</string>
+    <string name="set_alerts_hub_climate_target">Targets %1$d °C</string>
     <string name="set_group_alerts_climate">Climate</string>
     <string name="set_alerts_climate_title">Cabin temperature alerts</string>
     <string name="set_alerts_climate_summary">Works only while parked with Sentry Mode on — that is when the head unit is awake</string>

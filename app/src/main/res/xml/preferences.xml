@@ -93,6 +93,10 @@
 
       这一栏默认关，和录制无关：它要联网、要手机那头有一个 Telegram 机器人，所以得车主自己打开、自己填令牌。
       填令牌、找会话号、发一张测试照片都在这里做完，不需要重编一次 APK —— 谁的车谁自己配。
+
+      4.6 起这一页是入口：总开关、出口、状态行，然后三行进去各配一处（通知 / 哨兵 / 车厢温度）。
+      三块内容不再叠在一屏上，各占下一层的一页。可见性仍然只在 showAlertsRows 一处判。
+      Since 4.6 this page is a hub: master switch, exit, status row, then one row per child page.
     -->
     <PreferenceScreen
         android:key="screen_alerts"
@@ -102,13 +106,6 @@
             android:key="pref_alerts"
             android:title="@string/set_alerts_on_title"
             android:summary="@string/set_alerts_on_summary" />
-
-        <!-- 聊天里 alerts off 之后那一行：总开关还开着，但车没在看。点一下恢复。
-             一个看不见的静音是最糟的状态，所以它必须写在屏上（见 AppConfig.isAlertsPaused）。 -->
-        <Preference
-            android:key="pref_alerts_paused"
-            android:title="@string/set_alerts_paused_title"
-            android:summary="@string/set_alerts_paused_summary" />
 
         <!--
           警报发到哪儿（车主 2026-11-15 从开发者选项搬到这里）：这一栏最上面的一行，先选路，
@@ -126,282 +123,349 @@
             android:selectable="false"
             android:title="@string/set_alerts_channel_status_title" />
 
-        <!--
-          先设哪一类（一屏装不下三套互不相干的东西）：通知 / 哨兵 / 车厢温度。选哪一类，下面就只出现那一组的行；
-          总开关关着时只剩这一个选择器。规则在 SettingsPreferenceFragment.showAlertsRows 一处。
-          Which family to set up: notifications, sentry, or cabin temperature. The rest of the rows follow
-          the pick, and with the master switch off this picker is all that is left.
-        -->
-        <com.kooo.evcam.settings.SegmentedPreference
-            android:key="pref_alerts_family"
-            android:title="@string/set_alerts_family_title"
-            android:summary="@string/set_alerts_family_summary" />
-
-        <PreferenceCategory
-            android:key="cat_alerts_when"
-            android:title="@string/set_group_alerts_when">
-
-            <Preference
-                android:key="pref_alerts_triggers"
-                android:title="@string/set_alerts_triggers_title" />
-
-            <ListPreference
-                android:key="pref_alerts_arm_delay"
-                android:title="@string/set_alerts_arm_delay_title"
-                android:summary="@string/set_alerts_arm_delay_summary" />
-
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_quiet"
-                android:title="@string/set_alerts_quiet_title"
-                android:summary="@string/set_alerts_quiet_summary" />
-
-            <Preference
-                android:key="pref_alerts_quiet_start"
-                android:title="@string/set_alerts_quiet_start_title" />
-
-            <Preference
-                android:key="pref_alerts_quiet_end"
-                android:title="@string/set_alerts_quiet_end_title" />
-
-            <!-- 忘了开哨兵：问不问、在家问不问（alarm.GuardPolicy 判，见 docs/sentry-alerts-spec.md §1.8）。
-                 它跟「什么时候发」有关，跟哪条出口无关，所以在这个组里，不在 Telegram 那组。
-                 Forgot Sentry: when parking should be caught, independent of the exit, so it lives here. -->
-            <ListPreference
-                android:key="pref_alerts_guard"
-                android:title="@string/set_alerts_guard_title"
-                android:summary="%s" />
-
-            <Preference
-                android:key="pref_alerts_guard_home"
-                android:title="@string/set_alerts_guard_home_title" />
-
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_guard_everywhere"
-                android:title="@string/set_alerts_guard_everywhere_title"
-                android:summary="@string/set_alerts_guard_everywhere_summary"
-                android:defaultValue="false" />
-
-            <SeekBarPreference
-                android:key="pref_alerts_motion_sensitivity"
-                android:title="@string/set_alerts_motion_sensitivity_title"
-                android:summary="@string/set_alerts_motion_sensitivity_summary"
-                app:min="1"
-                android:max="10" />
-        </PreferenceCategory>
-
-        <PreferenceCategory
-            android:key="cat_alerts_picture"
-            android:title="@string/set_group_alerts_picture">
-
-            <!-- 每条警报附不附一张图（车主 2026-11-17）。关掉之后下面三行收起来：不拍照，
-                 排版、那几路、掰直都没有意义。The picture switch; with it off the three rows below hide. -->
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_send_picture"
-                android:title="@string/set_alerts_send_picture_title"
-                android:summary="@string/set_alerts_send_picture_summary"
-                android:defaultValue="true" />
-
-            <ListPreference
-                android:key="pref_alerts_picture"
-                android:title="@string/set_alerts_picture_title"
-                android:summary="%s" />
-
-            <Preference
-                android:key="pref_alerts_cameras"
-                android:title="@string/set_alerts_cameras_title" />
-
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_straighten"
-                android:title="@string/set_alerts_straighten_title"
-                android:summary="@string/set_alerts_straighten_summary" />
-        </PreferenceCategory>
-
-        <PreferenceCategory
-            android:key="cat_alerts_clip"
-            android:title="@string/set_group_alerts_clip">
-
-            <ListPreference
-                android:key="pref_alerts_clip"
-                android:title="@string/set_alerts_clip_title"
-                android:summary="%s" />
-
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_clip_audio"
-                android:title="@string/set_alerts_clip_audio_title"
-                android:summary="@string/set_alerts_clip_audio_summary" />
-
-            <Preference
-                android:key="pref_alerts_clip_data"
-                android:selectable="false"
-                android:summary="@string/set_alerts_clip_data_note" />
-        </PreferenceCategory>
+        <!-- 聊天里 alerts off 之后那一行：总开关还开着，但车没在看。点一下恢复。
+             一个看不见的静音是最糟的状态，所以它必须写在屏上（见 AppConfig.isAlertsPaused）。 -->
+        <Preference
+            android:key="pref_alerts_paused"
+            android:title="@string/set_alerts_paused_title"
+            android:summary="@string/set_alerts_paused_summary" />
 
         <!--
-          Telegram 那一组：只在「警报发到哪儿」选的是 Telegram 时出现（规则在 SettingsPreferenceFragment
-          .showAlertsRows），和下面的 ntfy 组二选一。
-          The Telegram block: shown only while the transport is Telegram; one of the two exclusive blocks.
+          三行入口，各进下一层的一页（ui-spec §十六）：通知、哨兵、车厢温度。行尾在
+          SettingsPreferenceFragment.showAlertsRows 里按现在的设置写，点一下 openFragment 开那一页。
+          总开关关着时这三行收起来，屏上只剩上面那几行。
+          Three rows, one page each; the summary is written live in showAlertsRows.
         -->
-        <PreferenceCategory
-            android:key="cat_alerts_telegram"
-            android:title="@string/set_group_alerts_telegram">
+        <Preference
+            android:key="pref_alerts_notifications"
+            android:title="@string/set_alerts_row_notifications" />
 
-            <Preference
-                android:key="pref_alerts_token"
-                android:title="@string/set_alerts_token_title" />
-
-            <Preference
-                android:key="pref_alerts_chat"
-                android:title="@string/set_alerts_chat_title" />
-
-            <Preference
-                android:key="pref_alerts_find_chat"
-                android:title="@string/set_alerts_find_title"
-                android:summary="@string/set_alerts_find_summary" />
-
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_commands"
-                android:title="@string/set_alerts_commands_title"
-                android:summary="@string/set_alerts_commands_summary" />
-        </PreferenceCategory>
+        <Preference
+            android:key="pref_alerts_sentry"
+            android:title="@string/set_alerts_row_sentry" />
 
         <!--
-          ntfy：同样只在「警报发到哪儿」选的是 ntfy 时出现，紧跟在 Telegram 组后面，两组不会同时在屏上
-          （规格见 docs/ntfy/DECISIONS.md D11/D14）。
-          The ntfy block, right after the Telegram one; the two never show at the same time.
+          车厢温度那一行的 key 叫 pref_alerts_climate_page，不是 pref_alerts_climate：
+          后者是那一页第一行、这一组自己的开关（AppConfig 的 alerts_climate_enabled，docs/climate-alerts），
+          两个 Preference 不能共用一个 key —— 找的时候只会找到前面那个，存的界面状态也会串。
+          The climate entry row cannot reuse pref_alerts_climate: that key belongs to the master switch
+          on the page it opens.
         -->
-        <PreferenceCategory
-            android:key="cat_alerts_ntfy"
-            android:title="@string/set_group_alerts_ntfy">
-
-            <Preference
-                android:key="pref_alerts_ntfy_setup"
-                android:title="@string/set_alerts_ntfy_setup_title"
-                android:summary="@string/set_alerts_ntfy_setup_summary" />
-
-            <Preference
-                android:key="pref_alerts_ntfy_topic"
-                android:title="@string/set_alerts_ntfy_topic_title" />
-
-            <!-- 换一个新名字：旧名字作废，二维码马上给手机重新订阅（docs/ntfy-commands.md）。
-                 Mint a new name: the old one stops being used and the QR resubscribes the phone. -->
-            <Preference
-                android:key="pref_alerts_ntfy_rotate"
-                android:title="@string/set_alerts_ntfy_rotate_title"
-                android:summary="@string/set_alerts_ntfy_rotate_summary" />
-
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_ntfy_paid"
-                android:title="@string/set_alerts_ntfy_paid_title"
-                android:summary="@string/set_alerts_ntfy_paid_summary" />
-
-            <!-- 免费档的实话：名字就是地址，知道名字的人就能看（付费开关开着时这一行不出现） -->
-            <Preference
-                android:key="pref_alerts_ntfy_public_warning"
-                android:selectable="false"
-                android:title="@string/set_alerts_ntfy_risk_title"
-                android:summary="@string/set_alerts_ntfy_public_warning" />
-
-            <Preference
-                android:key="pref_alerts_ntfy_token"
-                android:title="@string/set_alerts_ntfy_token_title" />
-
-            <Preference
-                android:key="pref_alerts_ntfy_server"
-                android:title="@string/set_alerts_ntfy_server_title"
-                android:summary="@string/set_alerts_ntfy_server_summary" />
-
-            <!-- 命令：只给开发者选项里、付费档的人。免费档上这一行在、点不动，理由写在下面那条。
-                 Commands: developer options plus a paid plan only. On the free tier the row is there,
-                 disabled, and the reason sits in the note row below. -->
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_ntfy_commands"
-                android:title="@string/set_alerts_ntfy_commands_title"
-                android:summary="@string/set_alerts_ntfy_commands_summary" />
-
-            <!-- 选中 ntfy、免费档时的那句话：公开话题的名字就是门，所以命令一直关着。
-                 Shown with ntfy on the free tier: a public topic's name is its door. -->
-            <Preference
-                android:key="pref_alerts_ntfy_commands_note"
-                android:selectable="false"
-                android:title="@string/set_alerts_ntfy_commands_note_title"
-                android:summary="@string/set_alerts_ntfy_commands_note_summary" />
-        </PreferenceCategory>
-
-        <PreferenceCategory
-            android:key="cat_alerts_checks"
-            android:title="@string/set_group_alerts_checks">
-
-            <Preference
-                android:key="pref_alerts_probe"
-                android:title="@string/set_alerts_probe_title"
-                android:summary="@string/set_alerts_probe_summary" />
-
-
-            <!-- 车能发给机器人的每一条消息：一行一条，点一条发一条真的（车主 2026-11-15）。
-                 两条出口都能看，所以它不跟着 Telegram 那一组走。
-                 Every message the car can send; it belongs to neither exit, so it stays here. -->
-            <Preference
-                android:key="pref_alerts_events"
-                android:title="@string/alerts_events_title"
-                android:summary="@string/alerts_events_summary" />
-        </PreferenceCategory>
+        <Preference
+            android:key="pref_alerts_climate_page"
+            android:title="@string/set_alerts_row_climate" />
 
         <!--
-          车厢温度：太热 / 太冷 / 高温安全提醒，加上叫车开空调的那几项。只在警报总开关开着、而且上面那一栏选的是
-          车厢温度时出现；里面的行再跟着这一组最上面那个开关走。契约见 docs/climate-alerts/DECISIONS.md。
-          Cabin temperature: too hot, too cold, the safety alert, and what 'ac on' does. Shown only while
-          the section's family pick is cabin temperature; the rows then follow the switch at the top.
+          下一层：通知。Telegram 那一组、ntfy 那一组、命令那几行、检查那一组。
+          哪一组出现只看出口和开发者选项（规则在 showAlertsRows），跟别的页无关。
+          Child page: notifications. The exit blocks and the checks group.
         -->
-        <PreferenceCategory
-            android:key="cat_alerts_climate"
-            android:title="@string/set_group_alerts_climate">
+        <PreferenceScreen
+            android:key="screen_alerts_notifications"
+            android:title="@string/set_alerts_page_notifications">
 
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_climate"
-                android:title="@string/set_alerts_climate_title"
-                android:summary="@string/set_alerts_climate_summary" />
+            <!--
+              Telegram 那一组：只在「警报发到哪儿」选的是 Telegram 时出现（规则在 SettingsPreferenceFragment
+              .showAlertsRows），和下面的 ntfy 组二选一。
+              The Telegram block: shown only while the transport is Telegram; one of the two exclusive blocks.
+            -->
+            <PreferenceCategory
+                android:key="cat_alerts_telegram"
+                android:title="@string/set_group_alerts_telegram">
 
-            <ListPreference
-                android:key="pref_alerts_climate_hot"
-                android:title="@string/set_alerts_climate_hot_title" />
+                <Preference
+                    android:key="pref_alerts_token"
+                    android:title="@string/set_alerts_token_title" />
 
-            <ListPreference
-                android:key="pref_alerts_climate_cold"
-                android:title="@string/set_alerts_climate_cold_title" />
+                <Preference
+                    android:key="pref_alerts_chat"
+                    android:title="@string/set_alerts_chat_title" />
 
-            <SwitchPreferenceCompat
-                android:key="pref_alerts_climate_safety"
-                android:title="@string/set_alerts_climate_safety_title"
-                android:summary="@string/set_alerts_climate_safety_summary" />
+                <Preference
+                    android:key="pref_alerts_find_chat"
+                    android:title="@string/set_alerts_find_title"
+                    android:summary="@string/set_alerts_find_summary" />
 
-            <ListPreference
-                android:key="pref_alerts_climate_target"
-                android:title="@string/set_alerts_climate_target_title" />
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_commands"
+                    android:title="@string/set_alerts_commands_title"
+                    android:summary="@string/set_alerts_commands_summary" />
+            </PreferenceCategory>
 
-            <ListPreference
-                android:key="pref_alerts_climate_seats"
-                android:title="@string/set_alerts_climate_seats_title" />
+            <!--
+              ntfy：同样只在「警报发到哪儿」选的是 ntfy 时出现，紧跟在 Telegram 组后面，两组不会同时在屏上
+              （规格见 docs/ntfy/DECISIONS.md D11/D14）。
+              The ntfy block, right after the Telegram one; the two never show at the same time.
+            -->
+            <PreferenceCategory
+                android:key="cat_alerts_ntfy"
+                android:title="@string/set_group_alerts_ntfy">
 
-            <ListPreference
-                android:key="pref_alerts_climate_seat_level"
-                android:title="@string/set_alerts_climate_seat_level_title" />
+                <Preference
+                    android:key="pref_alerts_ntfy_setup"
+                    android:title="@string/set_alerts_ntfy_setup_title"
+                    android:summary="@string/set_alerts_ntfy_setup_summary" />
 
-            <ListPreference
-                android:key="pref_alerts_climate_minutes"
-                android:title="@string/set_alerts_climate_minutes_title" />
+                <Preference
+                    android:key="pref_alerts_ntfy_topic"
+                    android:title="@string/set_alerts_ntfy_topic_title" />
 
-            <ListPreference
-                android:key="pref_alerts_climate_soc_floor"
-                android:title="@string/set_alerts_climate_soc_floor_title" />
+                <!-- 换一个新名字：旧名字作废，二维码马上给手机重新订阅（docs/ntfy-commands.md）。
+                     Mint a new name: the old one stops being used and the QR resubscribes the phone. -->
+                <Preference
+                    android:key="pref_alerts_ntfy_rotate"
+                    android:title="@string/set_alerts_ntfy_rotate_title"
+                    android:summary="@string/set_alerts_ntfy_rotate_summary" />
 
-            <!-- 这一组的实话：空调只会自己关，不会自己开；而且要哨兵模式开着才叫得动车。
-                 The honest note: the AC only ever turns itself off, never on, and Sentry Mode has to be on. -->
-            <Preference
-                android:key="pref_alerts_climate_note"
-                android:selectable="false"
-                android:title="@string/set_alerts_climate_note_title"
-                android:summary="@string/set_alerts_climate_note_summary" />
-        </PreferenceCategory>
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_ntfy_paid"
+                    android:title="@string/set_alerts_ntfy_paid_title"
+                    android:summary="@string/set_alerts_ntfy_paid_summary" />
+
+                <!-- 免费档的实话：名字就是地址，知道名字的人就能看（付费开关开着时这一行不出现） -->
+                <Preference
+                    android:key="pref_alerts_ntfy_public_warning"
+                    android:selectable="false"
+                    android:title="@string/set_alerts_ntfy_risk_title"
+                    android:summary="@string/set_alerts_ntfy_public_warning" />
+
+                <Preference
+                    android:key="pref_alerts_ntfy_token"
+                    android:title="@string/set_alerts_ntfy_token_title" />
+
+                <Preference
+                    android:key="pref_alerts_ntfy_server"
+                    android:title="@string/set_alerts_ntfy_server_title"
+                    android:summary="@string/set_alerts_ntfy_server_summary" />
+
+                <!-- 命令：只给开发者选项里、付费档的人。免费档上这一行在、点不动，理由写在下面那条。
+                     Commands: developer options plus a paid plan only. On the free tier the row is there,
+                     disabled, and the reason sits in the note row below. -->
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_ntfy_commands"
+                    android:title="@string/set_alerts_ntfy_commands_title"
+                    android:summary="@string/set_alerts_ntfy_commands_summary" />
+
+                <!-- 选中 ntfy、免费档时的那句话：公开话题的名字就是门，所以命令一直关着。
+                     Shown with ntfy on the free tier: a public topic's name is its door. -->
+                <Preference
+                    android:key="pref_alerts_ntfy_commands_note"
+                    android:selectable="false"
+                    android:title="@string/set_alerts_ntfy_commands_note_title"
+                    android:summary="@string/set_alerts_ntfy_commands_note_summary" />
+            </PreferenceCategory>
+
+            <!--
+              检查：只在这一页（车主 2026-11-19 定：检查只在「通知」这一页上），因为要查的就是出口通不通。
+              总开关关着时整组收起来。
+              Checks: this page only, because what they check is the exit itself.
+            -->
+            <PreferenceCategory
+                android:key="cat_alerts_checks"
+                android:title="@string/set_group_alerts_checks">
+
+                <Preference
+                    android:key="pref_alerts_probe"
+                    android:title="@string/set_alerts_probe_title"
+                    android:summary="@string/set_alerts_probe_summary" />
+
+                <!-- 车能发给机器人的每一条消息：一行一条，点一条发一条真的（车主 2026-11-15）。
+                     两条出口都能看，所以它不跟着 Telegram 那一组走。
+                     Every message the car can send; it belongs to neither exit, so it stays here. -->
+                <Preference
+                    android:key="pref_alerts_events"
+                    android:title="@string/alerts_events_title"
+                    android:summary="@string/alerts_events_summary" />
+
+                <!-- 诊断信息：发不出去时看的就是这一份（摄像头、屏幕、存储、最近的日志） -->
+                <Preference
+                    android:key="pref_alerts_diagnostics"
+                    android:title="@string/set_diagnostics_title"
+                    android:summary="@string/set_diagnostics_summary" />
+            </PreferenceCategory>
+        </PreferenceScreen>
+
+        <!--
+          下一层：哨兵。什么时候发（含忘了开哨兵那三行）、照片、短视频。检查不在这里。
+          Child page: sentry. When it fires, the picture, the clip. No checks.
+        -->
+        <PreferenceScreen
+            android:key="screen_alerts_sentry"
+            android:title="@string/set_alerts_page_sentry">
+
+            <PreferenceCategory
+                android:key="cat_alerts_when"
+                android:title="@string/set_group_alerts_when">
+
+                <Preference
+                    android:key="pref_alerts_triggers"
+                    android:title="@string/set_alerts_triggers_title" />
+
+                <ListPreference
+                    android:key="pref_alerts_arm_delay"
+                    android:title="@string/set_alerts_arm_delay_title"
+                    android:summary="@string/set_alerts_arm_delay_summary" />
+
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_quiet"
+                    android:title="@string/set_alerts_quiet_title"
+                    android:summary="@string/set_alerts_quiet_summary" />
+
+                <Preference
+                    android:key="pref_alerts_quiet_start"
+                    android:title="@string/set_alerts_quiet_start_title" />
+
+                <Preference
+                    android:key="pref_alerts_quiet_end"
+                    android:title="@string/set_alerts_quiet_end_title" />
+
+                <!-- 忘了开哨兵：问不问、在家问不问（alarm.GuardPolicy 判，见 docs/sentry-alerts-spec.md §1.8）。
+                     它跟「什么时候发」有关，跟哪条出口无关，所以在这个组里，不在 Telegram 那组。
+                     Forgot Sentry: when parking should be caught, independent of the exit, so it lives here. -->
+                <ListPreference
+                    android:key="pref_alerts_guard"
+                    android:title="@string/set_alerts_guard_title"
+                    android:summary="%s" />
+
+                <Preference
+                    android:key="pref_alerts_guard_home"
+                    android:title="@string/set_alerts_guard_home_title" />
+
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_guard_everywhere"
+                    android:title="@string/set_alerts_guard_everywhere_title"
+                    android:summary="@string/set_alerts_guard_everywhere_summary"
+                    android:defaultValue="false" />
+
+                <SeekBarPreference
+                    android:key="pref_alerts_motion_sensitivity"
+                    android:title="@string/set_alerts_motion_sensitivity_title"
+                    android:summary="@string/set_alerts_motion_sensitivity_summary"
+                    app:min="1"
+                    android:max="10" />
+            </PreferenceCategory>
+
+            <PreferenceCategory
+                android:key="cat_alerts_picture"
+                android:title="@string/set_group_alerts_picture">
+
+                <!-- 每条警报附不附一张图（车主 2026-11-17）。关掉之后下面三行收起来：不拍照，
+                     排版、那几路、掰直都没有意义。The picture switch; with it off the three rows below hide. -->
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_send_picture"
+                    android:title="@string/set_alerts_send_picture_title"
+                    android:summary="@string/set_alerts_send_picture_summary"
+                    android:defaultValue="true" />
+
+                <ListPreference
+                    android:key="pref_alerts_picture"
+                    android:title="@string/set_alerts_picture_title"
+                    android:summary="%s" />
+
+                <Preference
+                    android:key="pref_alerts_cameras"
+                    android:title="@string/set_alerts_cameras_title" />
+
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_straighten"
+                    android:title="@string/set_alerts_straighten_title"
+                    android:summary="@string/set_alerts_straighten_summary" />
+            </PreferenceCategory>
+
+            <PreferenceCategory
+                android:key="cat_alerts_clip"
+                android:title="@string/set_group_alerts_clip">
+
+                <ListPreference
+                    android:key="pref_alerts_clip"
+                    android:title="@string/set_alerts_clip_title"
+                    android:summary="%s" />
+
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_clip_audio"
+                    android:title="@string/set_alerts_clip_audio_title"
+                    android:summary="@string/set_alerts_clip_audio_summary" />
+
+                <Preference
+                    android:key="pref_alerts_clip_data"
+                    android:selectable="false"
+                    android:summary="@string/set_alerts_clip_data_note" />
+            </PreferenceCategory>
+        </PreferenceScreen>
+
+        <!--
+          下一层：车厢温度。第一行是这一组自己的开关，开着才有下面几行：太热、太冷、高温安全提醒、
+          叫车开空调的那几项、电量下限，最后一行是这一组的实话。四个数值是拖动条（车主 2026-11-19），
+          都是整度 / 整百分比。契约见 docs/climate-alerts/DECISIONS.md。
+          Child page: climate. Its own switch first, then the rows it governs. Four of them are sliders.
+        -->
+        <PreferenceScreen
+            android:key="screen_alerts_climate"
+            android:title="@string/set_alerts_page_climate">
+
+            <PreferenceCategory
+                android:key="cat_alerts_climate"
+                android:title="@string/set_group_alerts_climate">
+
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_climate"
+                    android:title="@string/set_alerts_climate_title"
+                    android:summary="@string/set_alerts_climate_summary" />
+
+                <!-- 太热：25–40 °C，默认 30。行尾写「30 °C」，拖到哪一格就是哪一度。 -->
+                <SeekBarPreference
+                    android:key="pref_alerts_climate_hot"
+                    android:title="@string/set_alerts_climate_hot_title"
+                    app:min="25"
+                    android:max="40" />
+
+                <!-- 太冷：-10–15 °C，默认 5 -->
+                <SeekBarPreference
+                    android:key="pref_alerts_climate_cold"
+                    android:title="@string/set_alerts_climate_cold_title"
+                    app:min="-10"
+                    android:max="15" />
+
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_climate_safety"
+                    android:title="@string/set_alerts_climate_safety_title"
+                    android:summary="@string/set_alerts_climate_safety_summary" />
+
+                <!-- 目标温度：16–30 °C，默认 22 -->
+                <SeekBarPreference
+                    android:key="pref_alerts_climate_target"
+                    android:title="@string/set_alerts_climate_target_title"
+                    app:min="16"
+                    android:max="30" />
+
+                <ListPreference
+                    android:key="pref_alerts_climate_seats"
+                    android:title="@string/set_alerts_climate_seats_title" />
+
+                <ListPreference
+                    android:key="pref_alerts_climate_seat_level"
+                    android:title="@string/set_alerts_climate_seat_level_title" />
+
+                <ListPreference
+                    android:key="pref_alerts_climate_minutes"
+                    android:title="@string/set_alerts_climate_minutes_title" />
+
+                <!-- 电量下限：20–99 %，默认 20（车主 2026-11-19：不再是 15 / 20 / 25 三档） -->
+                <SeekBarPreference
+                    android:key="pref_alerts_climate_soc_floor"
+                    android:title="@string/set_alerts_climate_soc_floor_title"
+                    app:min="20"
+                    android:max="99" />
+
+                <!-- 这一组的实话：空调只会自己关，不会自己开；而且要哨兵模式开着才叫得动车。
+                     The honest note: the AC only ever turns itself off, never on, and Sentry Mode has to be on. -->
+                <Preference
+                    android:key="pref_alerts_climate_note"
+                    android:selectable="false"
+                    android:title="@string/set_alerts_climate_note_title"
+                    android:summary="@string/set_alerts_climate_note_summary" />
+            </PreferenceCategory>
+        </PreferenceScreen>
     </PreferenceScreen>
 
     <!-- ==================== 存储 ==================== -->

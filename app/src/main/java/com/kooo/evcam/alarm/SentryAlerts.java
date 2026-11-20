@@ -3284,10 +3284,10 @@ public final class SentryAlerts implements Telemetry.Listener {
 
     /** 警报那颗空调按钮：先验号码，再走和聊天同一条路。 */
     void onClimateButton(String action) {
-        if (AlertButton.actionFor(action, climateToken) == null) {
-            BlackBox.note("alerts: a climate button from an older alert, ignored");
-            return;
-        }
+        // 号码在 {@link #onAlertButton} 里已经对过了（那里拿的是整串 callback_data，这里只有动作）：
+        // 再对一次就等于拿动作去比号码，永远对不上 —— 4.14.0 的空调按钮按下去没反应就是这么来的。
+        // The token was already checked in onAlertButton, which holds the whole callback_data; re-checking
+        // here compares an action against a token, never matches, and 4.14.0's AC buttons did nothing.
         int target = AlertButton.climateTarget(action);
         if (target < 0) {
             return;
@@ -3419,8 +3419,6 @@ public final class SentryAlerts implements Telemetry.Listener {
         } else if (report.outcome == ClimateSource.Outcome.DONE) {
             text = app.getString(R.string.alert_climate_receipt_off);
             cancelClimateOff();
-        } else if (report.outcome == ClimateSource.Outcome.NO_RANGE) {
-            text = app.getString(R.string.alert_climate_no_range);
         } else if (report.outcome == ClimateSource.Outcome.WRONG_UNIT) {
             text = app.getString(R.string.alert_climate_wrong_unit);
         } else if (report.outcome == ClimateSource.Outcome.NO_CHANGE) {

@@ -99,27 +99,57 @@ public class ClimateSourceTest {
 
     // ================================================================= 开：读不到范围
 
+    /**
+     * 这台 7X 的现实（4.14.0 车上）：范围那几个号两个通道都不回值。
+     *
+     * <p>4.14.0 的规矩是「读不到范围就不写」，于是每一条 {@code ac on} 都回「车机不报温度范围」，
+     * 整条路走不通。现在照车主说的整度写，写完用读回说话。</p>
+     *
+     * The 7X reality that 4.14.0 shipped against: the range ids answer on neither channel. The old rule
+     * refused to write, so every "ac on" answered "this head unit will not report its temperature range".
+     * The owner's whole degree is written now, and the readback reports what the car holds.
+     */
     @Test
-    public void onRefusesWhenMinValueIsMissingAndWritesNothing() {
+    public void anUnknownRangeStillWritesTheRequestedTarget() {
         FakeCar car = car();
         car.floats.remove(TEMP_MIN + "@" + DRIVER);
+        car.floats.remove(TEMP_MAX + "@" + DRIVER);
+        car.floats.remove(TEMP_STEP + "@" + DRIVER);
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 
-        assertEquals(ClimateSource.Outcome.NO_RANGE, report.outcome);
-        assertNoWrites(car);
-        assertEquals(0f, report.targetC, 0f);
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.0"));
+        assertTrue(report.detail, report.detail.contains("range unknown"));
     }
 
     @Test
-    public void onRefusesWhenStepIsUnreadable() {
+    public void aRangeThatOnlyTheIntegerChannelAnswersIsUsed() {
         FakeCar car = car();
-        car.names.without("HVAC_FUNC_TEMP_STEP");
+        car.floats.remove(TEMP_MIN + "@" + DRIVER);
+        car.floats.remove(TEMP_MAX + "@" + DRIVER);
+        car.floats.remove(TEMP_STEP + "@" + DRIVER);
+        car.putInt(TEMP_MIN, DRIVER, 16);
+        car.putInt(TEMP_MAX, DRIVER, 31);
 
-        ClimateSource.Report report = ClimateSource.apply(car, car.names, new FakeClock(), on(22f, true, true));
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.4f, true, true));
 
-        assertEquals(ClimateSource.Outcome.NO_RANGE, report.outcome);
-        assertNoWrites(car);
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        // 整型通道没有 0.5，按 1 度算：22.4 → 22.0
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(report.detail, report.detail.contains("range 16.0..31.0"));
+    }
+
+    @Test
+    public void aMissingStepNameDoesNotBlockTheWrite() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, car.names.without("HVAC_FUNC_TEMP_STEP"),
+                new FakeClock(), on(22f, true, true));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.0"));
     }
 
     // ================================================================= 开：单位
@@ -474,15 +504,16 @@ public class ClimateSourceTest {
     }
 
     @Test
-    public void defaultFloatChannelMeansNoRangeSoNothingIsWritten() {
+    public void noFloatChannelAtAllMeansTheWriteIsRefusedNotCrashed() {
         FakeCar car = car();
         car.customWrites = false;
         car.customReads = false;
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 
-        assertEquals("读不到范围就不写", ClimateSource.Outcome.NO_RANGE, report.outcome);
-        assertNoWrites(car);
+        // 没有浮点通道 = 这台车机不能写温度：说清楚，不是「不报范围」。
+        assertEquals(ClimateSource.Outcome.REFUSED, report.outcome);
+        assertTrue(report.detail, report.detail.contains("write temp"));
     }
 
     @Test

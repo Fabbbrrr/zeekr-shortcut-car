@@ -19,7 +19,8 @@ import java.util.Locale;
  *   <li>设定温度走浮点通道（{@link CarAccess#writeFloat}）：温度这类号车机只收小数，整型的
  *       {@code setFunctionValue} 对 {@code HVAC_FUNC_TEMP} 恒回 false（读也只回占位值 253），没有整数回退。</li>
  *   <li>能设多少度、一档多少度是从车上读的（{@code HVAC_FUNC_TEMP_MIN/MAX/STEP}，主驾区域）：车不同、地区不同，
- *       16–31 这种数不能写死在代码里。读不到就是不写（{@link Outcome#NO_RANGE}），不猜。单位同理，读到的不是
+ *       16–31 这种数不能写死在代码里。车机不说（这台 7X 就不说）就照车主说的整度写，写完用读回说话 ——
+ *       4.14.0 要「先读到范围才肯写」，在车上就是每一条 ac on 都回「车机不报温度范围」。单位同理，读到的不是
  *       摄氏度（{@code TEMPERATURE_UNIT_C}）就不写（{@link Outcome#WRONG_UNIT}）。</li>
  *   <li>车机说受理了不等于做到了：写完 3 秒内每 250 毫秒读回开关和设定温度，都对上才算做成（{@link Outcome#DONE}），
  *       否则是 {@link Outcome#NO_CHANGE}，读到的值记在 {@link Report#detail} 里。</li>
@@ -39,8 +40,9 @@ import java.util.Locale;
  * <p><b>Why the range is read from the car.</b> How many degrees the unit accepts and how far one step goes are read
  * from {@code HVAC_FUNC_TEMP_MIN / MAX / STEP} on the driver zone, every time. Cars and markets differ, so a hardcoded
  * 16–31 would be a guess; a guess that is wrong writes a temperature the unit clamps or rejects silently. A missing
- * range is therefore a refusal ({@link Outcome#NO_RANGE}) with no write at all, and a non-Celsius unit reading is
- * {@link Outcome#WRONG_UNIT}.</p>
+ * range is used when it answers (the integer channel is tried too); when it does not, the owner's whole degree is
+ * written and the readback reports what the car actually holds, which is what 4.14.1 fixes. A non-Celsius unit
+ * reading is still {@link Outcome#WRONG_UNIT}.</p>
  *
  * <p>Every car call sits in one try/catch: a {@link RuntimeException} coming out of the vendor binding (or a reflection
  * failure inside it) becomes {@link Outcome#UNAVAILABLE}, never a crash. A {@code null} from
@@ -83,8 +85,6 @@ public final class ClimateSource {
         REFUSED,
         /** 做不了：没有这个功能号，或者车辆接口出了错。 */
         UNAVAILABLE,
-        /** 温度范围（最小、最大、步长）读不到：不写。 */
-        NO_RANGE,
         /** 温度单位不是摄氏度：不写（不换算，也不猜）。 */
         WRONG_UNIT
     }
@@ -257,19 +257,37 @@ public final class ClimateSource {
                 return report(Outcome.UNAVAILABLE, 0f, false);
             }
 
-            // 范围从车上读：读不到就不写。走浮点通道 —— 步长在厂商源码里是 0.5，
-            // 整型读会把它截成 0，于是每一次开空调都被当成「车机不报范围」。
-            // The range is read from the car; a missing range means no write. Through the float channel:
-            // the vendor's step is 0.5, and an integer read truncates it to 0, which would turn every
-            // "ac on" into "the head unit reports no range".
+            // 范围是「车上说过的话」，不是开空调的前提：这台 7X 的适配层对
+            // HVAC_FUNC_TEMP_MIN / MAX / STEP 不回值（实车 4.14.0 的「车机不报温度范围」就是这么来的），
+            // 读不到就照车主说的那个整度写，写完用读回来说话。硬要范围才肯写，等于这条路永远走不通。
+            //
+            // 两个通道都试：温度类走浮点；有的适配层把范围当整型回（16 .. 31，步长 1 或 0）。
+            // The range is something the car may say, not a precondition for switching the AC on: this
+            // 7X adapter answers nothing for TEMP_MIN/MAX/STEP, which is exactly what produced 4.14.0's
+            // "will not report its temperature range". When it is unreadable the owner's whole degree is
+            // written and the readback does the talking. Both channels are tried: temperature is float,
+            // but some adapters answer the range on the integer channel.
             Float min = readFloat(minId, driver, "min");
             Float max = readFloat(maxId, driver, "max");
             Float step = readFloat(stepId, driver, "step");
-            if (min == null || max == null || step == null || step <= 0f || min > max) {
-                note("no range");
-                return report(Outcome.NO_RANGE, 0f, false);
+            boolean rangeKnown = min != null && max != null && step != null && step > 0f && min <= max;
+            if (!rangeKnown) {
+                Float minInt = readFloatOrInt(minId, driver, "min(int)");
+                Float maxInt = readFloatOrInt(maxId, driver, "max(int)");
+                Float stepInt = readFloatOrInt(stepId, driver, "step(int)");
+                if (minInt != null && maxInt != null && minInt <= maxInt) {
+                    min = minInt;
+                    max = maxInt;
+                    // 整型通道没有 0.5：读到 0 或者读不到就按 1 度算，读回那一关会用半度容差兜住。
+                    step = stepInt != null && stepInt > 0f ? stepInt : 1f;
+                    rangeKnown = true;
+                }
             }
-            note(String.format(Locale.US, "range %.1f..%.1f step %.2f", min, max, step));
+            if (rangeKnown) {
+                note(String.format(Locale.US, "range %.1f..%.1f step %.2f", min, max, step));
+            } else {
+                note("range unknown, writing the requested target");
+            }
 
             // 单位：读不到当这台车机没有这个号；读到的不是摄氏度就不写（不换算、不猜）。
             Integer unit = unitId == null ? null : access.read(unitId, driver);
@@ -281,12 +299,15 @@ public final class ClimateSource {
                 }
             }
 
-            Float target = snapped(plan.targetC, min, max, step);
+            Float target = rangeKnown ? snapped(plan.targetC, min, max, step) : atLeastPlausible(plan.targetC);
             if (target == null) {
                 note(String.format(Locale.US, "target %.1f outside range", plan.targetC));
                 return report(Outcome.REFUSED, 0f, false);
             }
 
+            Float before = access.readFloat(temp, driver);
+            note(String.format(Locale.US, "setpoint before %s",
+                    before == null ? "?" : String.format(Locale.US, "%.1f", before)));
             boolean written = access.writeFloat(temp, driver, target);
             note(String.format(Locale.US, "write temp %s@%s=%.1f %s", hex(temp), hex(driver), target,
                     written ? "ok" : "refused"));
@@ -301,7 +322,7 @@ public final class ClimateSource {
 
             seatOn(plan, driver, heat, vent);
 
-            return back(power, front, temp, driver, target, step);
+            return back(power, front, temp, driver, target, rangeKnown ? step / 2f : 0.5f);
         }
 
         /** 座椅：只写一个号（加热优先），档位的值是功能号加档位；不受理不影响空调。 */
@@ -327,16 +348,15 @@ public final class ClimateSource {
             }
         }
 
-        /** 读回：{@link #BACK_MS} 内开关读到 1、设定温度在半档以内算做成。 */
-        private Report back(int power, int front, int temp, int driver, float target, float step) {
+        /** 读回：{@link #BACK_MS} 内开关读到 1、设定温度在容差以内算做成。 */
+        private Report back(int power, int front, int temp, int driver, float target, float half) {
             Integer seenPower = null;
             Float seenTemp = null;
-            float half = step / 2f + EPSILON;
             for (long waited = BACK_STEP_MS; waited <= BACK_MS; waited += BACK_STEP_MS) {
                 clock.sleep(BACK_STEP_MS);
                 seenPower = read(power, front);
                 seenTemp = access.readFloat(temp, driver);
-                if (seenPower != null && seenPower == 1 && seenTemp != null && Math.abs(seenTemp - target) <= half) {
+                if (seenPower != null && seenPower == 1 && seenTemp != null && Math.abs(seenTemp - target) <= half + EPSILON) {
                     note(String.format(Locale.US, "back power %s setpoint %.1f after %d ms",
                             hex(seenPower), seenTemp, waited));
                     return report(Outcome.DONE, target, true);
@@ -377,6 +397,15 @@ public final class ClimateSource {
             return v;
         }
 
+        /** 先浮点、再整型：范围这几个号有的适配层只在一个通道上回。 */
+        Float readFloatOrInt(Integer id, int zone, String label) {
+            if (id == null) {
+                return null;
+            }
+            Integer v = read(id, zone, label);
+            return v == null ? null : (float) v;
+        }
+
         /** 读一个浮点通道的号、记一笔（范围、步长走它：温度类只有这个通道带着小数）。 */
         Float readFloat(Integer id, int zone, String label) {
             if (id == null) {
@@ -403,6 +432,24 @@ public final class ClimateSource {
      * 照车上的范围、步长算要写的温度：超出最小、最大一步以上是不写（返回 null），一步以内算量测的零头，
      * 夹进范围再照步长对齐（对齐的起点是最小值）。
      */
+    /**
+     * 车机不说范围时用：只接受一个人类真会设的温度，整度原样返回，别的返回 null。
+     *
+     * <p>这不是在猜车上的范围 —— 猜范围指的是写一个谁都没读到的号码；这里是「车主说了 22，就写 22」，
+     * 越界的话车机自己会拒，读回那一关也能看出来。</p>
+     *
+     * When the car states no range: accept a temperature a person would actually set, in whole degrees,
+     * and return it unchanged. This is not guessing at the car's range — a guess would be an unread
+     * number; here the owner asked for 22 and 22 is written, and the car's own refusal shows up in the
+     * readback.
+     */
+    static Float atLeastPlausible(float targetC) {
+        if (Float.isNaN(targetC) || targetC < 10f || targetC > 35f) {
+            return null;
+        }
+        return (float) Math.round(targetC);
+    }
+
     /**
      * 照车上的范围、步长算要写的温度：范围之外就是不写（返回 null，车要的是它自己的范围），
      * 范围内的零头照步长对齐，对齐的起点是最小值。

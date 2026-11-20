@@ -160,7 +160,7 @@ public class AppConfig {
     private static final String KEY_ALERTS_GUARD_EVERYWHERE = "alerts_guard_everywhere";  // 在家也开
     // 车厢温度警报（climate alerts，契约见 docs/climate-alerts/DECISIONS.md）：同一套出口、同一条命令通道，
     // 只在停着、哨兵模式开着时能动 —— 那时候车机才醒着。
-    // 两个枚举型的不在这里：alerts_family 和 alerts_climate_seats 声明在 settings.SettingsRegistry 里。
+    // 枚举型的 alerts_climate_seats 不在这里：它声明在 settings.SettingsRegistry 里。
     // Cabin temperature alerts: same exits and command channel, and only while parked with Sentry Mode
     // on, because that is when the head unit is awake. The two enums live in SettingsRegistry.
     private static final String KEY_ALERTS_CLIMATE_ENABLED = "alerts_climate_enabled";
@@ -2788,19 +2788,32 @@ public class AppConfig {
     // ==================== 车厢温度警报（climate alerts） ====================
 
     /**
-     * 车厢温度警报的那几档（{@code docs/climate-alerts/DECISIONS.md} 定的）。
+     * 车厢温度警报那几个数值的范围（车主 2026-11-19 改成拖动条：太热、太冷、目标温度、电量下限都可以连续调）。
      *
-     * <p>存在这里，不各写一份：设置页列选项、getter 兜底、自检校验都用同一个数组，
-     * 界面上能选的就一定是读的时候认得的。</p>
+     * <p>存在这里，不各写一份：设置页那几根拖动条的最小值、最大值和 getter 的夹取都用同一组数字，
+     * 所以界面上能调到的范围，一定是读的时候认得的范围。</p>
      *
-     * <p>The allowed steps, declared once: the settings page lists them, the getters snap to them.</p>
+     * <p>The ranges, declared once: the sliders' bounds and the getters' clamping share them.</p>
      */
-    public static final int[] ALERTS_CLIMATE_HOT_CHOICES = {26, 28, 30, 32, 35};
-    public static final int[] ALERTS_CLIMATE_COLD_CHOICES = {0, 5, 10, 15};
-    public static final int[] ALERTS_CLIMATE_TARGET_CHOICES = {20, 21, 22, 23, 24};
+    public static final int ALERTS_CLIMATE_HOT_MIN_C = 25;
+    public static final int ALERTS_CLIMATE_HOT_MAX_C = 40;
+    public static final int ALERTS_CLIMATE_HOT_DEFAULT_C = 30;
+    public static final int ALERTS_CLIMATE_COLD_MIN_C = -10;
+    public static final int ALERTS_CLIMATE_COLD_MAX_C = 15;
+    public static final int ALERTS_CLIMATE_COLD_DEFAULT_C = 5;
+    public static final int ALERTS_CLIMATE_TARGET_MIN_C = 16;
+    public static final int ALERTS_CLIMATE_TARGET_MAX_C = 30;
+    public static final int ALERTS_CLIMATE_TARGET_DEFAULT_C = 22;
+    public static final int ALERTS_CLIMATE_SOC_MIN = 20;
+    public static final int ALERTS_CLIMATE_SOC_MAX = 99;
+    public static final int ALERTS_CLIMATE_SOC_DEFAULT = 20;
     public static final int[] ALERTS_CLIMATE_MINUTES_CHOICES = {5, 10, 15};
-    public static final int[] ALERTS_CLIMATE_SOC_CHOICES = {15, 20, 25};
     public static final int[] ALERTS_CLIMATE_SEAT_LEVEL_CHOICES = {1, 2, 3};
+
+    /** 不在范围里就夹到最近的一头（读和写都过这里，所以存不进一个用不了的值）。 */
+    private static int clampTo(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
 
     /** 不在单子上就回默认值（读和写都过这里，所以不可能存进一个用不了的值）。 */
     private static int snapToChoices(int[] choices, int value, int fallback) {
@@ -2810,20 +2823,6 @@ public class AppConfig {
             }
         }
         return fallback;
-    }
-
-    /**
-     * 警报那一栏先配哪一类：{@code notifications} / {@code sentry} / {@code climate}。
-     *
-     * <p>只是界面的选择（设置页按它把不相干的几组收起来），存在普通设置里，不进凭据文件。
-     * The family the alerts page opens on. A UI choice only; it lives in the ordinary settings file.</p>
-     */
-    public String getAlertsFamily() {
-        return readEnum(SettingsRegistry.ALERTS_FAMILY);
-    }
-
-    public void setAlertsFamily(String family) {
-        writeEnum(SettingsRegistry.ALERTS_FAMILY, family);
     }
 
     /** 车厢温度警报开不开。默认关。 Whether cabin temperature alerts are on. Off by default. */
@@ -2836,26 +2835,26 @@ public class AppConfig {
         AppLog.i(TAG, "alerts climate " + (enabled ? "on" : "off"));
     }
 
-    /** 车厢「太热」那一档（°C）：26 / 28 / 30 / 32 / 35，默认 30。 */
+    /** 车厢「太热」（°C）：25–40 的整度，默认 30。夹到范围里，不再按档位吸附。 */
     public int getAlertsClimateHotC() {
-        return snapToChoices(ALERTS_CLIMATE_HOT_CHOICES,
-                readInt(KEY_ALERTS_CLIMATE_HOT_C, 30), 30);
+        return clampTo(readInt(KEY_ALERTS_CLIMATE_HOT_C, ALERTS_CLIMATE_HOT_DEFAULT_C),
+                ALERTS_CLIMATE_HOT_MIN_C, ALERTS_CLIMATE_HOT_MAX_C);
     }
 
     public void setAlertsClimateHotC(int celsius) {
         prefs.edit().putInt(KEY_ALERTS_CLIMATE_HOT_C,
-                snapToChoices(ALERTS_CLIMATE_HOT_CHOICES, celsius, 30)).apply();
+                clampTo(celsius, ALERTS_CLIMATE_HOT_MIN_C, ALERTS_CLIMATE_HOT_MAX_C)).apply();
     }
 
-    /** 车厢「太冷」那一档（°C）：0 / 5 / 10 / 15，默认 5。 */
+    /** 车厢「太冷」（°C）：-10–15 的整度，默认 5。 */
     public int getAlertsClimateColdC() {
-        return snapToChoices(ALERTS_CLIMATE_COLD_CHOICES,
-                readInt(KEY_ALERTS_CLIMATE_COLD_C, 5), 5);
+        return clampTo(readInt(KEY_ALERTS_CLIMATE_COLD_C, ALERTS_CLIMATE_COLD_DEFAULT_C),
+                ALERTS_CLIMATE_COLD_MIN_C, ALERTS_CLIMATE_COLD_MAX_C);
     }
 
     public void setAlertsClimateColdC(int celsius) {
         prefs.edit().putInt(KEY_ALERTS_CLIMATE_COLD_C,
-                snapToChoices(ALERTS_CLIMATE_COLD_CHOICES, celsius, 5)).apply();
+                clampTo(celsius, ALERTS_CLIMATE_COLD_MIN_C, ALERTS_CLIMATE_COLD_MAX_C)).apply();
     }
 
     /** 高温安全提醒开不开：35 °C 且座椅上有人、或 40 °C，安静时段也发。默认开。 */
@@ -2868,15 +2867,15 @@ public class AppConfig {
         AppLog.i(TAG, "车厢高温安全提醒设为 " + (enabled ? "开" : "关"));
     }
 
-    /** 叫车开空调时设成多少度（°C）：20..24，默认 22。 */
+    /** 叫车开空调时设成多少度（°C）：16–30，默认 22。 */
     public int getAlertsClimateTargetC() {
-        int value = readInt(KEY_ALERTS_CLIMATE_TARGET_C, 22);
-        return value >= 20 && value <= 24 ? value : 22;
+        return clampTo(readInt(KEY_ALERTS_CLIMATE_TARGET_C, ALERTS_CLIMATE_TARGET_DEFAULT_C),
+                ALERTS_CLIMATE_TARGET_MIN_C, ALERTS_CLIMATE_TARGET_MAX_C);
     }
 
     public void setAlertsClimateTargetC(int celsius) {
         prefs.edit().putInt(KEY_ALERTS_CLIMATE_TARGET_C,
-                celsius >= 20 && celsius <= 24 ? celsius : 22).apply();
+                clampTo(celsius, ALERTS_CLIMATE_TARGET_MIN_C, ALERTS_CLIMATE_TARGET_MAX_C)).apply();
     }
 
     /** 开空调时动不动座椅：{@code off} / {@code driver} / {@code front}，默认主驾。 */
@@ -2912,13 +2911,13 @@ public class AppConfig {
 
     /** 电量低于这个百分比就不开空调：15 / 20 / 25，默认 20。 */
     public int getAlertsClimateSocFloor() {
-        return snapToChoices(ALERTS_CLIMATE_SOC_CHOICES,
-                readInt(KEY_ALERTS_CLIMATE_SOC_FLOOR, 20), 20);
+        return clampTo(readInt(KEY_ALERTS_CLIMATE_SOC_FLOOR, ALERTS_CLIMATE_SOC_DEFAULT),
+                ALERTS_CLIMATE_SOC_MIN, ALERTS_CLIMATE_SOC_MAX);
     }
 
     public void setAlertsClimateSocFloor(int percent) {
         prefs.edit().putInt(KEY_ALERTS_CLIMATE_SOC_FLOOR,
-                snapToChoices(ALERTS_CLIMATE_SOC_CHOICES, percent, 20)).apply();
+                clampTo(percent, ALERTS_CLIMATE_SOC_MIN, ALERTS_CLIMATE_SOC_MAX)).apply();
     }
 
     /** 令牌和会话号都填了：可以试着发一条。 */

@@ -141,7 +141,6 @@
     <string name="alert_climate_seat_vent">, pengudaraan tempat duduk pemandu</string>
     <string name="alert_climate_btn">AC %1$d°</string>
     <string name="alert_climate_btn_off">Mati</string>
-    <string name="alert_climate_no_range">Unit kepala ini tidak melaporkan julat suhunya, jadi saya tidak mengubah apa-apa.</string>
     <string name="alert_climate_wrong_unit">Kereta melaporkan Fahrenheit; versi ini hanya menetapkan Celsius.</string>
     <string name="alert_climate_refused">Kereta menolak perubahan itu (%1$s).</string>
     <string name="alert_climate_refused_plain">Kereta menolak arahan itu. Tiada apa-apa diubah.</string>
@@ -1628,11 +1627,25 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_transport_summary">Bot Telegram, atau topik ntfy</string>
     <string name="set_alerts_transport_telegram">Telegram</string>
     <string name="set_alerts_transport_ntfy">ntfy</string>
-    <string name="set_alerts_family_title">Amaran mana yang hendak disediakan</string>
-    <string name="set_alerts_family_summary">Pilih satu kumpulan dan yang lain dilipat: Makluman, Sentri, atau Suhu kabin</string>
-    <string name="opt_alerts_family_notifications">Makluman</string>
-    <string name="opt_alerts_family_sentry">Sentri</string>
-    <string name="opt_alerts_family_climate">Suhu kabin</string>
+    <!-- 4.6: bahagian amaran ada tiga halaman; tiga baris ini membukanya. Hujung baris ditulis
+         dalam showAlertsRows, jadi XML tiada ringkasan. -->
+    <string name="set_alerts_row_notifications">Makluman</string>
+    <string name="set_alerts_row_sentry">Sentri</string>
+    <string name="set_alerts_row_climate">Suhu kabin</string>
+    <string name="set_alerts_page_notifications">Amaran · Makluman</string>
+    <string name="set_alerts_page_sentry">Amaran · Sentri</string>
+    <string name="set_alerts_page_climate">Amaran · Suhu kabin</string>
+    <string name="set_alerts_hub_two">%1$s · %2$s</string>
+    <string name="set_alerts_hub_three">%1$s · %2$s · %3$s</string>
+    <string name="set_alerts_hub_ready">Sudah diisi</string>
+    <string name="set_alerts_hub_token_missing">Belum ada token</string>
+    <string name="set_alerts_hub_chat_missing">Belum ada id sembang</string>
+    <string name="set_alerts_hub_topic_missing">Belum ada topik</string>
+    <string name="set_alerts_hub_sentry_armed">Berjaga sekarang</string>
+    <string name="set_alerts_hub_sentry_delay">Berjaga %1$s selepas dikunci</string>
+    <string name="set_alerts_hub_watched">%1$d perkara dipantau</string>
+    <string name="set_alerts_hub_climate_hot">Amaran melebihi %1$d °C</string>
+    <string name="set_alerts_hub_climate_target">Sasaran %1$d °C</string>
     <string name="set_group_alerts_climate">Suhu kabin</string>
     <string name="set_alerts_climate_title">Amaran suhu kabin</string>
     <string name="set_alerts_climate_summary">Hanya berfungsi semasa diletakkan dengan Mod Sentri hidup — ketika itulah unit kepala berjaga</string>

@@ -10,6 +10,7 @@ package com.kooo.evcam.settings;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import androidx.preference.Preference;
@@ -390,19 +391,22 @@ public class SettingsShotsTest {
     }
 
     /**
-     * 「忘了开哨兵」那三行在「什么时候发」那一组里，排在安静时段之后；跟着警报总开关走，
-     * 换哪一类都在（它们不是某一类独有的），但走 ntfy 出口时收起来。滚到它们另出一张图。
+     * 「忘了开哨兵」那三行在哨兵那一页的「什么时候发」那一组里，排在安静时段之后；跟着警报总开关走，
+     * 但走 ntfy 出口时收起来（按钮是 callback_query，ntfy 没有回程）。滚到它们另出一张图。
      *
-     * <p>几种状态各开一屏新的设置页来验：总开关开着（在、位置对）、换成 ntfy（收起来）、
-     * 总开关关着（三行一起收起来）。</p>
+     * <p>几种状态各开一屏新的页来验：总开关开着（在、位置对）、换成 ntfy（收起来）、
+     * 总开关关着（三行一起收起来）。出口那一组在另一页上，所以这一页上根本没有它。</p>
      *
-     * The three Forgot Sentry rows sit in the "When it fires" group after quiet hours and follow the master
-     * switch only; they are family-independent but fold away on the ntfy exit. Each state is checked on a
-     * freshly opened page.
+     * The three Forgot Sentry rows sit in the sentry page's "When it fires" group after quiet hours and
+     * follow the master switch only; they fold away on the ntfy exit. The exit block lives on another
+     * page, so it is not loaded here at all.
      */
     @Test
     public void forgotSentryRowsSitUnderWhenItFires() {
-        SettingsPreferenceFragment on = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        SettingsPreferenceFragment on = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
+                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
+                });
         androidx.preference.PreferenceGroup when = (androidx.preference.PreferenceGroup)
                 on.findPreference("cat_alerts_when");
         assertNotNull("少了「什么时候发」那一组", when);
@@ -418,26 +422,31 @@ public class SettingsShotsTest {
         File file = Shots.save(shotActivity, "settings-alerts-day-guard");
         assertTrue(file + " 是空的", file.length() > 10_000);
 
-        // 换成 ntfy：忘了开哨兵那三行收起来（它守的是哨兵开关，ntfy 那条路上不摆），
-        // 而「通知」那一组要出现。
-        // Switch to ntfy: the Forgot Sentry rows fold away, and the Notifications block shows instead.
-        SettingsPreferenceFragment ntfy = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY);
+        // 换成 ntfy：忘了开哨兵那三行收起来；出口那一组在通知那一页上，而通知那一页照旧出现 ntfy 块。
+        // Switch to ntfy: the Forgot Sentry rows fold away, and the ntfy block shows on its own page.
+        SettingsPreferenceFragment ntfy = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY, "pref_alerts_sentry",
+                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
+                });
         for (String key : GUARD_ROWS) {
             assertFalse("ntfy 时 " + key + " 该收起来", ntfy.findPreference(key).isVisible());
         }
-        assertFalse("上面那一栏选的是哨兵，ntfy 那一组是「通知」的，不该跟着出现",
-                ntfy.findPreference("cat_alerts_ntfy").isVisible());
+        assertNull("出口那一组在通知那一页，不在哨兵这一页", ntfy.findPreference("cat_alerts_ntfy"));
 
-        // 「通知」那一类选中的时候，ntfy 那一组照旧出现（两条出口二选一的规矩没变）。
-        // With the Notifications family picked, the ntfy block shows as before.
-        SettingsPreferenceFragment ntfyNotifications = alertsPage(true,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY, config -> config.setAlertsFamily("notifications"));
-        assertTrue("ntfy 时「哪一组出现」照旧", ntfyNotifications.findPreference("cat_alerts_ntfy").isVisible());
-        assertFalse("选「通知」时哨兵的「什么时候发」不该出现",
-                ntfyNotifications.findPreference("cat_alerts_when").isVisible());
+        SettingsPreferenceFragment ntfyNotifications = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY, "pref_alerts_notifications",
+                CHILD_NOTIFICATIONS, R.string.set_alerts_page_notifications, config -> {
+                });
+        assertTrue("ntfy 时通知那一页该摆 ntfy 那一组",
+                ntfyNotifications.findPreference("cat_alerts_ntfy").isVisible());
+        assertNull("通知那一页没有哨兵的「什么时候发」",
+                ntfyNotifications.findPreference("cat_alerts_when"));
 
         // 总开关关着：三行一起收起来。Master off: all three go with it.
-        SettingsPreferenceFragment off = alertsPage(false, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        SettingsPreferenceFragment off = alertsChildPage(Shots.DAY_EN, false,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
+                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
+                });
         for (String key : GUARD_ROWS) {
             assertFalse("总开关关着时 " + key + " 该收起来", off.findPreference(key).isVisible());
         }
@@ -475,100 +484,233 @@ public class SettingsShotsTest {
     private static final String[] GUARD_ROWS =
             {"pref_alerts_guard", "pref_alerts_guard_home", "pref_alerts_guard_everywhere"};
 
+    /** 停车警报下面那三页的 key（和 PreferencesFragment 里的常量一致）。 */
+    private static final String CHILD_NOTIFICATIONS = "screen_alerts_notifications";
+    private static final String CHILD_SENTRY = "screen_alerts_sentry";
+    private static final String CHILD_CLIMATE = "screen_alerts_climate";
+
+    /** 总开关那一页上的三行入口。 */
+    private static final String[] HUB_ROWS =
+            {"pref_alerts_notifications", "pref_alerts_sentry", "pref_alerts_climate_page"};
+
     /**
-     * 上面那一栏拨到哪一类，下面就只摆那一类；「检查」那几行跟类别无关，总开关开着就在。
+     * 总开关那一页：开关、出口、状态行，然后三行入口，别的什么都没有（4.6，ui-spec §十六）。
      *
-     * <p>拨的是真的 change listener（{@code pref_alerts_family}），不是直接改存储：可见性只在
-     * {@code showAlertsRows} 一处重算，拨完就该换一屏。</p>
+     * <p>三块内容各在下一层的一页上：那三页本身在这一屏上是收着的，所以一屏里不会同时摆三套互不相干的东西。
+     * 行尾写的是现在的情形，不是固定的一句话。</p>
      *
-     * The family picker drives the visible rows: only the picked family renders, and the Checks rows
-     * stay for every family while the master switch is on. Driven through the real change listener.
+     * The hub: master switch, exit, status row, then three entry rows and nothing else. The three child
+     * pages are collapsed here, and each summary says what is true right now.
      */
     @Test
-    public void theFamilyPickerSwitchesTheVisibleRows() {
-        SettingsPreferenceFragment page = alertsPage(true,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
-        Preference family = page.findPreference("pref_alerts_family");
-        assertNotNull("少了上面那一栏", family);
-        assertNotNull("那一栏该点得动", family.getOnPreferenceChangeListener());
-
-        // 哨兵（存的默认值就是这一档）
-        assertEquals(Boolean.TRUE, family.callChangeListener("sentry"));
-        for (String key : new String[] {"cat_alerts_when", "cat_alerts_picture", "cat_alerts_clip",
-                "pref_alerts_arm_delay"}) {
-            assertTrue("选「哨兵」时该有 " + key, shown(page, key));
-        }
-        for (String key : new String[] {"cat_alerts_telegram", "cat_alerts_ntfy", "cat_alerts_climate",
-                "pref_alerts_climate"}) {
-            assertFalse("选「哨兵」时不该有 " + key, shown(page, key));
-        }
-        for (String key : new String[] {"cat_alerts_checks", "pref_alerts_probe", "pref_alerts_events"}) {
-            assertTrue("检查那几行跟类别无关：选「哨兵」也在 " + key, shown(page, key));
+    public void theHubListsThreePagesAndNothingElse() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        SettingsPreferenceFragment hub = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        androidx.preference.PreferenceGroup screen = hub.getPreferenceScreen();
+        String[] rows = {"pref_alerts_notifications", "pref_alerts_sentry", "pref_alerts_climate_page"};
+        int last = indexIn(screen, "pref_alerts_channel_status");
+        assertTrue("出口和状态行该在这一页上", last >= 0);
+        for (String key : rows) {
+            Preference row = hub.findPreference(key);
+            assertNotNull("少了入口那一行 " + key, row);
+            assertTrue(key + " 该看得见", row.isVisible());
+            assertNotNull(key + " 该点得动", row.getOnPreferenceClickListener());
+            assertTrue(key + " 该排在出口和状态行之后", indexIn(screen, key) > last);
+            last = indexIn(screen, key);
+            assertFalse(key + " 的行尾该按现在的设置写",
+                    String.valueOf(row.getSummary()).isEmpty());
         }
 
-        // 通知
-        assertEquals(Boolean.TRUE, family.callChangeListener("notifications"));
-        assertEquals("存着的值跟着拨", "notifications",
-                new AppConfig(RuntimeEnvironment.getApplication()).getAlertsFamily());
-        assertTrue("选「通知」时 Telegram 那一组要出现", shown(page, "cat_alerts_telegram"));
-        for (String key : new String[] {"cat_alerts_when", "cat_alerts_picture", "cat_alerts_clip",
-                "cat_alerts_climate", "pref_alerts_climate"}) {
-            assertFalse("选「通知」时不该有 " + key, shown(page, key));
-        }
-        for (String key : new String[] {"cat_alerts_checks", "pref_alerts_probe", "pref_alerts_events"}) {
-            assertTrue("检查那几行跟类别无关：选「通知」也在 " + key, shown(page, key));
+        // 行尾：通知写出口和填好了没有，车厢温度写现在那两个数。
+        // Summaries: the exit and whether it is filled in; the two stored temperature numbers.
+        String notifications = String.valueOf(hub.findPreference("pref_alerts_notifications").getSummary());
+        assertTrue("通知那一行该写出口: " + notifications,
+                notifications.contains(hub.getString(R.string.set_alerts_transport_telegram)));
+        assertTrue("令牌和会话号都填了，就该写填好了: " + notifications,
+                notifications.contains(hub.getString(R.string.set_alerts_hub_ready)));
+        String climate = String.valueOf(hub.findPreference("pref_alerts_climate_page").getSummary());
+        AppConfig now = new AppConfig(RuntimeEnvironment.getApplication());
+        assertTrue("车厢温度那一行该写现在的太热那一档: " + climate,
+                climate.contains(String.valueOf(now.getAlertsClimateHotC())));
+        assertTrue("车厢温度那一行该写现在的目标温度: " + climate,
+                climate.contains(String.valueOf(now.getAlertsClimateTargetC())));
+        String sentry = String.valueOf(hub.findPreference("pref_alerts_sentry").getSummary());
+        assertTrue("哨兵那一行该写看着几项: " + sentry, sentry.contains("·"));
+
+        // 三块内容各自在下一层：这一屏上那三页都是收着的（列成一行会点了没处接）
+        for (String key : new String[]{CHILD_NOTIFICATIONS, CHILD_SENTRY, CHILD_CLIMATE}) {
+            Preference page = hub.findPreference(key);
+            assertNotNull("少了下一层那一页 " + key, page);
+            assertFalse(key + " 不该在这一屏上列成一行", page.isVisible());
         }
 
-        // 车厢温度
-        assertEquals(Boolean.TRUE, family.callChangeListener("climate"));
-        assertTrue("选「车厢温度」时该组要出现", shown(page, "cat_alerts_climate"));
-        assertTrue(shown(page, "pref_alerts_climate"));
-        for (String key : new String[] {"cat_alerts_when", "cat_alerts_picture", "cat_alerts_clip",
-                "cat_alerts_telegram", "cat_alerts_ntfy"}) {
-            assertFalse("选「车厢温度」时不该有 " + key, shown(page, key));
-        }
-        for (String key : new String[] {"cat_alerts_checks", "pref_alerts_probe", "pref_alerts_events"}) {
-            assertTrue("检查那几行跟类别无关：选「车厢温度」也在 " + key, shown(page, key));
-        }
-
-        // 总开关关着：上面那一栏还在，下面的组和检查那几行都不摆了。
-        // Master off: the picker stays, every group goes.
+        // 总开关关着：只剩开关、出口、状态行和暂停那一行，三行入口一起收起来。
+        // Master off: only the first rows are left; the three entry rows fold away.
         SettingsPreferenceFragment off = alertsPage(false,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> config.setAlertsFamily("climate"));
-        assertTrue(shown(off, "pref_alerts_family"));
-        for (String key : new String[] {"cat_alerts_checks", "pref_alerts_probe", "pref_alerts_events",
-                "cat_alerts_climate"}) {
-            assertFalse("总开关关着时 " + key + " 不该出现", shown(off, key));
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> config.setAlertsPaused(true));
+        for (String key : new String[]{"pref_alerts", "pref_alerts_transport",
+                "pref_alerts_channel_status"}) {
+            assertTrue("总开关关着时 " + key + " 还该在", shown(off, key));
         }
+        assertFalse("总开关关着时不摆暂停那一行（老规矩）", shown(off, "pref_alerts_paused"));
+        for (String key : rows) {
+            assertFalse("总开关关着时 " + key + " 该收起来", shown(off, key));
+        }
+    }
 
-        new AppConfig(RuntimeEnvironment.getApplication()).setAlertsFamily("sentry");
+    /** 三页各一张图（总开关那一页的图由 {@link #everySectionByDay} 那一套出）。 */
+    @Test
+    public void alertsChildPagesByDay() {
+        alertsChildPages(Shots.DAY, "day");
+    }
+
+    @Test
+    public void alertsChildPagesInEnglish() {
+        alertsChildPages(Shots.DAY_EN, "day-en");
     }
 
     /**
-     * 暂停那一行跟上面那一栏选哪一类无关：在聊天里关了警报，换到哪一类都得看得见怎么打开。
-     * 一个看不见的静音是最糟的状态。
+     * 三页各自摆什么，以及「检查」只在通知这一页上。
      *
-     * The paused row is family-independent: wherever the owner looks, the way back is on screen. An
-     * invisible mute is the worst state there is.
+     * <p>车厢温度那一页第一行是这一组自己的开关，四个数值是拖动条：范围、行尾都照 {@link AppConfig} 里那一份。
+     * 拖一下写回 AppConfig，不是写进 Preference 自己。</p>
+     *
+     * What each page holds, and that the checks group lives on the notifications page only. On the climate
+     * page the group's own switch is the first row and the four numbers are sliders.
+     */
+    private void alertsChildPages(String qualifiers, String tag) {
+        // 这四样的默认值：太热 30、太冷 5、目标 22、电量下限 20（测试一开始设置是干净的）
+        AppConfig fresh = new AppConfig(RuntimeEnvironment.getApplication());
+        assertEquals("太热的默认值", 30, fresh.getAlertsClimateHotC());
+        assertEquals("太冷的默认值", 5, fresh.getAlertsClimateColdC());
+        assertEquals("目标温度的默认值", 22, fresh.getAlertsClimateTargetC());
+        assertEquals("电量下限的默认值", 20, fresh.getAlertsClimateSocFloor());
+
+        // 通知：两条出口的块、命令那几行、「检查」那一组，都在这一页
+        SettingsPreferenceFragment notifications = alertsChildPage(qualifiers, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_notifications",
+                CHILD_NOTIFICATIONS, R.string.set_alerts_page_notifications, config -> {
+                });
+        assertTrue(shown(notifications, "cat_alerts_telegram"));
+        assertTrue(shown(notifications, "pref_alerts_token"));
+        assertTrue("检查这一组只在通知这一页", shown(notifications, "cat_alerts_checks"));
+        for (String key : new String[]{"pref_alerts_probe", "pref_alerts_events",
+                "pref_alerts_diagnostics"}) {
+            assertTrue(shown(notifications, key));
+        }
+        assertNull("通知这一页没有哨兵的「什么时候发」",
+                notifications.findPreference("cat_alerts_when"));
+        assertNull("通知这一页没有车厢温度那一组",
+                notifications.findPreference("cat_alerts_climate"));
+        File notificationShot = Shots.save(shotActivity, "settings-alerts-notifications-" + tag);
+        assertTrue(notificationShot + " 是空的", notificationShot.length() > 10_000);
+
+        // 哨兵：什么时候发、照片、短视频；检查不在这一页。
+        SettingsPreferenceFragment sentry = alertsChildPage(qualifiers, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
+                CHILD_SENTRY, R.string.set_alerts_page_sentry,
+                config -> config.setAlertsClipSeconds(5));
+        for (String key : new String[]{"cat_alerts_when", "pref_alerts_triggers", "pref_alerts_arm_delay",
+                "cat_alerts_picture", "pref_alerts_send_picture", "cat_alerts_clip", "pref_alerts_clip"}) {
+            assertTrue("哨兵这一页该有 " + key, shown(sentry, key));
+        }
+        assertNull("检查不在哨兵这一页", sentry.findPreference("cat_alerts_checks"));
+        assertNull("检查那几行也不在", sentry.findPreference("pref_alerts_probe"));
+        File sentryShot = Shots.save(shotActivity, "settings-alerts-sentry-" + tag);
+        assertTrue(sentryShot + " 是空的", sentryShot.length() > 10_000);
+
+        // 车厢温度：开关第一行，四个数值是拖动条，其余几项还是下拉框；检查不在这一页。
+        SettingsPreferenceFragment climate = alertsChildPage(qualifiers, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_climate_page",
+                CHILD_CLIMATE, R.string.set_alerts_page_climate,
+                config -> config.setAlertsClimateEnabled(true));
+        androidx.preference.PreferenceGroup group = (androidx.preference.PreferenceGroup)
+                climate.findPreference("cat_alerts_climate");
+        assertNotNull("少了车厢温度那一组", group);
+        assertEquals("第一行是这一组自己的开关", "pref_alerts_climate", group.getPreference(0).getKey());
+        sliderShows(climate, "pref_alerts_climate_hot", 25, 40, 30, "30 °C");
+        sliderShows(climate, "pref_alerts_climate_cold", -10, 15, 5, "5 °C");
+        sliderShows(climate, "pref_alerts_climate_target", 16, 30, 22, "22 °C");
+        sliderShows(climate, "pref_alerts_climate_soc_floor", 20, 99, 20, "20%");
+        for (String key : CLIMATE_ROWS) {
+            assertTrue("开关开着时该有 " + key, shown(climate, key));
+        }
+        for (String key : new String[]{"pref_alerts_climate_seats", "pref_alerts_climate_seat_level",
+                "pref_alerts_climate_minutes"}) {
+            assertFalse(key + " 还是下拉框，不是拖动条",
+                    climate.findPreference(key) instanceof androidx.preference.SeekBarPreference);
+        }
+        assertNull("检查不在车厢温度这一页", climate.findPreference("cat_alerts_checks"));
+        File climateShot = Shots.save(shotActivity, "settings-alerts-climate-" + tag);
+        assertTrue(climateShot + " 是空的", climateShot.length() > 10_000);
+
+        // 拖一下：值是写进 AppConfig 的，行尾跟着变（拖动条自己不存值）
+        androidx.preference.SeekBarPreference hot = climate.findPreference("pref_alerts_climate_hot");
+        hot.setValue(34);
+        assertEquals(Boolean.TRUE, hot.callChangeListener(34));
+        assertEquals("拖完就存下了", 34,
+                new AppConfig(RuntimeEnvironment.getApplication()).getAlertsClimateHotC());
+        assertEquals("行尾跟着变", "34 °C", String.valueOf(hot.getSummary()));
+
+        // 范围外的一律夹到最近的一头（不再是「不在单子上就回默认值」）
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        config.setAlertsClimateHotC(99);
+        assertEquals("太热夹到 40", 40, config.getAlertsClimateHotC());
+        config.setAlertsClimateColdC(-40);
+        assertEquals("太冷夹到 -10", -10, config.getAlertsClimateColdC());
+        config.setAlertsClimateTargetC(5);
+        assertEquals("目标温度夹到 16", 16, config.getAlertsClimateTargetC());
+        config.setAlertsClimateSocFloor(5);
+        assertEquals("电量下限夹到 20", 20, config.getAlertsClimateSocFloor());
+        config.setAlertsClimateSocFloor(150);
+        assertEquals("电量下限夹到 99", 99, config.getAlertsClimateSocFloor());
+
+        // 收尾：这些都在同一份设置里，别把后面的测试带跑。
+        config.setAlertsClimateEnabled(false);
+        config.setAlertsClimateHotC(30);
+        config.setAlertsClimateColdC(5);
+        config.setAlertsClimateTargetC(22);
+        config.setAlertsClimateSocFloor(20);
+        config.setAlertsClipSeconds(0);
+    }
+
+    /** 一根拖动条：最小、最大、现在的值、行尾。 */
+    private static void sliderShows(SettingsPreferenceFragment page, String key, int min, int max,
+                                    int value, String summary) {
+        Preference row = page.findPreference(key);
+        assertNotNull("少了拖动条 " + key, row);
+        assertTrue(key + " 该是拖动条", row instanceof androidx.preference.SeekBarPreference);
+        androidx.preference.SeekBarPreference bar = (androidx.preference.SeekBarPreference) row;
+        assertEquals(key + " 的最小值", min, bar.getMin());
+        assertEquals(key + " 的最大值", max, bar.getMax());
+        assertEquals(key + " 现在的值", value, bar.getValue());
+        assertEquals(key + " 的行尾", summary, String.valueOf(bar.getSummary()));
+    }
+
+    /**
+     * 暂停那一行在总开关那一页上：回到警报就是这一页，所以恢复的办法不用跟着进下一层。
+     * 跟哪一类无关的老规矩没变，只是三页收起来了。
+     *
+     * The paused row lives on the hub, which is the page the owner lands on; the old rule that it is
+     * family-independent still holds, and the child pages do not repeat it.
      */
     @Test
-    public void thePausedRowShowsForEveryFamily() {
-        for (String family : new String[] {"sentry", "notifications", "climate"}) {
-            SettingsPreferenceFragment page = alertsPage(true,
-                    com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> {
-                        config.setAlertsFamily(family);
-                        config.setAlertsPaused(true);
-                    });
-            assertTrue("选「" + family + "」时暂停那一行也该在", shown(page, "pref_alerts_paused"));
-        }
+    public void thePausedRowStaysOnTheHub() {
+        SettingsPreferenceFragment paused = alertsPage(true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> config.setAlertsPaused(true));
+        assertTrue("暂停时这一行该出现", shown(paused, "pref_alerts_paused"));
 
         SettingsPreferenceFragment off = alertsPage(false,
                 com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> config.setAlertsPaused(true));
         assertFalse("总开关关着时不摆暂停那一行", shown(off, "pref_alerts_paused"));
 
-        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
-        config.setAlertsPaused(false);
-        config.setAlertsFamily("sentry");
+        SettingsPreferenceFragment notifications = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_notifications",
+                CHILD_NOTIFICATIONS, R.string.set_alerts_page_notifications,
+                config -> config.setAlertsPaused(true));
+        assertNull("下一层没有这一行：它在总开关那一页", notifications.findPreference("pref_alerts_paused"));
+
+        new AppConfig(RuntimeEnvironment.getApplication()).setAlertsPaused(false);
     }
 
     /** 车厢温度那一组的九行（开关自己不在里面）：这一组自己的开关关着时一起收起来。 */
@@ -579,47 +721,28 @@ public class SettingsShotsTest {
             "pref_alerts_climate_soc_floor", "pref_alerts_climate_note"};
 
     /**
-     * 车厢温度那一组：上面那一栏选「车厢温度」时才出现；这一组自己的开关关着时只剩开关；总开关关着时只剩
-     * 开关、出口、状态行和那个选择器。
+     * 车厢温度那一页：开关一直在，开着才有下面九行；总开关关着时整页都收起来（那一页也就进不去）。
      *
-     * <p>三套警报不再同时摆在一屏上之后，这一条钉住新的规矩：选哪一类就只有哪一类；行尾写着的必须是存着的
-     * 那一档，不是默认值。顺便出一张车厢温度那一屏的图（{@code settings-alerts-day-climate}）。</p>
+     * <p>行尾写着的必须是存着的那一档，不是默认值。</p>
      *
-     * The climate group: it renders only with the Climate family picked, its own switch folds the rows away, and
-     * with the master switch off only the switch, the exit, the status row and the family picker are left. The
-     * summaries must show the stored step, not the default.
+     * The climate page: the switch always shows, the nine rows follow it, and with the master switch off
+     * the page folds away. The summaries must show the stored step, not the default.
      */
     @Test
-    public void climateRowsFollowTheFamilyAndTheSwitch() {
+    public void climateRowsFollowTheirOwnSwitch() {
         RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
-        SettingsPreferenceFragment climate = alertsPage(true,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> {
-                    config.setAlertsFamily("climate");
+        SettingsPreferenceFragment climate = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_climate_page",
+                CHILD_CLIMATE, R.string.set_alerts_page_climate, config -> {
                     config.setAlertsClimateEnabled(true);
                     config.setAlertsClimateHotC(30);
                     config.setAlertsClimateColdC(5);
                     config.setAlertsClimateMinutes(10);
                 });
         assertTrue("开关本身要在", shown(climate, "pref_alerts_climate"));
-        assertTrue("这一组自己要在", shown(climate, "cat_alerts_climate"));
         for (String key : CLIMATE_ROWS) {
-            assertTrue("选「车厢温度」时该有 " + key, shown(climate, key));
+            assertTrue("这一组开着时该有 " + key, shown(climate, key));
         }
-        // 同一屏里不混别的类别；「检查」那几行跟类别无关，总开关开着就在。
-        for (String key : new String[] {"cat_alerts_when", "cat_alerts_picture", "cat_alerts_clip",
-                "cat_alerts_telegram", "cat_alerts_ntfy"}) {
-            assertFalse("选「车厢温度」时不该同时出现 " + key, shown(climate, key));
-        }
-        assertTrue("检查那几行跟类别无关", shown(climate, "cat_alerts_checks"));
-        assertTrue(shown(climate, "pref_alerts_probe"));
-        assertTrue(shown(climate, "pref_alerts_events"));
-
-        Preference hot = climate.findPreference("pref_alerts_climate_hot");
-        assertNotNull(hot);
-        assertEquals("存着的就是这一档", "30",
-                ((androidx.preference.ListPreference) hot).getValue());
-        assertTrue("行尾要写清是哪一档: " + hot.getSummary(),
-                String.valueOf(hot.getSummary()).contains("30"));
         Preference minutes = climate.findPreference("pref_alerts_climate_minutes");
         assertEquals("10", ((androidx.preference.ListPreference) minutes).getValue());
         Preference note = climate.findPreference("pref_alerts_climate_note");
@@ -627,40 +750,19 @@ public class SettingsShotsTest {
         assertTrue("说明里要写开着几分钟: " + note.getSummary(),
                 String.valueOf(note.getSummary()).contains("10"));
 
-        climate.scrollToPreference("pref_alerts_climate_note");
-        File file = Shots.save(shotActivity, "settings-alerts-day-climate");
-        assertTrue(file + " 是空的", file.length() > 10_000);
-
         // 这一组自己的开关关着：九行一起收起来，开关自己留着。
-        SettingsPreferenceFragment climateOff = alertsPage(true,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> {
-                    config.setAlertsFamily("climate");
-                    config.setAlertsClimateEnabled(false);
-                });
+        SettingsPreferenceFragment climateOff = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_climate_page",
+                CHILD_CLIMATE, R.string.set_alerts_page_climate,
+                config -> config.setAlertsClimateEnabled(false));
         assertTrue("开关本身要留着", shown(climateOff, "pref_alerts_climate"));
         for (String key : CLIMATE_ROWS) {
             assertFalse("这一组的开关关着时 " + key + " 该收起来", shown(climateOff, key));
         }
 
-        // 总开关关着：只剩开关、出口、状态行和那个选择器。
-        SettingsPreferenceFragment off = alertsPage(false,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> config.setAlertsFamily("climate"));
-        for (String key : new String[] {"pref_alerts", "pref_alerts_transport",
-                "pref_alerts_channel_status", "pref_alerts_family"}) {
-            assertTrue("总开关关着时 " + key + " 还该在", shown(off, key));
-        }
-        for (String key : new String[] {"cat_alerts_climate", "pref_alerts_climate",
-                "cat_alerts_when", "cat_alerts_picture", "cat_alerts_clip",
-                "cat_alerts_telegram", "cat_alerts_ntfy", "cat_alerts_checks"}) {
-            assertFalse("总开关关着时 " + key + " 不该出现", shown(off, key));
-        }
-
         // 收尾：这些都在同一份设置里，别把后面的测试带跑。
         AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
-        config.setAlertsFamily("sentry");
         config.setAlertsClimateEnabled(false);
-        config.setAlertsClimateHotC(30);
-        config.setAlertsClimateColdC(5);
         config.setAlertsClimateMinutes(10);
     }
 
@@ -668,19 +770,18 @@ public class SettingsShotsTest {
      * 「警报附一张照片」关掉之后，下面三行跟着收起来。
      *
      * <p>排版（一张四宫格 / 每路一张）、那几路、掰直 —— 不拍照的时候三行都没有意义，留着只会让人以为
-     * 自己在设置里能改到已经不發生的事。片段那两行不动：它是聊天里点出来的，跟这条警报带不带图无关。</p>
+     * 自己在设置里能改到已经不發生的事。片段那两行不动：它是聊天里点出来的，跟这条警报带不带图无关。
+     * 开关本身还在，而且跟着存着的值。这些行在哨兵那一页上。</p>
      *
-     * <p>开关本身还在，而且跟着存着的值：关掉之后重新进来，它就该是关的。</p>
-     *
-     * With "send a picture with each alert" off, the three rows below it collapse: layout, which lanes,
-     * and straightening all mean nothing when no picture is taken. The clip rows stay — those are asked
-     * for from the chat. The switch itself stays and shows the stored value.
+     * With "send a picture with each alert" off, the three rows below it collapse. The clip rows stay —
+     * those are asked for from the chat. These rows live on the sentry page.
      */
     @Test
     public void thePictureSwitchCollapsesTheRowsBelowIt() {
         RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
-        SettingsPreferenceFragment on = alertsPage(true,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> {
+        SettingsPreferenceFragment on = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
+                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
                     config.setAlertsPictureEnabled(true);
                     config.setAlertsLayout(com.kooo.evcam.alarm.media.AlertPicture.layoutValue(
                             com.kooo.evcam.alarm.media.AlertPicture.Layout.SEPARATE));
@@ -691,8 +792,9 @@ public class SettingsShotsTest {
         assertTrue("每路一张时那几路该在", shown(on, "pref_alerts_cameras"));
         assertTrue("掰直该在", shown(on, "pref_alerts_straighten"));
 
-        SettingsPreferenceFragment off = alertsPage(true,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> {
+        SettingsPreferenceFragment off = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
+                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
                     config.setAlertsPictureEnabled(false);
                     config.setAlertsClipSeconds(5);
                 });
@@ -707,7 +809,6 @@ public class SettingsShotsTest {
         assertTrue("片段是聊天里点的，跟这条不图无关", shown(off, "pref_alerts_clip"));
 
         // 收尾：这几项是存在同一份设置里的，别把后面的测试带跑。
-        // Clean up: these live in the shared settings file.
         AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
         config.setAlertsPictureEnabled(true);
         config.setAlertsClipSeconds(0);
@@ -716,7 +817,7 @@ public class SettingsShotsTest {
     }
 
     /**
-     * ntfy 的两行：换话题谁都看得见，命令那一行要看三道门。
+     * ntfy 的两行（在通知那一页上）：换话题谁都看得见，命令那一行要看三道门。
      *
      * <p>纯函数（{@code NtfyCommandsTest}）只说「该不该开」；这一条钉的是设置页有没有照着它
      * 画 —— 行在不在、点不点得动、那句原因在不在。三种状态各开一屏新的设置页来验：
@@ -724,9 +825,9 @@ public class SettingsShotsTest {
      *
      * <p>第四种是 Telegram：换话题和命令两行都不该在，因为那一组整个不出现。</p>
      *
-     * The two ntfy rows: changing the topic is for everyone, the command row answers to three gates.
-     * The pure function only says whether it may be on; this pins that the settings page draws it that
-     * way — row present, row enabled, reason present. Four fresh pages, one per state.
+     * The two ntfy rows on the notifications page: changing the topic is for everyone, the command row
+     * answers to three gates. The pure function only says whether it may be on; this pins that the
+     * settings page draws it that way.
      */
     @Test
     public void ntfyRowsFollowTheThreeGates() {
@@ -735,12 +836,10 @@ public class SettingsShotsTest {
             // 1. 免费档 + 开发者选项关着：换话题在，命令行不出现（那一行整个不给），公开话题那句在。
             //    Free plan, developer options closed: rotate is there, the command row is not, the note is.
             DeveloperMode.lock(context);
-            SettingsPreferenceFragment free = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY,
-                    config -> {
-                        config.setAlertsFamily("notifications");
-                        config.setAlertsNtfyPaid(false);
-                        config.setAlertsNtfyCommands(true);
-                    });
+            SettingsPreferenceFragment free = ntfyPage(config -> {
+                config.setAlertsNtfyPaid(false);
+                config.setAlertsNtfyCommands(true);
+            });
             assertTrue("换话题该看得见", shown(free, "pref_alerts_ntfy_rotate"));
             assertFalse("开发者选项关着，命令那一行不该出现",
                     shown(free, "pref_alerts_ntfy_commands"));
@@ -750,12 +849,10 @@ public class SettingsShotsTest {
             // 2. 免费档 + 开发者选项开着：命令行出现、灰的，理由接在自己的说明后面。
             //    Free plan with developer options open: the row appears, disabled, with the reason appended.
             DeveloperMode.unlock(context, "6651");
-            SettingsPreferenceFragment freeOpen = alertsPage(true,
-                    com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY, config -> {
-                        config.setAlertsFamily("notifications");
-                        config.setAlertsNtfyPaid(false);
-                        config.setAlertsNtfyCommands(true);
-                    });
+            SettingsPreferenceFragment freeOpen = ntfyPage(config -> {
+                config.setAlertsNtfyPaid(false);
+                config.setAlertsNtfyCommands(true);
+            });
             Preference row = freeOpen.findPreference("pref_alerts_ntfy_commands");
             assertNotNull("少了命令那一行", row);
             assertTrue("开发者选项开着，这一行该出现", row.isVisible());
@@ -766,12 +863,10 @@ public class SettingsShotsTest {
 
             // 3. 付费档 + 开发者选项开着：命令行能点、开关跟着存的值；那句解释收起来。
             //    Paid with developer options open: the row works and follows the stored value; the note goes.
-            SettingsPreferenceFragment paid = alertsPage(true,
-                    com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY, config -> {
-                        config.setAlertsFamily("notifications");
-                        config.setAlertsNtfyPaid(true);
-                        config.setAlertsNtfyCommands(true);
-                    });
+            SettingsPreferenceFragment paid = ntfyPage(config -> {
+                config.setAlertsNtfyPaid(true);
+                config.setAlertsNtfyCommands(true);
+            });
             Preference paidRow = paid.findPreference("pref_alerts_ntfy_commands");
             assertTrue("付费档上该能点", paidRow.isEnabled());
             assertTrue("开关要跟着存着的值", ((androidx.preference.SwitchPreferenceCompat) paidRow).isChecked());
@@ -780,9 +875,10 @@ public class SettingsShotsTest {
             // 4. Telegram：那一组整个不出现，两行都不在。
             //    Telegram: the whole block is gone, so neither row shows.
             DeveloperMode.lock(context);
-            SettingsPreferenceFragment telegram = alertsPage(true,
-                    com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config ->
-                            config.setAlertsFamily("notifications"));
+            SettingsPreferenceFragment telegram = alertsChildPage(Shots.DAY_EN, true,
+                    com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_notifications",
+                    CHILD_NOTIFICATIONS, R.string.set_alerts_page_notifications, config -> {
+                    });
             assertFalse("走 Telegram 时换话题不该出现", shown(telegram, "pref_alerts_ntfy_rotate"));
             assertFalse("走 Telegram 时命令行不该出现",
                     shown(telegram, "pref_alerts_ntfy_commands"));
@@ -791,16 +887,32 @@ public class SettingsShotsTest {
         }
     }
 
+    /** 走 ntfy 出口的通知那一页。The notifications page with the ntfy exit. */
+    private SettingsPreferenceFragment ntfyPage(java.util.function.Consumer<AppConfig> tweak) {
+        return alertsChildPage(Shots.DAY_EN, true, com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY,
+                "pref_alerts_notifications", CHILD_NOTIFICATIONS,
+                R.string.set_alerts_page_notifications, tweak);
+    }
+
     private ShotActivity shotActivity;
 
     /** 照着存好的状态开一屏新的「停车警报」。一条按存的这个状态绑出来的设置页。 */
     private SettingsPreferenceFragment alertsPage(boolean alertsOn, String transport) {
-        return alertsPage(alertsOn, transport, config -> {
+        return alertsPage(Shots.DAY_EN, alertsOn, transport, config -> {
         });
     }
 
     /** 同上，但在建页之前改一点设置（付费档、命令开关）。The same page, with one tweak before it is built. */
     private SettingsPreferenceFragment alertsPage(boolean alertsOn, String transport,
+                                                  java.util.function.Consumer<AppConfig> tweak) {
+        return alertsPage(Shots.DAY_EN, alertsOn, transport, tweak);
+    }
+
+    /**
+     * 同上，语言也由调用方定：左栏和右边是同一屏，语言要在建页之前定下来，不然左栏和右边会各说各的。
+     * The same page with the qualifiers given up front: the left rail and the detail render together.
+     */
+    private SettingsPreferenceFragment alertsPage(String qualifiers, boolean alertsOn, String transport,
                                                   java.util.function.Consumer<AppConfig> tweak) {
         AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
         config.setAlertsEnabled(alertsOn);
@@ -809,7 +921,7 @@ public class SettingsShotsTest {
         config.setAlertsTelegramChatId("123456789");
         config.setAlertsQuietEnabled(true);
         tweak.accept(config);
-        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        RuntimeEnvironment.setQualifiers(qualifiers);
         shotActivity = Robolectric.buildActivity(ShotActivity.class).setup().get();
         Shots.stillFrames(shotActivity);
         SettingsShellFragment shell = new SettingsShellFragment();
@@ -822,6 +934,39 @@ public class SettingsShotsTest {
                 .findFragmentById(R.id.settings_detail);
         assertNotNull("「停车警报」那一屏", section);
         return section;
+    }
+
+    /**
+     * 停车警报下面的一页：走车主的路 —— 点总开关那一页上那一行，外壳把这个下层页换到右栏。
+     *
+     * <p>总开关关着时那一行收着、点不到，可是这一页也得验（行全收起来、页面进不去）：那种情况下
+     * 直接把这棵子树交给外壳，走的是同一个 {@code withRoot}。</p>
+     *
+     * One of the alerts child pages, opened the way the owner opens it. With the master switch off the
+     * row cannot be tapped, so the same withRoot subtree is handed to the shell directly.
+     */
+    private SettingsPreferenceFragment alertsChildPage(String qualifiers, boolean alertsOn,
+                                                       String transport, String rowKey, String rootKey,
+                                                       int titleRes,
+                                                       java.util.function.Consumer<AppConfig> tweak) {
+        SettingsPreferenceFragment hub = alertsPage(qualifiers, alertsOn, transport, tweak);
+        Preference row = hub.findPreference(rowKey);
+        assertNotNull("少了入口那一行 " + rowKey, row);
+        SettingsShellFragment shell = (SettingsShellFragment) hub.getParentFragment();
+        assertNotNull("那一页该在外壳里", shell);
+        if (row.isVisible()) {
+            assertNotNull(rowKey + " 该点得动", row.getOnPreferenceClickListener());
+            row.getOnPreferenceClickListener().onPreferenceClick(row);
+        } else {
+            shell.openDetail(SettingsPreferenceFragment.withRoot(rootKey, titleRes),
+                    hub.getString(titleRes));
+        }
+        Shots.settle();
+        SettingsPreferenceFragment child = (SettingsPreferenceFragment) shell.getChildFragmentManager()
+                .findFragmentById(R.id.settings_detail);
+        assertNotNull("「" + hub.getString(titleRes) + "」那一页", child);
+        assertTrue("该换成下一层那一页", child != hub);
+        return child;
     }
 
     /** 这一行在组里的第几行。Where a row sits inside its group. */

@@ -155,7 +155,6 @@
     <string name="alert_climate_seat_vent">，主驾座椅通风</string>
     <string name="alert_climate_btn">空调 %1$d°</string>
     <string name="alert_climate_btn_off">关</string>
-    <string name="alert_climate_no_range">这台车机不报温度范围，所以什么都没改。</string>
     <string name="alert_climate_wrong_unit">车报的是华氏度，这个版本只设摄氏度。</string>
     <string name="alert_climate_refused">车机不受理这次写入（%1$s）。</string>
     <string name="alert_climate_refused_plain">车机不受理这条命令，什么都没改。</string>
@@ -1644,11 +1643,24 @@
     <string name="set_alerts_transport_summary">Telegram 机器人，或者 ntfy 话题</string>
     <string name="set_alerts_transport_telegram">Telegram</string>
     <string name="set_alerts_transport_ntfy">ntfy</string>
-    <string name="set_alerts_family_title">要设哪一类警报</string>
-    <string name="set_alerts_family_summary">选一类来配，其余几组收起来：通知、哨兵、还是车厢温度</string>
-    <string name="opt_alerts_family_notifications">通知</string>
-    <string name="opt_alerts_family_sentry">哨兵</string>
-    <string name="opt_alerts_family_climate">车厢温度</string>
+    <!-- 4.6：停车警报分成三页，这三行是入口；行尾按现在的设置写（showAlertsRows），所以这里不写 summary -->
+    <string name="set_alerts_row_notifications">通知</string>
+    <string name="set_alerts_row_sentry">哨兵</string>
+    <string name="set_alerts_row_climate">车厢温度</string>
+    <string name="set_alerts_page_notifications">警报 · 通知</string>
+    <string name="set_alerts_page_sentry">警报 · 哨兵</string>
+    <string name="set_alerts_page_climate">警报 · 车厢温度</string>
+    <string name="set_alerts_hub_two">%1$s · %2$s</string>
+    <string name="set_alerts_hub_three">%1$s · %2$s · %3$s</string>
+    <string name="set_alerts_hub_ready">已填好</string>
+    <string name="set_alerts_hub_token_missing">还没填令牌</string>
+    <string name="set_alerts_hub_chat_missing">还没填会话号</string>
+    <string name="set_alerts_hub_topic_missing">还没建话题</string>
+    <string name="set_alerts_hub_sentry_armed">已布防</string>
+    <string name="set_alerts_hub_sentry_delay">锁车后 %1$s布防</string>
+    <string name="set_alerts_hub_watched">看着 %1$d 项</string>
+    <string name="set_alerts_hub_climate_hot">高于 %1$d °C 提醒</string>
+    <string name="set_alerts_hub_climate_target">目标 %1$d °C</string>
     <string name="set_group_alerts_climate">车厢温度</string>
     <string name="set_alerts_climate_title">车厢温度警报</string>
     <string name="set_alerts_climate_summary">只在停着、哨兵模式开着时能用 —— 那时候车机才醒着</string>
