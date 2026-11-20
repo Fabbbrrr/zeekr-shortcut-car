@@ -126,6 +126,27 @@ public final class SettingsRegistry {
             entry("grid", "一张四宫格", R.string.opt_alerts_picture_grid),
             entry("separate", "每一路各一张", R.string.opt_alerts_picture_separate));
 
+    /**
+     * 停车警报那一栏先配哪一类（{@code docs/climate-alerts/DECISIONS.md}）：通知 / 哨兵 / 车厢温度。
+     *
+     * <p>一屏上看不下三套互不相干的东西，所以先让车主选一类，其余几组收起来（规则在
+     * {@code SettingsPreferenceFragment.showAlertsRows}）。它只是个界面选择，存在普通设置里。
+     * The family the alerts page opens on: notifications, sentry, or cabin temperature. A UI choice
+     * stored in the ordinary settings file; the hide-and-show rule lives in showAlertsRows.</p>
+     */
+    public static final SettingSpec ALERTS_FAMILY = SettingSpec.of(
+            "alerts_family", "警报类别", "sentry",
+            entry("notifications", "通知", R.string.opt_alerts_family_notifications),
+            entry("sentry", "哨兵", R.string.opt_alerts_family_sentry),
+            entry("climate", "车厢温度", R.string.opt_alerts_family_climate));
+
+    /** 开空调时动不动座椅（车厢温度警报）：不动 / 只主驾 / 主驾和副驾。默认主驾。 */
+    public static final SettingSpec ALERTS_CLIMATE_SEATS = SettingSpec.of(
+            "alerts_climate_seats", "座椅", "driver",
+            entry("off", "不动座椅", R.string.opt_alerts_climate_seats_off),
+            entry("driver", "只主驾", R.string.opt_alerts_climate_seats_driver),
+            entry("front", "主驾和副驾", R.string.opt_alerts_climate_seats_front));
+
     public static final SettingSpec SIDE_VIEW_MODE = SettingSpec.of(
             "side_view_mode", "盲区画面情境", com.kooo.evcam.AppConfig.SIDE_VIEW_MODE_STANDARD,
             entry(com.kooo.evcam.AppConfig.SIDE_VIEW_MODE_FULL, "丰富", R.string.opt_side_view_mode_full),
@@ -250,6 +271,8 @@ public final class SettingsRegistry {
             REARVIEW_VIEWS,
             SIDE_VIEW_TARGET,
             ALERTS_LAYOUT,
+            ALERTS_FAMILY,
+            ALERTS_CLIMATE_SEATS,
             SIDE_VIEW_MODE,
             FOOTAGE_AUDIO_SOURCE,
             SCREEN_OFF_FPS,

@@ -22,6 +22,7 @@ import com.kooo.evcam.AppConfig;
 import com.kooo.evcam.AppLog;
 import com.kooo.evcam.MainActivity;
 import com.kooo.evcam.R;
+import com.kooo.evcam.alarm.climate.ClimateSource;
 import com.kooo.evcam.alarm.guard.AlertAnchor;
 import com.kooo.evcam.alarm.guard.AlertMoment;
 import com.kooo.evcam.alarm.guard.GuardEdge;
@@ -41,6 +42,8 @@ import com.kooo.evcam.alarm.ntfy.NtfyRisk;
 import com.kooo.evcam.alarm.ntfy.NtfySender;
 import com.kooo.evcam.alarm.policy.AlertPolicy;
 import com.kooo.evcam.alarm.policy.ArmDelay;
+import com.kooo.evcam.alarm.policy.ClimatePolicy;
+import com.kooo.evcam.alarm.policy.ClimateSeats;
 import com.kooo.evcam.alarm.policy.QuietHours;
 import com.kooo.evcam.alarm.policy.RequestPolicy;
 import com.kooo.evcam.alarm.policy.SentryFacts;
@@ -53,6 +56,8 @@ import com.kooo.evcam.alarm.telegram.TelegramSender;
 import com.kooo.evcam.blackbox.BlackBox;
 import com.kooo.evcam.camera.CameraKeeper;
 import com.kooo.evcam.camera.CameraNames;
+import com.kooo.evcam.telemetry.CarAccess;
+import com.kooo.evcam.telemetry.CarNames;
 import com.kooo.evcam.telemetry.Readings;
 import com.kooo.evcam.telemetry.Signal;
 import com.kooo.evcam.telemetry.Telemetry;
@@ -287,6 +292,51 @@ public final class SentryAlerts implements Telemetry.Listener {
     private long guardFixAtMs;
     private Double guardFixLat;
     private Double guardFixLon;
+
+    // ---- 车厢温度 / the cabin ----
+
+    /**
+     * 车厢太热 / 太冷的判断（纯逻辑，{@link ClimatePolicy}）。设置改过就换一个新的：换掉等于清掉这一趟的计时，
+     * 比带着旧阈值继续算安全。
+     *
+     * The hot / cold decision (pure logic). A settings change replaces it: a fresh policy drops this
+     * session's timers, which is safer than carrying old thresholds forward.
+     */
+    private volatile ClimatePolicy climatePolicy;
+    /**
+     * 写空调的那条线程（还有十分钟后自己关的那个定时器）。写一次要读回，最长三秒；
+     * 放在发送那条线程上会把后面的消息全堵住。
+     *
+     * The thread that writes the climate (and the ten-minute auto-off timer). One write reads back for up
+     * to three seconds; putting it on the send queue would block every message behind it.
+     */
+    private final java.util.concurrent.ScheduledExecutorService climateWork =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "alert-climate");
+                thread.setDaemon(true);
+                return thread;
+            });
+    /** 十分钟后自己关的那一下（可以取消）。The pending auto-off, cancellable. */
+    private volatile java.util.concurrent.ScheduledFuture<?> climateOffPending;
+    /** 这一次温度警报的按钮记号（{@link AlertButton}）：换一条警报就换一个号。 */
+    private volatile String climateToken = "";
+    /** 我们让空调开着（上一次写入读回来的结果），不是实时读数 —— 主线程上不许去读车。 */
+    private volatile boolean climateBelievedOn;
+
+    /** {@link ClimateSource} 要的功能号与区域：名字从这里来，不写死号码。 */
+    private static final ClimateSource.Names CLIMATE_NAMES = new ClimateSource.Names() {
+        @Override
+        public Integer function(String iface, String field) {
+            return CarNames.function(iface, field);
+        }
+
+        @Override
+        public int zone(String name) {
+            // ClimateSource 说的是短名 ROW_1；CarNames 的常量叫 ROW_1_ALL。
+            // ClimateSource says ROW_1; the CarNames constant is ROW_1_ALL.
+            return CarNames.zone("ROW_1".equals(name) ? CarNames.ROW_1 : name);
+        }
+    };
     /**
      * 发照片、发文字都排这一条线程：一条一条来，不并发（Telegram 有频率限制），
      * 也不为每条消息各起一个没人管的线程。
@@ -452,6 +502,9 @@ public final class SentryAlerts implements Telemetry.Listener {
     public void refresh() {
         triggers = TriggerSet.parse(config.getAlertsTriggers());
         motion.setSensitivity(config.getAlertsMotionSensitivity());
+        // 设置可能刚改过阁值：换一个新的判断（换掉等于清掉这一趟的计时）。
+        // The thresholds may have just changed: replace the decision (a fresh one drops this session's timers).
+        climatePolicy = newClimatePolicy();
         boolean enabled = config.isAlertsEnabled();
         policy.setEnabled(enabled);
         policy.setConfigured(config.hasAlertsTelegramConfig());
@@ -496,6 +549,7 @@ public final class SentryAlerts implements Telemetry.Listener {
             motion.forget();
             BlackBox.note("alerts: no longer watching car signals");
             guardForget();
+            climateForget();
         }
         syncPoller();
     }
@@ -605,6 +659,11 @@ public final class SentryAlerts implements Telemetry.Listener {
                     @Override
                     public void onAlerts(TelegramCommand.AlertsState state, long requestedAt) {
                         onAlertsCommand(state);
+                    }
+
+                    @Override
+                    public void onClimate(TelegramCommand.Climate climate, long requestedAt) {
+                        onClimateCommand(climate);
                     }
                 });
             }
@@ -1234,6 +1293,9 @@ public final class SentryAlerts implements Telemetry.Listener {
 
         heartbeatIfDue();
         watchForForgottenSentry(readings, state, sentry, parked, screenOn);
+        // 车厢温度：停着的时候看一眼，过热 / 过冷 / 有人坐在里面危险。
+        // The cabin: while parked, look for too hot, too cold, or dangerous with someone inside.
+        climateCheck(state, readings);
 
         // 取样的条件比“发警报”宽一点：停着、哨兵开着就取。
         // 为什么不要求已布防：车主拿着钥匙走过去时车会解锁，哨兵从 2 退到 1，
@@ -2008,6 +2070,23 @@ public final class SentryAlerts implements Telemetry.Listener {
                 guardSend(app.getString(R.string.alert_guard_off_armed), "");
                 reportQueued(callback);
                 return;
+            case CLIMATE_HOT:
+                climateSample(app.getString(R.string.alert_climate_hot, "33.0", "29.0"));
+                reportQueued(callback);
+                return;
+            case CLIMATE_COLD:
+                climateSample(app.getString(R.string.alert_climate_cold, "2.0", "-1.0"));
+                reportQueued(callback);
+                return;
+            case CLIMATE_SAFETY:
+                climateSample(app.getString(R.string.alert_climate_safety, "38.0"));
+                reportQueued(callback);
+                return;
+            case CLIMATE_RECEIPT:
+                climateSample(app.getString(R.string.alert_climate_receipt, "22.0", "",
+                        AlertMoment.clock(System.currentTimeMillis() + 10 * 60_000L)));
+                reportQueued(callback);
+                return;
             case STATUS:
                 guardSend(guardReport(), "");
                 reportQueued(callback);
@@ -2121,6 +2200,12 @@ public final class SentryAlerts implements Telemetry.Listener {
         if (AlertButton.ACTION_HIGH.equals(action)) {
             BlackBox.note("alerts: a high-quality picture was asked for");
             sendHighQualityPicture();
+            return;
+        }
+        // 车厢温度那排：按钮上带着度数（或者「关」），号码不对的已经在上面的 actionFor 里挡了。
+        // The climate row: the button carries the degrees (or "off"); a stale token was already refused.
+        if (AlertButton.ACTION_CLIMATE_OFF.equals(action) || AlertButton.climateTarget(action) >= 10) {
+            onClimateButton(action);
             return;
         }
         if (AlertButton.ACTION_CLIP_SURROUND.equals(action)) {
@@ -2977,6 +3062,9 @@ public final class SentryAlerts implements Telemetry.Listener {
             case ALERTS:
                 onAlertsCommand(command.alerts);
                 return;
+            case CLIMATE:
+                onClimateCommand(command.climate);
+                return;
             default:
                 deliverText(channel(), app.getString(R.string.alert_cmd_help));
         }
@@ -2994,6 +3082,350 @@ public final class SentryAlerts implements Telemetry.Listener {
         guardFixAtMs = 0;
         guardFixLat = null;
         guardFixLon = null;
+    }
+
+    // ================================================================= 车厢温度 (the cabin)
+
+    /**
+     * 这一趟的冷热判断。第一次用的时候建，设置改过就换一个。
+     *
+     * The hot / cold decision for this session, built on first use and replaced when settings change.
+     */
+    private ClimatePolicy climatePolicy() {
+        ClimatePolicy policy = climatePolicy;
+        if (policy == null) {
+            policy = newClimatePolicy();
+            climatePolicy = policy;
+        }
+        return policy;
+    }
+
+    private ClimatePolicy newClimatePolicy() {
+        return new ClimatePolicy(config.getAlertsClimateHotC(), config.getAlertsClimateColdC(),
+                SAFETY_C, SAFETY_OCCUPIED_C, BAND_C, config.getAlertsClimateSocFloor(),
+                HOLD_MS, REPEAT_MS, STALE_MS, SAFETY_MAX_PER_PARK);
+    }
+
+    /** 危险那一档的阀值：比舒适阀值高出一大截，不是「热一点」。Danger sits well above comfort. */
+    private static final float SAFETY_C = 40f;
+    private static final float SAFETY_OCCUPIED_C = 35f;
+    /** 目标温度上下这么多度不算开口。Within this of the target, nothing to do. */
+    private static final float BAND_C = 3f;
+    /** 判断用的回差：比目标高出 / 低于这么多才动。 */
+    private static final float TARGET_BAND_C = 1.5f;
+    /** 车外这个温度以上不加热座椅，以下不通风。 */
+    private static final float SEAT_OUTSIDE_C = 20f;
+    /** 热 / 冷要连续这么久才算数；两条安全警报之间至少隔这么久。 */
+    private static final long HOLD_MS = 10 * 60_000L;
+    private static final long REPEAT_MS = 15 * 60_000L;
+    /** 超过这么久没读到车厢温度就当没数据。 Longer than this without a cabin reading means no data. */
+    private static final long STALE_MS = 10 * 60_000L;
+    private static final int SAFETY_MAX_PER_PARK = 3;
+
+    /** 任何一个前排座椅读得到「有人」。A front seat reads as occupied. */
+    private static boolean seatOccupied(Readings readings) {
+        return Boolean.TRUE.equals(readings.bool(Signal.SEAT_DRIVER))
+                || Boolean.TRUE.equals(readings.bool(Signal.SEAT_PASSENGER));
+    }
+
+    /**
+     * 车停着的时候看一眼车厢温度：过热、过冷、还是有人坐在里面已经很危险。
+     *
+     * <p>只在读数真的来了的时候算（{@code onReadingsChanged}）；车机睡了就没有读数，也就不报 ——
+     * 报“现在 42 度”而那个 42 是两小时前的，比不报更糟。连续多久用新鲜读数攒出来的，由
+     * {@link ClimatePolicy} 自己计时。</p>
+     *
+     * Look at the cabin while parked: too hot, too cold, or dangerous with someone inside.
+     *
+     * <p>Only evaluated when a reading actually arrives; a sleeping head unit means no reading and no
+     * alert — reporting "42 °C now" when that 42 is two hours old is worse than reporting nothing. How long
+     * the reading has been over the line is the policy's own timer.</p>
+     */
+    private void climateCheck(VehicleState state, Readings readings) {
+        if (!config.isAlertsClimateEnabled()) {
+            return;
+        }
+        boolean parked = parkedNow(state);
+        if (!parked) {
+            // 开走了：这一趟结束，热 / 冷的计时和次数全部清掉
+            climateForgetSession();
+            return;
+        }
+        if (!config.isAlertsActive()) {
+            return;
+        }
+        Float cabin = readings.number(Signal.TEMP_INSIDE);
+        Float outside = readings.number(Signal.TEMP_OUTSIDE);
+        Integer soc = readings.code(Signal.BATTERY);
+        ClimatePolicy.Verdict verdict = climatePolicy().decide(cabin, outside, soc,
+                true, climateBelievedOn, seatOccupied(readings), config.isAlertsPaused(), quietNow(),
+                SystemClock.elapsedRealtime());
+        if (verdict.kind == ClimatePolicy.Kind.NONE) {
+            return;
+        }
+        BlackBox.note("alerts: climate " + verdict.kind + " (" + verdict.reason + ")");
+        sendClimateAlert(verdict.kind, cabin, outside);
+    }
+
+    /** 温度警报那张样例：真文案、真按钮，只是阀值是人点的。 */
+    private void climateSample(String text) {
+        climateToken = GuardToken.mint(System.currentTimeMillis());
+        if (config.isAlertsNtfy()) {
+            deliverText(channel(), text);
+            return;
+        }
+        guardSend(text, climateMarkup());
+    }
+
+    /** 一条温度警报：文字，不用照片（这条路一分钱数据都不花）。A temperature alert: text only. */
+    private void sendClimateAlert(ClimatePolicy.Kind kind, Float cabin, Float outside) {
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
+            return;
+        }
+        String cabinText = degrees(cabin);
+        String outsideText = degrees(outside);
+        String text;
+        if (kind == ClimatePolicy.Kind.SAFETY) {
+            text = app.getString(R.string.alert_climate_safety, cabinText);
+        } else if (kind == ClimatePolicy.Kind.HOT) {
+            text = app.getString(R.string.alert_climate_hot, cabinText, outsideText);
+        } else {
+            text = app.getString(R.string.alert_climate_cold, cabinText, outsideText);
+        }
+        climateToken = GuardToken.mint(System.currentTimeMillis());
+        if (config.isAlertsNtfy()) {
+            // ntfy 没有按钮：文字里说清楚回什么。ntfy has no buttons, so the text says what to reply.
+            deliverText(channel, text);
+            return;
+        }
+        guardSend(text, climateMarkup());
+    }
+
+    /** 温度警报下面那排按钮：默认目标上下各两度，加一个关掉。 */
+    private String climateMarkup() {
+        int target = config.getAlertsClimateTargetC();
+        int low = Math.max(10, target - 2);
+        int high = Math.min(35, target + 2);
+        int[] targets = new int[] {low, target, high};
+        String[] labels = new String[4];
+        String[] datas = new String[4];
+        for (int i = 0; i < targets.length; i++) {
+            labels[i] = app.getString(R.string.alert_climate_btn, targets[i]);
+            datas[i] = AlertButton.data(AlertButton.climateAction(targets[i]), climateToken);
+        }
+        labels[3] = app.getString(R.string.alert_climate_btn_off);
+        datas[3] = AlertButton.data(AlertButton.ACTION_CLIMATE_OFF, climateToken);
+        return TelegramRequest.inlineKeyboard(labels, datas, 2);
+    }
+
+    /** {@code ac} / {@code ac on} / {@code ac off} / {@code ac 23}（轮询线程或者主线程上叫）。 */
+    void onClimateCommand(TelegramCommand.Climate climate) {
+        if (climate == null) {
+            return;
+        }
+        switch (climate.action) {
+            case REPORT:
+                climateReport();
+                return;
+            case OFF:
+                startClimate(0);
+                return;
+            case ON:
+            default:
+                startClimate(climate.targetC > 0 ? climate.targetC : config.getAlertsClimateTargetC());
+        }
+    }
+
+    /** 一句话说现在：车厢、车外、目标、空调开着没有。 */
+    private void climateReport() {
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
+            return;
+        }
+        Readings readings = Telemetry.get().readings();
+        Float cabin = readings.number(Signal.TEMP_INSIDE);
+        Float outside = readings.number(Signal.TEMP_OUTSIDE);
+        String target = String.valueOf(config.getAlertsClimateTargetC());
+        String state = app.getString(climateBelievedOn
+                ? R.string.alert_climate_state_on : R.string.alert_climate_state_off);
+        String text = cabin == null || outside == null
+                ? app.getString(R.string.alert_climate_report_unknown, target, state)
+                : app.getString(R.string.alert_climate_report, degrees(cabin), degrees(outside), target, state);
+        deliverText(channel, text);
+    }
+
+    /** 警报那颗空调按钮：先验号码，再走和聊天同一条路。 */
+    void onClimateButton(String action) {
+        if (AlertButton.actionFor(action, climateToken) == null) {
+            BlackBox.note("alerts: a climate button from an older alert, ignored");
+            return;
+        }
+        int target = AlertButton.climateTarget(action);
+        if (target < 0) {
+            return;
+        }
+        startClimate(target);
+    }
+
+    /**
+     * 开（{@code targetC > 0}）或者关（{@code 0}）空调：先在本地把能拒绝的都拒了，再排到写车那条线程。
+     *
+     * <p>主线程上不碰车辆接口：写一次要读回，最长三秒。这里只读手上已有的快照（{@code Telemetry.readings()}）
+     * 和设置。</p>
+     *
+     * Switch the climate on ({@code targetC > 0}) or off ({@code 0}): refuse locally what can be refused,
+     * then queue the write. The main thread never touches the vehicle interface — one write reads back for
+     * up to three seconds — so only the snapshot and the settings are read here.</p>
+     */
+    private void startClimate(final int targetC) {
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
+            return;
+        }
+        if (!config.isAlertsActive() || config.isAlertsPaused()) {
+            deliverText(channel, app.getString(R.string.alert_climate_paused));
+            return;
+        }
+        VehicleState state = Telemetry.get().latest();
+        if (state != null && !parkedNow(state)) {
+            deliverText(channel, app.getString(R.string.alert_climate_moving));
+            return;
+        }
+        Readings readings = Telemetry.get().readings();
+        Float cabin = readings.number(Signal.TEMP_INSIDE);
+        Float outside = readings.number(Signal.TEMP_OUTSIDE);
+        Integer soc = readings.code(Signal.BATTERY);
+        int floor = config.getAlertsClimateSocFloor();
+        if (targetC > 0 && soc != null && soc < floor) {
+            deliverText(channel, app.getString(R.string.alert_climate_low_battery, floor));
+            return;
+        }
+        if (targetC > 0 && cabin != null && climateBelievedOn
+                && Math.abs(cabin - targetC) <= TARGET_BAND_C) {
+            deliverText(channel, app.getString(R.string.alert_climate_already,
+                    degrees(cabin), String.valueOf((int) TARGET_BAND_C), String.valueOf(targetC)));
+            return;
+        }
+        boolean seats = targetC > 0 && !"off".equals(config.getAlertsClimateSeats());
+        boolean heat = false;
+        boolean vent = false;
+        if (seats && cabin != null && outside != null) {
+            ClimateSeats.Choice choice = ClimateSeats.choose(cabin, targetC, outside,
+                    TARGET_BAND_C, SEAT_OUTSIDE_C, SEAT_OUTSIDE_C);
+            heat = choice.heat;
+            vent = choice.vent;
+        }
+        final boolean planSeats = seats;
+        final boolean planHeat = heat;
+        final boolean planVent = vent;
+        final int level = config.getAlertsClimateSeatLevel();
+        final ClimateSource.Plan plan = new ClimateSource.Plan(targetC > 0, Math.max(0, targetC),
+                planSeats, planHeat, planVent, level);
+        BlackBox.note("alerts: climate command " + (targetC > 0 ? "on " + targetC : "off"));
+        climateWork.execute(() -> {
+            CarAccess access = Telemetry.get().carAccess();
+            final ClimateSource.Report report = ClimateSource.apply(access, CLIMATE_NAMES,
+                    SystemClock::sleep, plan);
+            app.getMainExecutor().execute(() -> onClimateReport(report, targetC, planHeat, planVent));
+        });
+    }
+
+    /**
+     * 写完以后的回执：说的是车读回来什么，不是我们让它做什么。
+     *
+     * <p>“受理了”和“车上变了”是两件事（AU 7X 的 findings：setter 回 true 也要看车机屏）。
+     * 做成了就排十分钟后自己关；没做成把原因说清楚，不猜。</p>
+     *
+     * The receipt after a write: what the car read back, not what we asked it to do.
+     *
+     * <p>"Accepted" and "changed" are two different things, so every outcome is reported. On success the
+     * auto-off is scheduled; on failure the reason goes back plainly.</p>
+     */
+    private void onClimateReport(ClimateSource.Report report, int targetC, boolean heat, boolean vent) {
+        BlackBox.note("alerts: climate write " + report.outcome + " (" + report.detail + ")");
+        climateBelievedOn = report.powerOn;
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
+            return;
+        }
+        String text;
+        if (report.outcome == ClimateSource.Outcome.DONE && targetC > 0) {
+            String seat = heat ? app.getString(R.string.alert_climate_seat_heat)
+                    : vent ? app.getString(R.string.alert_climate_seat_vent) : "";
+            int minutes = config.getAlertsClimateMinutes();
+            String offAt = AlertMoment.clock(System.currentTimeMillis() + minutes * 60_000L);
+            text = app.getString(R.string.alert_climate_receipt,
+                    degrees(report.targetC), seat, offAt);
+            scheduleClimateOff(minutes);
+        } else if (report.outcome == ClimateSource.Outcome.DONE) {
+            text = app.getString(R.string.alert_climate_receipt_off);
+            cancelClimateOff();
+        } else if (report.outcome == ClimateSource.Outcome.NO_RANGE) {
+            text = app.getString(R.string.alert_climate_no_range);
+        } else if (report.outcome == ClimateSource.Outcome.WRONG_UNIT) {
+            text = app.getString(R.string.alert_climate_wrong_unit);
+        } else if (report.outcome == ClimateSource.Outcome.NO_CHANGE) {
+            text = app.getString(R.string.alert_climate_no_change, shortDetail(report));
+        } else {
+            text = app.getString(R.string.alert_climate_refused, shortDetail(report));
+        }
+        deliverText(channel, text);
+    }
+
+    /** 十分钟后自己关：发出去的回执上写了什么时候关，就得真的关。 */
+    private void scheduleClimateOff(int minutes) {
+        cancelClimateOff();
+        final int level = config.getAlertsClimateSeatLevel();
+        climateOffPending = climateWork.schedule(() -> {
+            final ClimateSource.Report report = ClimateSource.apply(Telemetry.get().carAccess(),
+                    CLIMATE_NAMES, SystemClock::sleep,
+                    new ClimateSource.Plan(false, 0f, true, false, false, level));
+            app.getMainExecutor().execute(() -> {
+                climateBelievedOn = report.powerOn;
+                BlackBox.note("alerts: climate auto-off " + report.outcome + " (" + report.detail + ")");
+            });
+        }, minutes, java.util.concurrent.TimeUnit.MINUTES);
+        BlackBox.note("alerts: climate auto-off in " + minutes + " min");
+    }
+
+    private void cancelClimateOff() {
+        java.util.concurrent.ScheduledFuture<?> pending = climateOffPending;
+        if (pending != null) {
+            pending.cancel(false);
+            climateOffPending = null;
+        }
+    }
+
+    /** 这一项关掉、或者不再监听：定时器、号码、状态一起清干净。 */
+    private void climateForget() {
+        cancelClimateOff();
+        climateToken = "";
+        climateForgetSession();
+    }
+
+    /** 这一趟停车结束（开走了）：热 / 冷的计时和次数清掉，别把这一趟的警报压到下一趟。 */
+    private void climateForgetSession() {
+        climateBelievedOn = false;
+        ClimatePolicy policy = climatePolicy;
+        if (policy != null) {
+            policy.reset();
+        }
+    }
+
+    /** 读回来的技术上那一句，缩短一点；回执里要给人看。 */
+    private static String shortDetail(ClimateSource.Report report) {
+        String detail = report == null || report.detail == null ? "" : report.detail;
+        return detail.length() <= 120 ? detail : detail.substring(0, 120);
+    }
+
+    /** 温度写成一句，一位小数；读不到是问号。 */
+    private static String degrees(Float celsius) {
+        return celsius == null ? "?" : String.format(Locale.US, "%.1f", celsius);
     }
 
     private void notifyFailure(String why) {

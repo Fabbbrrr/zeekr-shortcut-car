@@ -254,4 +254,101 @@ public class TelegramCommandTest {
         assertEquals("不该认成灵敏度命令: " + text,
                 TelegramCommand.Verb.UNKNOWN, TelegramCommand.parseText(text).verb);
     }
+
+    // ------------------------------------------------------------------ 空调 / climate
+
+    @Test
+    public void climateReportsTurnsOnAndTurnsOff() {
+        assertEquals(TelegramCommand.ClimateAction.REPORT, climate("ac").action);
+        assertEquals("没说温度就是 0", 0, climate("ac").targetC);
+        assertEquals(TelegramCommand.ClimateAction.REPORT, climate("climate").action);
+        assertEquals(TelegramCommand.ClimateAction.REPORT, climate("/aircon").action);
+        assertEquals(TelegramCommand.ClimateAction.ON, climate("ac on").action);
+        assertEquals("ac on 不带度数", 0, climate("ac on").targetC);
+        assertEquals(TelegramCommand.ClimateAction.OFF, climate("ac off").action);
+    }
+
+    @Test
+    public void aClimateOnCanTakeATemperature() {
+        assertEquals(23, climate("ac on 23").targetC);
+        assertEquals(TelegramCommand.ClimateAction.ON, climate("ac on 23").action);
+        assertEquals(23, climate("ac 23").targetC);
+        assertEquals(TelegramCommand.ClimateAction.ON, climate("ac 23").action);
+        assertEquals("下端", 10, climate("ac 10").targetC);
+        assertEquals("上端", 35, climate("ac 35").targetC);
+        assertEquals("上端带 on", 35, climate("ac on 35").targetC);
+        assertEquals("下端带 on", 10, climate("climate on 10").targetC);
+        assertEquals(22, climate("aircon 22").targetC);
+    }
+
+    @Test
+    public void aSlashABotMentionAndCaseDoNotMatterForClimate() {
+        assertEquals("群里会写成 /ac@BotName on",
+                TelegramCommand.ClimateAction.ON, climate("/ac@ZeekrSentry_bot on").action);
+        assertEquals(24, climate("/ac@ZeekrSentry_bot 24").targetC);
+        assertEquals(TelegramCommand.ClimateAction.REPORT, climate("  /AC  ").action);
+        assertEquals(TelegramCommand.ClimateAction.OFF, climate("AirCon OFF").action);
+        assertEquals(23, climate("  /CLIMATE   ON   23  ").targetC);
+    }
+
+    @Test
+    public void aClimateWordOrNumberThatMeansNothingIsUnknown() {
+        // 不猜：半度不是「最近的整度」，边界外的数也不是端点；多一个词整句不认。
+        // No guessing: a half degree is not the nearest whole one and an out-of-range number is not
+        // the end of it; one extra word makes the whole message unknown.
+        notAClimate("ac 9");
+        notAClimate("ac 36");
+        notAClimate("ac 22.5");
+        notAClimate("ac on 22.5");
+        notAClimate("ac on 9");
+        notAClimate("ac on 36");
+        notAClimate("ac on 22 extra");
+        notAClimate("ac maybe");
+        notAClimate("ac 23 extra");
+        notAClimate("ac off now");
+        notAClimate("ac auto");
+    }
+
+    @Test
+    public void aBareNumberIsNotAClimateCommand() {
+        // 光一个 23 没有动词，什么也不是。
+        // A bare 23 has no verb, so it means nothing.
+        notAClimate("23");
+        notAClimate("22.5");
+    }
+
+    @Test
+    public void aClimateCommandPrintsItsActionAndTemperature() {
+        assertEquals("CLIMATE:REPORT", TelegramCommand.parseText("ac").toString());
+        assertEquals("CLIMATE:ON", TelegramCommand.parseText("ac on").toString());
+        assertEquals("CLIMATE:ON@23", TelegramCommand.parseText("ac on 23").toString());
+        assertEquals("CLIMATE:ON@23", TelegramCommand.parseText("ac 23").toString());
+        assertEquals("CLIMATE:OFF", TelegramCommand.parseText("ac off").toString());
+        assertEquals("CLIMATE:ON@10", TelegramCommand.parseText("ac 10").toString());
+        assertEquals("CLIMATE:ON@35", TelegramCommand.parseText("ac on 35").toString());
+    }
+
+    @Test
+    public void onlyClimateCommandsCarryAClimate() {
+        assertEquals(null, TelegramCommand.parseText("pic").climate);
+        assertEquals(null, TelegramCommand.parseText("status").climate);
+        assertEquals(null, TelegramCommand.parseText("sens up").climate);
+        assertEquals(null, TelegramCommand.parseText("alerts on").climate);
+        assertEquals(null, TelegramCommand.parseText("guard on").climate);
+        assertEquals(null, TelegramCommand.parseText("hello").climate);
+        assertEquals(null, TelegramCommand.parseText("ac maybe").climate);
+        assertEquals(TelegramCommand.ANY_LANE, TelegramCommand.parseText("ac 23").lane);
+    }
+
+    private static TelegramCommand.Climate climate(String text) {
+        TelegramCommand command = TelegramCommand.parseText(text);
+        assertEquals("这句该是空调命令: " + text, TelegramCommand.Verb.CLIMATE, command.verb);
+        return command.climate;
+    }
+
+    private static void notAClimate(String text) {
+        TelegramCommand command = TelegramCommand.parseText(text);
+        assertEquals("不该认成空调命令: " + text, TelegramCommand.Verb.UNKNOWN, command.verb);
+        assertEquals("不是空调命令就不带 climate: " + text, null, command.climate);
+    }
 }

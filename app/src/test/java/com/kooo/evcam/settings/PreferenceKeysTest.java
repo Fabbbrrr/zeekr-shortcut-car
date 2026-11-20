@@ -44,7 +44,7 @@ public class PreferenceKeysTest {
     /** 代码里按 key 去拿一个 Preference 的几种写法。 */
     private static final Pattern CODE_KEY = Pattern.compile(
             "(?:findPreference|onClick|bindSwitch|bindEnum|bindSlider|bindOverlaySwitch"
-                    + "|bindGigabyteLimit)\\(\\s*\"([^\"]+)\"");
+                    + "|bindGigabyteLimit|bindSegmented)\\(\\s*\"([^\"]+)\"");
 
     @Test
     public void everyKeyUsedInCodeExistsInTheXml() throws IOException {

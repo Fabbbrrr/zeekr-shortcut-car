@@ -158,7 +158,8 @@ public final Climate climate;      // non-null only for Verb.CLIMATE
 ```
 
 Accepted: `ac` / `climate` / `aircon` alone → REPORT; `ac on`, `ac off`; `ac on 23`, `ac 23`,
-`ac 22.5` (half degrees allowed); numbers outside 10..35 make the whole message `UNKNOWN`.
+`ac 22.5` is **not** accepted (whole degrees only, 10..35; the parsed target stays an `int`). Numbers
+outside 10..35, a decimal, or any extra word make the whole message `UNKNOWN`.
 `toString()` prints `CLIMATE:ON@23` / `CLIMATE:ON` / `CLIMATE:OFF` / `CLIMATE:REPORT`.
 
 ### `alarm/telegram/TelegramPoller.Handler` (additive)

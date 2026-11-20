@@ -1,0 +1,423 @@
+/*
+ * Zeekr Shortcut - https://github.com/dts88/zeekr-shortcut-car
+ * Copyright (C) 2026 dts88
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Additional terms under GPL-3.0 section 7 apply to dts88's code; see NOTICE.md.
+ */
+
+package com.kooo.evcam.alarm.climate;
+
+import com.kooo.evcam.telemetry.CarAccess;
+
+import java.util.Locale;
+
+/**
+ * 气候告警的写车（T2）：空调开关、设定温度、主驾座椅加热或通风。只有车主下的命令走这里，自动的只许关（见
+ * {@code docs/climate-alerts/DECISIONS.md}）。
+ *
+ * <ul>
+ *   <li>设定温度走浮点通道（{@link CarAccess#writeCustom}）：温度这类号车机只收小数，整型的
+ *       {@code setFunctionValue} 对 {@code HVAC_FUNC_TEMP} 恒回 false（读也只回占位值 253），没有整数回退。</li>
+ *   <li>能设多少度、一档多少度是从车上读的（{@code HVAC_FUNC_TEMP_MIN/MAX/STEP}，主驾区域）：车不同、地区不同，
+ *       16–31 这种数不能写死在代码里。读不到就是不写（{@link Outcome#NO_RANGE}），不猜。单位同理，读到的不是
+ *       摄氏度（{@code TEMPERATURE_UNIT_C}）就不写（{@link Outcome#WRONG_UNIT}）。</li>
+ *   <li>车机说受理了不等于做到了：写完 3 秒内每 250 毫秒读回开关和设定温度，都对上才算做成（{@link Outcome#DONE}），
+ *       否则是 {@link Outcome#NO_CHANGE}，读到的值记在 {@link Report#detail} 里。</li>
+ *   <li>功能号、区域照系统的常量名取（{@link Names}），这台车机上没有的就是做不了。纯 Java，没有安卓的东西：车接口、
+ *       常量名、等待都是参数，测试换上假的、不睡（{@code ClimateSourceTest}）。</li>
+ *   <li>{@link Report#detail} 只放 ASCII 和号码、读到的值，进黑匣子；给人看的字在 {@code strings.xml}。</li>
+ * </ul>
+ *
+ * <p>Writes for the climate alerts (ticket T2): power, setpoint, driver seat heat or ventilation. Only an owner
+ * command comes through here — the automatic path may switch the climate off and nothing else.</p>
+ *
+ * <p><b>Why the float channel.</b> The setpoint goes through {@link CarAccess#writeCustom}
+ * ({@code setCustomizeFunctionValue}): temperature-style functions take decimals only, and the integer
+ * {@code setFunctionValue} channel is refused by the vendor for {@code HVAC_FUNC_TEMP} — it always answers
+ * {@code false}, and reading it back returns the placeholder 253. There is no integer fallback, by decision.</p>
+ *
+ * <p><b>Why the range is read from the car.</b> How many degrees the unit accepts and how far one step goes are read
+ * from {@code HVAC_FUNC_TEMP_MIN / MAX / STEP} on the driver zone, every time. Cars and markets differ, so a hardcoded
+ * 16–31 would be a guess; a guess that is wrong writes a temperature the unit clamps or rejects silently. A missing
+ * range is therefore a refusal ({@link Outcome#NO_RANGE}) with no write at all, and a non-Celsius unit reading is
+ * {@link Outcome#WRONG_UNIT}.</p>
+ *
+ * <p>Every car call sits in one try/catch: a {@link RuntimeException} coming out of the vendor binding (or a reflection
+ * failure inside it) becomes {@link Outcome#UNAVAILABLE}, never a crash. A {@code null} from
+ * {@link CarAccess#readCustom} and a {@code false} from {@link CarAccess#writeCustom} mean "this head unit cannot",
+ * not "something broke".</p>
+ *
+ * <p>Pure Java on purpose: no Android imports, so the rules run under a plain JVM unit test.</p>
+ */
+public final class ClimateSource {
+
+    /** 功能号在哪个接口上（ECARX 的 {@code IHvac}）。 */
+    static final String IFACE = "IHvac";
+    /** 前排区域（{@code ROW_1}，0x08）：开关写在这里。 */
+    static final String FRONT_ZONE = "ROW_1";
+    /** 主驾区域（{@code ROW_1_LEFT}，0x01）：设定温度和座椅写在这里。 */
+    static final String DRIVER_ZONE = "ROW_1_LEFT";
+
+    /** 读回最多等多久。 */
+    static final long BACK_MS = 3_000;
+    /** 读回多久看一次。 */
+    static final long BACK_STEP_MS = 250;
+    /** 读回看几次。 */
+    static final int BACK_STEPS = (int) (BACK_MS / BACK_STEP_MS);
+    /** 温度是小数量，比大小、比读回都留一点富余。 */
+    static final float EPSILON = 1e-3f;
+
+    /** 座椅档位最多几档（档位的值是功能号加档位）。 */
+    static final int MAX_LEVEL = 3;
+
+    private ClimateSource() {
+    }
+
+    /** 一次写车的结果。 */
+    public enum Outcome {
+        /** 读回变成写的值了。 */
+        DONE,
+        /** 车机受理了，车上没变（或者读不到）。 */
+        NO_CHANGE,
+        /** 没写：车机不受理、设定温度超出车上读到的范围、缺坐标。 */
+        REFUSED,
+        /** 做不了：没有这个功能号，或者车辆接口出了错。 */
+        UNAVAILABLE,
+        /** 温度范围（最小、最大、步长）读不到：不写。 */
+        NO_RANGE,
+        /** 温度单位不是摄氏度：不写（不换算，也不猜）。 */
+        WRONG_UNIT
+    }
+
+    /** 功能号、区域从哪来（真的是 {@code CarNames}；测试里换成假的）。 */
+    public interface Names {
+        Integer function(String iface, String field);
+
+        int zone(String name);
+    }
+
+    /** 等一会儿（真的是 {@code SystemClock.sleep}；测试里不等，只记下等了多久）。 */
+    public interface Clock {
+        void sleep(long ms);
+    }
+
+    /** 要写什么。 */
+    public static final class Plan {
+        /** true：打开空调并设温度；false：关掉。 */
+        public final boolean on;
+        /** 设定温度（摄氏度），只有 {@link #on} 时用。 */
+        public final float targetC;
+        /** false：一个座椅的号都不写。 */
+        public final boolean seats;
+        /** 写座椅加热。 */
+        public final boolean heat;
+        /** 写座椅通风。 */
+        public final boolean vent;
+        /** 1..3，加热、通风都用它。 */
+        public final int level;
+
+        public Plan(boolean on, float targetC, boolean seats, boolean heat, boolean vent, int level) {
+            this.on = on;
+            this.targetC = targetC;
+            this.seats = seats;
+            this.heat = heat;
+            this.vent = vent;
+            this.level = level;
+        }
+    }
+
+    /** 写完了怎么样。 */
+    public static final class Report {
+        public final Outcome outcome;
+        /** 写下去的设定温度（照车上的步长对齐之后）；没写是 0。 */
+        public final float targetC;
+        /** 读回来的开关。 */
+        public final boolean powerOn;
+        /** ASCII，只进黑匣子：功能号（号码用十六进制）和读到的值。 */
+        public final String detail;
+
+        public Report(Outcome outcome, float targetC, boolean powerOn, String detail) {
+            this.outcome = outcome;
+            this.targetC = targetC;
+            this.powerOn = powerOn;
+            this.detail = detail;
+        }
+
+        @Override
+        public String toString() {
+            return String.format(Locale.US, "%s target=%.1f power=%s (%s)", outcome, targetC, powerOn, detail);
+        }
+    }
+
+    // ================================================================= 做
+
+    /**
+     * 写一次车：{@link Plan#on} 是打开（读范围、写设定温度、写开关、写座椅、读回），是关就写 0、读回。
+     * 不抛：出了问题都是 {@link Outcome#UNAVAILABLE}。
+     */
+    public static Report apply(CarAccess access, Names names, Clock clock, Plan plan) {
+        if (access == null || names == null || clock == null || plan == null) {
+            return new Report(Outcome.UNAVAILABLE, 0f, false, "missing argument");
+        }
+        Run run = new Run(access, names, clock);
+        try {
+            return run.go(plan);
+        } catch (RuntimeException e) {
+            run.note("failed: " + e);
+            return run.report(Outcome.UNAVAILABLE, 0f, false);
+        }
+    }
+
+    // ================================================================= 一次写车
+
+    /** 一次写车的读写、记一笔（ASCII，进黑匣子）。 */
+    private static final class Run {
+        private final CarAccess access;
+        private final Names names;
+        private final Clock clock;
+        private final StringBuilder detail = new StringBuilder();
+
+        Run(CarAccess access, Names names, Clock clock) {
+            this.access = access;
+            this.names = names;
+            this.clock = clock;
+        }
+
+        void note(String text) {
+            if (detail.length() > 0) {
+                detail.append("; ");
+            }
+            detail.append(text);
+        }
+
+        Report report(Outcome outcome, float target, boolean powerOn) {
+            return new Report(outcome, target, powerOn, ascii(detail.toString()));
+        }
+
+        Report go(Plan plan) {
+            int front = zone(FRONT_ZONE);
+            int driver = zone(DRIVER_ZONE);
+            note(String.format(Locale.US, "zone front=%s driver=%s", hex(front), hex(driver)));
+            Integer power = function("HVAC_FUNC_POWER");
+            if (power == null) {
+                return report(Outcome.UNAVAILABLE, 0f, false);
+            }
+            note("power " + hex(power));
+            return plan.on ? on(plan, power, front, driver) : off(plan, power, front, driver);
+        }
+
+        // ------------------------------------------------------------- 关
+
+        /** 关：开关写 0，座椅写 0；读回开关是 0 算做成，别的都是没生效。 */
+        private Report off(Plan plan, int power, int front, int driver) {
+            boolean accepted = write(power, front, 0);
+            if (plan.seats) {
+                seatOff(driver);
+            } else {
+                note("no seats");
+            }
+            Integer seen = null;
+            for (long waited = BACK_STEP_MS; waited <= BACK_MS; waited += BACK_STEP_MS) {
+                clock.sleep(BACK_STEP_MS);
+                seen = read(power, front);
+                if (seen != null && seen == 0) {
+                    note("back power " + hex(seen) + " after " + waited + " ms");
+                    return report(Outcome.DONE, 0f, false);
+                }
+            }
+            note("back power " + hex(seen) + " after " + BACK_MS + " ms" + (accepted ? "" : ", write refused"));
+            return report(Outcome.NO_CHANGE, 0f, seen != null && seen == 1);
+        }
+
+        /** 关座椅：加热、通风都写 0；不受理不影响空调，记一笔。 */
+        private void seatOff(int driver) {
+            Integer heat = function("HVAC_FUNC_SEAT_HEATING");
+            Integer vent = function("HVAC_FUNC_SEAT_VENTILATION");
+            if (heat != null && !write(heat, driver, 0)) {
+                note("seat heating off refused");
+            }
+            if (vent != null && !write(vent, driver, 0)) {
+                note("seat ventilation off refused");
+            }
+        }
+
+        // ------------------------------------------------------------- 开
+
+        /** 开：先读范围，再写设定温度、写开关、写座椅，最后读回开关和设定温度。 */
+        private Report on(Plan plan, int power, int front, int driver) {
+            Integer temp = function("HVAC_FUNC_TEMP");
+            Integer minId = function("HVAC_FUNC_TEMP_MIN");
+            Integer maxId = function("HVAC_FUNC_TEMP_MAX");
+            Integer stepId = function("HVAC_FUNC_TEMP_STEP");
+            Integer unitId = function("HVAC_FUNC_TEMP_UNIT");
+            Integer unitC = function("TEMPERATURE_UNIT_C");
+            Integer heat = function("HVAC_FUNC_SEAT_HEATING");
+            Integer vent = function("HVAC_FUNC_SEAT_VENTILATION");
+            if (temp == null) {
+                return report(Outcome.UNAVAILABLE, 0f, false);
+            }
+
+            // 范围从车上读：读不到就不写。
+            Integer min = read(minId, driver, "min");
+            Integer max = read(maxId, driver, "max");
+            Integer step = read(stepId, driver, "step");
+            if (min == null || max == null || step == null || step <= 0 || min > max) {
+                note("no range");
+                return report(Outcome.NO_RANGE, 0f, false);
+            }
+
+            // 单位：读不到当这台车机没有这个号；读到的不是摄氏度就不写（不换算、不猜）。
+            Integer unit = unitId == null ? null : access.read(unitId, driver);
+            if (unit != null) {
+                note("read unit@" + hex(driver) + "=" + hex(unit) + ", c=" + hex(unitC));
+                if (unitC == null || !unit.equals(unitC)) {
+                    note("not celsius");
+                    return report(Outcome.WRONG_UNIT, 0f, false);
+                }
+            }
+
+            Float target = snapped(plan.targetC, min, max, step);
+            if (target == null) {
+                note(String.format(Locale.US, "target %.1f outside range", plan.targetC));
+                return report(Outcome.REFUSED, 0f, false);
+            }
+
+            boolean written = access.writeCustom(temp, driver, target);
+            note(String.format(Locale.US, "write temp %s@%s=%.1f %s", hex(temp), hex(driver), target,
+                    written ? "ok" : "refused"));
+            if (!written) {
+                return report(Outcome.REFUSED, 0f, false);
+            }
+
+            boolean powered = write(power, front, 1);
+            if (!powered) {
+                return report(Outcome.REFUSED, target, false);
+            }
+
+            seatOn(plan, driver, heat, vent);
+
+            return back(power, front, temp, driver, target, step);
+        }
+
+        /** 座椅：只写一个号（加热优先），档位的值是功能号加档位；不受理不影响空调。 */
+        private void seatOn(Plan plan, int driver, Integer heat, Integer vent) {
+            if (!plan.seats) {
+                note("no seats");
+                return;
+            }
+            boolean useHeat = plan.heat;
+            boolean useVent = !plan.heat && plan.vent;
+            if (!useHeat && !useVent) {
+                note("no seat channel");
+                return;
+            }
+            Integer id = useHeat ? heat : vent;
+            if (id == null) {
+                note(useHeat ? "no seat heating" : "no seat ventilation");
+                return;
+            }
+            int level = Math.max(1, Math.min(MAX_LEVEL, plan.level));
+            if (!write(id, driver, id + level)) {
+                note("seat write refused, climate kept");
+            }
+        }
+
+        /** 读回：{@link #BACK_MS} 内开关读到 1、设定温度在半档以内算做成。 */
+        private Report back(int power, int front, int temp, int driver, float target, int step) {
+            Integer seenPower = null;
+            Float seenTemp = null;
+            float half = step / 2f + EPSILON;
+            for (long waited = BACK_STEP_MS; waited <= BACK_MS; waited += BACK_STEP_MS) {
+                clock.sleep(BACK_STEP_MS);
+                seenPower = read(power, front);
+                seenTemp = access.readCustom(temp, driver);
+                if (seenPower != null && seenPower == 1 && seenTemp != null && Math.abs(seenTemp - target) <= half) {
+                    note(String.format(Locale.US, "back power %s setpoint %.1f after %d ms",
+                            hex(seenPower), seenTemp, waited));
+                    return report(Outcome.DONE, target, true);
+                }
+            }
+            note(String.format(Locale.US, "back power %s setpoint %s want %.1f after %d ms",
+                    hex(seenPower), seenTemp == null ? "?" : String.format(Locale.US, "%.1f", seenTemp),
+                    target, BACK_MS));
+            return report(Outcome.NO_CHANGE, target, seenPower != null && seenPower == 1);
+        }
+
+        // ------------------------------------------------------------- 读写
+
+        /** 功能号；这台车机没有就记一笔、返回 null。 */
+        Integer function(String field) {
+            Integer id = names.function(IFACE, field);
+            if (id == null) {
+                note("no " + field);
+            }
+            return id;
+        }
+
+        int zone(String name) {
+            return names.zone(name);
+        }
+
+        Integer read(int id, int zone) {
+            return access.read(id, zone);
+        }
+
+        /** 读一个整型的号、记一笔（读数用十进制，单位那种枚举用十六进制）。 */
+        Integer read(Integer id, int zone, String label) {
+            if (id == null) {
+                return null;
+            }
+            Integer v = access.read(id, zone);
+            note("read " + label + "@" + hex(zone) + "=" + (v == null ? "?" : String.valueOf(v)));
+            return v;
+        }
+
+        /** 写一个整型的号、记一笔。车机受理了返回 true。 */
+        boolean write(int id, int zone, int value) {
+            boolean accepted = access.write(id, zone, value);
+            note(String.format(Locale.US, "write %s@%s=%d %s", hex(id), hex(zone), value,
+                    accepted ? "ok" : "refused"));
+            return accepted;
+        }
+    }
+
+    // ================================================================= 纯函数
+
+    /**
+     * 照车上的范围、步长算要写的温度：超出最小、最大一步以上是不写（返回 null），一步以内算量测的零头，
+     * 夹进范围再照步长对齐（对齐的起点是最小值）。
+     */
+    static Float snapped(float targetC, int min, int max, int step) {
+        if (step <= 0 || min > max) {
+            return null;
+        }
+        if (targetC < min - step - EPSILON || targetC > max + step + EPSILON || Float.isNaN(targetC)) {
+            return null;
+        }
+        float clamped = Math.max(min, Math.min(max, targetC));
+        int n = Math.round((clamped - min) / (float) step);
+        if (n < 0) {
+            n = 0;
+        }
+        float snapped = min + n * (float) step;
+        while (snapped > max + EPSILON && n > 0) {
+            n--;
+            snapped = min + n * (float) step;
+        }
+        return snapped;
+    }
+
+    /** 只留 ASCII（黑匣子里不能有别的）。 */
+    static String ascii(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            out.append(c >= 0x20 && c < 0x7F ? c : '?');
+        }
+        return out.toString();
+    }
+
+    static String hex(Integer v) {
+        return v == null ? "?" : String.format(Locale.US, "0x%X", v);
+    }
+}

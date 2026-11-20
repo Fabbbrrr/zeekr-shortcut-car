@@ -25,7 +25,9 @@ import com.kooo.evcam.alarm.media.MotionSensitivity;
  *   <li>{@code alerts} / {@code alarm}，可空，或跟 {@code on} / {@code off}（{@code resume} /
  *       {@code pause} 也算）：暂停警报、恢复警报，见 {@link AlertsState}；</li>
  *   <li>{@code guard} 及后面一个词（{@code on} / {@code off} / {@code home} / {@code home clear} /
- *       {@code auto off|ask|then|on} / {@code then}）：忘了开哨兵那一块的事，见 {@link GuardAction}。</li>
+ *       {@code auto off|ask|then|on} / {@code then}）：忘了开哨兵那一块的事，见 {@link GuardAction}；</li>
+ *   <li>{@code ac} / {@code climate} / {@code aircon}，可空，或跟 {@code on} / {@code off} /
+ *       一个 10–35 的整数：车主自己开空调，见 {@link ClimateAction}。</li>
  * </ul>
  *
  * <p>命令前面的 {@code /}、命令后面的 {@code @BotName}（群里会带）、大小写、前后空白都不计较。
@@ -50,7 +52,10 @@ import com.kooo.evcam.alarm.media.MotionSensitivity;
  *       {@code resume} / {@code pause}): pause and resume alerts, see {@link AlertsState};</li>
  *   <li>{@code guard} plus one word ({@code on} / {@code off} / {@code home} / {@code home clear} /
  *       {@code auto off|ask|then|on} / {@code then}): the forgotten-sentry block, see
- *       {@link GuardAction}.</li>
+ *       {@link GuardAction};</li>
+ *   <li>{@code ac} / {@code climate} / {@code aircon}, alone or followed by {@code on} / {@code off} /
+ *       a whole number 10–35: the owner switching the climate themselves, see
+ *       {@link ClimateAction}.</li>
  * </ul>
  *
  * <p>A leading {@code /}, a trailing {@code @BotName} (present in groups), letter case, and
@@ -104,6 +109,17 @@ public final class TelegramCommand {
          * master switch off would close the way back.</p>
          */
         ALERTS,
+        /**
+         * 车主自己开空调（{@code /ac …}）：问一句、开、关，或者开到某个温度。
+         *
+         * <p>这是<b>车主下的命令</b>，不是自动写：自动驾驶座舱永远不碰，见 {@link ClimateAction}。</p>
+         *
+         * The owner's own climate command ({@code /ac …}): report it, turn it on or off, or set a
+         * temperature.
+         *
+         * <p>This is an <b>owner command</b>, never an automatic write.</p>
+         */
+        CLIMATE,
         /**
          * 不是命令，或者不认识。
          *
@@ -184,6 +200,67 @@ public final class TelegramCommand {
     }
 
     /**
+     * {@code /ac} 后面跟的那一个词或者一个温度。
+     *
+     * <p>光写 {@code ac} 是 {@link #REPORT}；{@link #ON} 可以带一个温度，也可以不带（不带就用设置里
+     * 那个默认温度）。只收整度 10–35：{@code 22.5}、{@code 9}、{@code 36} 都不猜，整句
+     * {@link Verb#UNKNOWN} —— 半度不是「最近的整度」的意思。</p>
+     *
+     * The one word or temperature after {@code /ac}. A bare {@code ac} is {@link #REPORT};
+     * {@link #ON} may carry a temperature or leave it out (then the configured default applies).
+     * Only whole degrees 10–35 are accepted: {@code 22.5}, {@code 9} and {@code 36} are not guessed
+     * at, and the whole message becomes {@link Verb#UNKNOWN} — a half degree is not shorthand for the
+     * nearest whole one.
+     */
+    public enum ClimateAction {
+        /** 光写一个 {@code ac}：报一句现在车内什么温度。 Bare {@code ac}: say what the cabin is at. */
+        REPORT,
+        /** {@code ac on} / {@code ac on 23} / {@code ac 23}：开，可以指定温度。 On, optionally at a temperature. */
+        ON,
+        /** {@code ac off}：关。 Off. */
+        OFF
+    }
+
+    /**
+     * 一条空调命令：做什么，以及要不要指定温度。
+     *
+     * <p>{@link #targetC} 为 0 表示车主没有说温度，用设置里的那个默认值；说了就一定在 10–35 之内
+     * （解析时已经卡住）。</p>
+     *
+     * One climate command: what to do, and whether a temperature was named.
+     *
+     * <p>{@link #targetC} of 0 means the owner named no temperature and the configured default is
+     * used; a named one is always inside 10–35 (checked while parsing).</p>
+     */
+    public static final class Climate {
+        /** 问、开、还是关。 Report, turn on, or turn off. */
+        public final ClimateAction action;
+        /** 要几度；0 表示车主没说，用设置里的默认值。 The temperature, or 0 when none was named. */
+        public final int targetC;
+
+        public Climate(ClimateAction action, int targetC) {
+            this.action = action;
+            this.targetC = targetC;
+        }
+
+        @Override
+        public String toString() {
+            if (action == ClimateAction.ON) {
+                return targetC == 0 ? "ON" : "ON@" + targetC;
+            }
+            return action == null ? "" : action.toString();
+        }
+    }
+
+    /**
+     * 整度 10–35 的边界，含两端。
+     *
+     * The whole-degree bounds 10–35, both ends included.
+     */
+    static final int CLIMATE_MIN_C = 10;
+    static final int CLIMATE_MAX_C = 35;
+
+    /**
      * 不指定某一路。
      *
      * No specific lane.
@@ -238,6 +315,12 @@ public final class TelegramCommand {
      * Set only for {@link Verb#ALERTS}; {@code null} for every other verb.
      */
     public final AlertsState alerts;
+    /**
+     * 只有 {@link Verb#CLIMATE} 有值；别的命令全是 {@code null}。
+     *
+     * Set only for {@link Verb#CLIMATE}; {@code null} for every other verb.
+     */
+    public final Climate climate;
 
     private TelegramCommand(Verb verb, int lane) {
         this(verb, lane, null, "");
@@ -258,6 +341,12 @@ public final class TelegramCommand {
 
     private TelegramCommand(Verb verb, int lane, GuardAction guard, String timeWord,
                             SensitivityAction sensitivity, int sensitivityLevel, AlertsState alerts) {
+        this(verb, lane, guard, timeWord, sensitivity, sensitivityLevel, alerts, null);
+    }
+
+    private TelegramCommand(Verb verb, int lane, GuardAction guard, String timeWord,
+                            SensitivityAction sensitivity, int sensitivityLevel, AlertsState alerts,
+                            Climate climate) {
         this.verb = verb;
         this.lane = lane;
         this.guard = guard;
@@ -265,6 +354,7 @@ public final class TelegramCommand {
         this.sensitivity = sensitivity;
         this.sensitivityLevel = sensitivityLevel;
         this.alerts = alerts;
+        this.climate = climate;
     }
 
     /**
@@ -325,6 +415,9 @@ public final class TelegramCommand {
         if ("alerts".equals(verb) || "alarm".equals(verb)) {
             return parseAlerts(words);
         }
+        if ("ac".equals(verb) || "climate".equals(verb) || "aircon".equals(verb)) {
+            return parseClimate(words);
+        }
         if (!"pic".equals(verb) && !"photo".equals(verb) && !"picture".equals(verb)
                 && !"snap".equals(verb) && !"snapshot".equals(verb)) {
             return new TelegramCommand(Verb.UNKNOWN, ANY_LANE);
@@ -375,6 +468,55 @@ public final class TelegramCommand {
             return new TelegramCommand(Verb.ALERTS, ANY_LANE, null, "", null, 0, AlertsState.OFF);
         }
         return new TelegramCommand(Verb.UNKNOWN, ANY_LANE);
+    }
+
+    /**
+     * {@code ac} 及后面的词：不写、{@code on}、{@code off}、{@code on 23}，或者光一个 {@code 23}。
+     *
+     * <p>只收整度 10–35，最多一个额外词 —— 和 {@code guard} / {@code alerts} 同一条规矩。
+     * {@code ac 22.5} 不是半度，是听不懂；{@code ac on 22 extra} 也是。</p>
+     *
+     * {@code ac} and the words after it: nothing, {@code on}, {@code off}, {@code on 23}, or a bare
+     * {@code 23}. Only whole degrees 10–35, and at most one extra word — the same rule {@code guard}
+     * and {@code alerts} follow. {@code ac 22.5} is not a half degree, it is unintelligible; so is
+     * {@code ac on 22 extra}.
+     */
+    private static TelegramCommand parseClimate(String[] words) {
+        if (words.length == 1) {
+            return new TelegramCommand(Verb.CLIMATE, ANY_LANE, null, "", null, 0, null,
+                    new Climate(ClimateAction.REPORT, 0));
+        }
+        if (words.length == 2) {
+            String word = words[1].toLowerCase(java.util.Locale.US);
+            if ("on".equals(word)) {
+                return new TelegramCommand(Verb.CLIMATE, ANY_LANE, null, "", null, 0, null,
+                        new Climate(ClimateAction.ON, 0));
+            }
+            if ("off".equals(word)) {
+                return new TelegramCommand(Verb.CLIMATE, ANY_LANE, null, "", null, 0, null,
+                        new Climate(ClimateAction.OFF, 0));
+            }
+            int target = thermalTarget(word);
+            if (target >= 0) {
+                return new TelegramCommand(Verb.CLIMATE, ANY_LANE, null, "", null, 0, null,
+                        new Climate(ClimateAction.ON, target));
+            }
+            return new TelegramCommand(Verb.UNKNOWN, ANY_LANE);
+        }
+        if (words.length == 3 && "on".equals(words[1].toLowerCase(java.util.Locale.US))) {
+            int target = thermalTarget(words[2].toLowerCase(java.util.Locale.US));
+            if (target >= 0) {
+                return new TelegramCommand(Verb.CLIMATE, ANY_LANE, null, "", null, 0, null,
+                        new Climate(ClimateAction.ON, target));
+            }
+        }
+        return new TelegramCommand(Verb.UNKNOWN, ANY_LANE);
+    }
+
+    /** 整度 10–35 才算；返回 -1 表示不是。 Only a whole degree inside 10–35 counts; -1 means no. */
+    private static int thermalTarget(String word) {
+        int value = numberOf(word);
+        return value < CLIMATE_MIN_C || value > CLIMATE_MAX_C ? -1 : value;
     }
 
     /**
@@ -502,6 +644,7 @@ public final class TelegramCommand {
     public String toString() {
         return verb + (guard == null ? "" : ":" + guard)
                 + (alerts == null ? "" : ":" + alerts)
+                + (climate == null ? "" : ":" + climate)
                 + (sensitivity == null ? "" : ":" + sensitivity
                         + (sensitivity == SensitivityAction.SET ? "=" + sensitivityLevel : ""))
                 + (lane == ANY_LANE ? "" : "#" + lane);

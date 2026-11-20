@@ -39,6 +39,48 @@ public final class AlertButton {
     /** 四路拼成一张的那个片段：大多数时候要看的是这个。The stitched four-camera clip: what most requests want. */
     public static final String ACTION_CLIP_SURROUND = "cs";
 
+    /** 关空调（回执下面那颗「关掉」）。Switch the climate off: the undo under the receipt. */
+    public static final String ACTION_CLIMATE_OFF = "acoff";
+
+    /** 空调按钮的动作前缀，后面跟两整度：{@code ac22}。Climate buttons: the prefix plus whole degrees. */
+    public static final String ACTION_CLIMATE = "ac";
+
+    /**
+     * 一条温度警报下面那颗按钮要多少度。
+     *
+     * <p>按钮在聊天记录里躺着，号码（{@link GuardToken} 那一套）只对这一次警报有效；度数写在动作里，
+     * 因为它不是秘密、也不占字节（{@code callback_data} 上限 64 字节）。</p>
+     *
+     * The degrees one button under a temperature alert asks for.
+     *
+     * <p>The token names the one alert it belongs to; the degrees ride in the action because they are
+     * neither secret nor large (callback_data is capped at 64 bytes).</p>
+     */
+    public static String climateAction(int targetC) {
+        return ACTION_CLIMATE + targetC;
+    }
+
+    /**
+     * 这颗按钮要多少度。
+     *
+     * @return 20..30 之内的度数；不是空调按钮是 -1；是「关掉」那颗是 0
+     */
+    public static int climateTarget(String action) {
+        if (ACTION_CLIMATE_OFF.equals(action)) {
+            return 0;
+        }
+        if (action == null || action.length() != ACTION_CLIMATE.length() + 2
+                || !action.startsWith(ACTION_CLIMATE)) {
+            return -1;
+        }
+        try {
+            int target = Integer.parseInt(action.substring(ACTION_CLIMATE.length()));
+            return target >= 10 && target <= 35 ? target : -1;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
     private static final String PREFIX = "a";
 
     private AlertButton() {
@@ -85,6 +127,9 @@ public final class AlertButton {
         }
         String action = parts[1];
         if (ACTION_HIGH.equals(action) || ACTION_CLIP_SURROUND.equals(action)) {
+            return action;
+        }
+        if (ACTION_CLIMATE_OFF.equals(action) || climateTarget(action) >= 10) {
             return action;
         }
         return laneOf(action) == TelegramCommand.ANY_LANE ? null : action;
