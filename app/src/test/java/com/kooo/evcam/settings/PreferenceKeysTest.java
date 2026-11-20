@@ -44,7 +44,15 @@ public class PreferenceKeysTest {
     /** 代码里按 key 去拿一个 Preference 的几种写法。 */
     private static final Pattern CODE_KEY = Pattern.compile(
             "(?:findPreference|onClick|bindSwitch|bindEnum|bindSlider|bindOverlaySwitch"
-                    + "|bindGigabyteLimit)\\(\\s*\"([^\"]+)\"");
+                    + "|bindGigabyteLimit|bindSegmented|bindAlertsClimateList|show)\\(\\s*\"([^\"]+)\"");
+
+    /**
+     * {@code CLIMATE_ROWS} 那个数组里的每一行：它是循环着 show 的，字面量只在数组声明里出现，
+     * 所以{@link #CODE_KEY}看不到它。车厢温度的行名改了一处、跟 XML 对不上，也要在这里拦下来。
+     */
+    private static final Pattern CLIMATE_ROWS_ARRAY = Pattern.compile(
+            "CLIMATE_ROWS\\s*=\\s*\\{([^}]*)\\}");
+    private static final Pattern QUOTED = Pattern.compile("\"([^\"]+)\"");
 
     @Test
     public void everyKeyUsedInCodeExistsInTheXml() throws IOException {
@@ -57,10 +65,15 @@ public class PreferenceKeysTest {
         Set<String> used = new LinkedHashSet<>();
         used.addAll(extract(new File(moduleRoot,
                 "src/main/java/com/kooo/evcam/settings/SettingsPreferenceFragment.java"), CODE_KEY));
+        used.addAll(extractClimateRows(new File(moduleRoot,
+                "src/main/java/com/kooo/evcam/settings/SettingsPreferenceFragment.java")));
         used.addAll(extract(new File(moduleRoot,
                 "src/main/java/com/kooo/evcam/settings/SettingsHeadersFragment.java"), CODE_KEY));
 
         assumeTrue("源文件读不到，跳过", !declared.isEmpty() && !used.isEmpty());
+        // 车厢温度那几行确实收到了：不然这条测试看起来绿，其实一个字面量都没看
+        assertTrue("CLIMATE_ROWS 没取到：" + used,
+                used.contains("pref_alerts_climate_hot"));
 
         Set<String> missing = new TreeSet<>(used);
         missing.removeAll(declared);
@@ -77,6 +90,23 @@ public class PreferenceKeysTest {
         Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             found.add(matcher.group(1));
+        }
+        return found;
+    }
+
+    /** {@code CLIMATE_ROWS} 数组里每一个字符串。 */
+    private static Set<String> extractClimateRows(File file) throws IOException {
+        Set<String> found = new LinkedHashSet<>();
+        if (!file.isFile()) {
+            return found;
+        }
+        String text = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+        Matcher array = CLIMATE_ROWS_ARRAY.matcher(text);
+        while (array.find()) {
+            Matcher quoted = QUOTED.matcher(array.group(1));
+            while (quoted.find()) {
+                found.add(quoted.group(1));
+            }
         }
         return found;
     }

@@ -56,6 +56,12 @@ public enum AlertEvent {
     GUARD_LATE(R.string.alert_event_guard_late_title, R.string.alert_event_guard_late),
     GUARD_ARMED(R.string.alert_event_guard_armed_title, R.string.alert_event_guard_armed),
 
+    /* ---- 车厢温度 / the cabin ---- */
+    CLIMATE_HOT(R.string.alert_headline_climate_hot, R.string.alert_event_climate_hot),
+    CLIMATE_COLD(R.string.alert_headline_climate_cold, R.string.alert_event_climate_cold),
+    CLIMATE_SAFETY(R.string.alert_headline_climate_safety, R.string.alert_event_climate_safety),
+    CLIMATE_RECEIPT(R.string.alert_event_climate_receipt_title, R.string.alert_event_climate_receipt),
+
     /* ---- 纯文字 / text only ---- */
     STATUS(R.string.alert_event_status_title, R.string.alert_event_status),
     HELP(R.string.alert_cmd_help, R.string.alert_event_help);

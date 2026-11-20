@@ -283,6 +283,116 @@ The table lives in `alarm.AlertEvent`, and `AlertEventTest` pins one description
 triggers present. It answers "what does it send" once configured; the three setup steps before that
 (token → find the chat → one picture) are in `docs/setup-wizards.md`, one picture per screen.
 
+## 1.11 车厢温度：太热、太冷、有人坐在里面
+
+车停着的时候，车机本来就在报车厢温度。这一节说的是拿两个已经确认过的号在停车时看三件事：热、冷、
+以及车里有人时已经很危险。两个号是 `Signal.TEMP_INSIDE`（`0x00100C00`，`Signal.java:134`）和
+`Signal.TEMP_OUTSIDE`（`0x00100B00`，`Signal.java:133`），车上信息栏天天显示。电量用 `Signal.BATTERY`，
+座椅用 `Signal.SEAT_DRIVER` / `Signal.SEAT_PASSENGER`。
+
+默认**关**（`alerts_climate_enabled`）：这一项不开，一行也不发。
+
+### 先攒够新鲜读数，再开口
+
+车的温度只在车机醒着的时候报。连着两条读数隔了十分钟以上，那中间的一段就不知道，计时作废重来；
+读数一直在来、数值一直没变，算真的热了十分钟（`ClimatePolicy.DEFAULT_HOLD_MS`、`DEFAULT_STALE_MS`）。
+所以**睡着的车什么都不报** —— 报「现在 42 度」而那个 42 是两小时前的，比不报更糟。
+
+判断只在读数真的来的时候做（`SentryAlerts.climateCheck`，`SentryAlerts.java:3144`），纯逻辑在
+`alarm/policy/ClimatePolicy.java`，不碰车、不碰网络。
+
+| 哪一档 | 什么时候 | 安静时段 | 重复 |
+|---|---|---|---|
+| 太热 | 停着、空调关着、车厢 ≥ 30 °C（设置里 26 / 28 / 30 / 32 / 35）连续十分钟新鲜读数 | 尊重 | 一趟停车一条，降到阈值以下 3 °C 才重新武装 |
+| 太冷 | 同上，车厢 ≤ 5 °C（0 / 5 / 10 / 15） | 尊重 | 同上 |
+| 危险 | 座椅上有人且 ≥ 35 °C，或者 ≥ 40 °C（`SAFETY_OCCUPIED_C` / `SAFETY_C`） | 不看 | 每 15 分钟一条，一趟最多 3 条 |
+
+- 危险那一档一刻不等，也不受空调开着、电量低压制：车里可能坐着人，等没有意义。
+- 空调开着的时候热、冷两档不发（车自己在管温度），计时也一起作废，免得空调一关就立刻发一条。
+- 车主自己按了暂停（`alerts off`）就不发，危险那一档也不越过暂停 —— 暂停是人明确说的。
+- 开走了这一趟就结束：计时、次数、回差全部清掉（`climateForgetSession`），上一趟的警报压不住下一趟。
+
+安静时段只管舒适那两档：到点也不发，而且**不占掉**这一段（占了的话天亮也不会再报，等于永久哑掉）；
+危险那一档照发。设置里那条「高温安全提醒」（`alerts_climate_safety`）关着时，危险那一档整条不判断。
+
+### 聊天里怎么说
+
+`TelegramCommand.parseClimate`（`TelegramCommand.java:484`）只认整度 10–35（`CLIMATE_MIN_C` /
+`CLIMATE_MAX_C`），`ac 22.5` 不是半度，是听不懂；ntfy 走同一个 `parseText`，两个出口一样。
+
+| 说 | 做什么 |
+|---|---|
+| `ac` | 一句话：车厢、车外、目标温度、空调开着没有 |
+| `ac on` | 按设置里的目标温度开（默认 22 °C，可选 20–24），座椅按下面那张表 |
+| `ac on 23` / `ac 23` | 同上，目标 23 °C |
+| `ac off` | 关掉，座椅也关 |
+
+警报那条消息下面还有四颗按钮（目标上下各两度，加一颗关掉），带的是这一次警报的号，旧消息上的按钮不做事。
+
+### 写车这条路
+
+设定温度只能走浮点通道：`CarAccess.writeCustom`（`setCustomizeFunctionValue`，`CarAccess.java:69`）。
+整型的 `setFunctionValue` 车机对 `HVAC_FUNC_TEMP` 一律回 false，读回来是占位值 253，所以没有整数回退。
+
+- **范围从车上读，读不到就不写。** 每次写之前读 `HVAC_FUNC_TEMP_MIN` / `MAX` / `STEP`（主驾区域
+  `ROW_1_LEFT`），缺一个就整条拒掉（`ClimateSource.Outcome.NO_RANGE`），一个度数也不发；写下去的度数照
+  步长对齐。16–31 这种数不写死在代码里。
+- **单位不是摄氏度就不写。** 读 `HVAC_FUNC_TEMP_UNIT`，读到而且不是 `TEMPERATURE_UNIT_C` 就拒（`WRONG_UNIT`），
+  不换算也不猜。
+- **开关和座椅走整型。** 开关是 `HVAC_FUNC_POWER`，写前排（`ROW_1`）；座椅是
+  `HVAC_FUNC_SEAT_HEATING` / `HVAC_FUNC_SEAT_VENTILATION`，档位的值是功能号加档位，1–3 档。
+- **回执说的是车读回来什么。** 写完三秒内每 250 毫秒读回开关和设定温度（`ClimateSource.BACK_MS` /
+  `BACK_STEP_MS`），两样都对上才算做成；没对上就明说「受理了但车上没变」，聊天里只说人话，读到的十六进制和数值只进黑匣子。车机回 true
+  不等于车上变了。
+- **十分钟后自己关。** 默认 10 分钟（设置里 5 / 10 / 15），回执上写几点关，到点就写 0 并读回。那个定时器
+  在进程里：进程被杀就没了。
+- **电量下限。** 默认 20 %（15 / 20 / 25），低于这个数不开空调，回一句说明原因。
+- **车在开不动手。** `startClimate` 先看手上最新的车辆快照：快照没有、挡位读不到、或者不在 P，一律拒 ——
+  挡位读不到不等于 P。主线程只读快照，不去读车。
+
+### 座椅：看车里和车外的差
+
+`ClimateSeats.choose`（`ClimateSeats.java:93`）是纯算术，死区 1.5 °C（`TARGET_BAND_C`）：
+
+| 条件 | 座椅 |
+|---|---|
+| 车厢比目标低 1.5 °C 以上，而且车外 < 20 °C | 加热，档位照设置（默认 2） |
+| 车厢比目标高 1.5 °C 以上，而且车外 > 20 °C | 通风，档位照设置 |
+| 车外正好 20 °C，或者差值还在死区里 | 什么都不写 |
+
+车外温度是一票否决：外面 ≥ 20 °C 绝不加热座椅，不管车厢读得多冷。一个座椅通道都不写的时候，空调照开。
+设置里两档 `alerts_climate_seats`（`off` / `driver`）：这一版只写主驾区域（`ROW_1_LEFT`）。
+副驾、后排没有做，所以设置里也不给「主驾和副驾」这一档 —— 给了却只写主驾，比不给更糟。
+
+### 设置在哪
+
+设置 → 警报 → 上面那条「要设哪一类警报」选「车厢温度」（`pref_alerts_family`，
+`SettingsRegistry.ALERTS_FAMILY`，三选一：通知 / 哨兵 / 车厢温度），下面只留这一组的行：总开关、
+太热、太冷、高温安全提醒、目标温度、座椅、档位、开多久、电量下限。总开关关着时这一组只剩开关一行。
+
+### 还没量的一件事
+
+锁着、停着的 7X 到底受不受理这次写 —— **unknown**。其余每一条都是代码里读得到的；这一条只有车上的
+一次二十分钟测试能给答案（`CASE.md` §9 第 2 项）。在那之前，能承诺的是「车告诉你它多热」，
+写不写得下去要看车。
+
+###### English
+
+While the car is parked it already reports cabin and outside temperature, and two confirmed signals are
+enough for three rules: too hot, too cold, and dangerous with somebody seated. Hot and cold need ten
+minutes of fresh samples before speaking, so a sleeping car reports nothing; the danger rule needs 35 °C
+with a front seat occupied or 40 °C regardless, at most three times per park. In the chat, `ac` reads the
+state, `ac on` starts the climate at the configured target, `ac on 23` names one, `ac off` stops it, and
+only whole degrees 10–35 parse. The setpoint goes through the float channel (`CarAccess.writeCustom`),
+because the integer channel is refused by the vendor; the range is read from the car and a missing range
+means no write, and the receipt reports what the car read back rather than what was asked for. The
+climate switches itself off after ten minutes by default, refuses below the state-of-charge floor, refuses
+when the last snapshot says the car is not parked, and picks seat heat or ventilation from the
+cabin-to-target delta with an
+outside ≥ 20 °C veto. Quiet hours silence the comfort tiers without latching them (so daylight still gets one) and
+never the danger tier, and the danger tier can be switched off on its own. The one thing still
+unmeasured is whether a locked, parked 7X accepts the write at all.
+
 ## 2. 不做什么（车上看不到的信号）
 
 这台车的车辆接口没有撞击、气囊、喇叭、防盗 / 倾斜 / 震动触发的信号，

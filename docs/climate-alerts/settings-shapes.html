@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Climate alerts — settings shapes A/B/C</title>
+<style>
+  :root {
+    /* tokens first: change here, whole mock follows */
+    --bg:            #14161a;
+    --pane:          #1b1e23;
+    --pane-2:        #21252b;
+    --row-line:      #2b3038;
+    --ink:           #e7eaee;
+    --ink-2:         #9aa3ad;
+    --ink-3:         #6d7681;
+    --accent:        #e0a83c;   /* the "on" colour: warm, not a system blue */
+    --accent-ink:    #1a1206;
+    --sel:           #2c323b;
+    --danger:        #d2645a;
+    --radius:        10px;
+    --row-h:         46px;
+    --gap:           1px;
+    --left-w:        245px;     /* 280/1600 dp in the real shell */
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 24px 60px;
+    background: #0d0f12; color: var(--ink);
+    font: 15px/1.45 system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: .2px; }
+  .sub { color: var(--ink-2); font-size: 13px; margin: 0 0 22px; max-width: 900px; }
+  h2 { font-size: 14px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+       color: var(--ink-3); margin: 30px 0 8px; }
+  .note { color: var(--ink-2); font-size: 12.5px; margin: 8px 0 0; max-width: 1200px; }
+  .note b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- device frame ---------- */
+  .frame {
+    width: 1400px; height: 700px; background: var(--bg);
+    border: 1px solid #262b33; border-radius: var(--radius); overflow: hidden;
+    display: flex;
+  }
+  .left {
+    width: var(--left-w); flex: 0 0 var(--left-w);
+    background: var(--pane); border-right: 1px solid var(--row-line);
+    padding: 12px 0; display: flex; flex-direction: column; gap: 2px;
+  }
+  .left .head { padding: 4px 18px 12px; color: var(--ink-3); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
+  .nav { padding: 8px 18px; color: var(--ink-2); }
+  .nav.sel { background: var(--sel); color: var(--ink); }
+  .nav .st { display: block; color: var(--ink-3); font-size: 11.5px; margin-top: 1px;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav.sel .st { color: var(--ink-2); }
+  .right { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .titlebar {
+    height: 46px; flex: 0 0 46px; display: flex; align-items: center; gap: 10px;
+    padding: 0 18px; border-bottom: 1px solid var(--row-line); background: var(--pane);
+  }
+  .titlebar .t { font-weight: 600; }
+  .titlebar .back { color: var(--ink-2); }
+  .body { padding: 10px 18px 18px; overflow: hidden; }
+
+  /* ---------- rows ---------- */
+  .row {
+    display: flex; align-items: center; gap: 14px;
+    min-height: var(--row-h); padding: 9px 2px; border-bottom: 1px solid var(--row-line);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .txt { flex: 1; min-width: 0; }
+  .row .t { font-size: 15px; }
+  .row .s { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+  .row .chew { color: var(--ink-3); }
+  .sw {
+    width: 38px; height: 22px; border-radius: 11px; background: #3a404a; position: relative; flex: 0 0 38px;
+  }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+               border-radius: 50%; background: #9aa3ad; }
+  .sw.on { background: var(--accent); }
+  .sw.on::after { left: 19px; background: var(--accent-ink); }
+  .cat { font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-3);
+         padding: 14px 2px 6px; }
+  .cat:first-child { padding-top: 2px; }
+
+  /* ---------- segmented control ---------- */
+  .seg { display: flex; gap: 4px; background: var(--pane-2); border-radius: 9px; padding: 4px; margin: 2px 0 10px; }
+  .seg button {
+    flex: 1; font: inherit; font-size: 14px; color: var(--ink-2); background: transparent;
+    border: 0; border-radius: 7px; padding: 8px 6px; cursor: pointer;
+  }
+  .seg button[aria-selected="true"] { background: var(--sel); color: var(--ink); font-weight: 600; }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ---------- hub rows (option B) ---------- */
+  .hub .row { min-height: 62px; }
+  .hub .t { font-size: 16px; }
+
+  /* ---------- chat mock ---------- */
+  .chat { width: 520px; background: #0f1216; border: 1px solid #262b33; border-radius: var(--radius); padding: 14px; }
+  .msg { background: var(--pane-2); border-radius: 10px; padding: 11px 13px; font-size: 14px; max-width: 92%; }
+  .msg .meta { color: var(--ink-3); font-size: 11px; margin-top: 6px; }
+  .keys { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; margin-top: 6px; max-width: 92%; }
+  .keys button {
+    font: inherit; font-size: 13px; padding: 8px 4px; cursor: pointer;
+    background: #1e242c; color: #cfe0f5; border: 1px solid #2b3440; border-radius: 8px;
+  }
+  .keys button.off { color: #e7b4ae; border-color: #40292a; background: #241a1b; }
+  .mine { margin-left: auto; background: #23303f; }
+  .mine .meta { color: #7f8fa3; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+
+  .duo { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+  .cap { color: var(--ink-3); font-size: 12px; margin: 6px 0 0; }
+  .cap b { color: var(--ink-2); }
+  .tag { display: inline-block; font: 11px/1 var(--mono); color: var(--ink-3); border: 1px solid #2b3038;
+         border-radius: 4px; padding: 3px 5px; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Climate alerts — three settings shapes</h1>
+<p class="sub">Same feature, three ways to stop the Alerts page from being a wall. The real screen is
+1600 × 848 dp with a 280 dp left column and ~8 rows visible (<code>ui-spec §13</code>); this mock is
+schematic, at 1400 px, one row per control. Click the segment in A to see the family switch.</p>
+
+<h2>A · one Alerts section, 3-way segment — recommended</h2>
+<div class="frame">
+  <div class="left">
+    <div class="head">Settings</div>
+    <div class="nav">Recording<span class="st">Recording · Balanced</span></div>
+    <div class="nav">Storage<span class="st">52 GB free</span></div>
+    <div class="nav sel">Alerts<span class="st">Sentry on · climate alerts off</span></div>
+    <div class="nav">Super mirror<span class="st">Four views</span></div>
+    <div class="nav">Blind spot<span class="st">Standard</span></div>
+    <div class="nav">Buttons<span class="st">2 on</span></div>
+    <div class="nav">General</div>
+    <div class="nav">Update &amp; about<span class="st">4.5.13-beta</span></div>
+  </div>
+  <div class="right">
+    <div class="titlebar"><span class="back">‹</span><span class="t">Alerts</span></div>
+    <div class="body">
+      <div class="row"><span class="sw on"></span><div class="txt"><div class="t">Alerts</div>
+        <div class="s">On</div></div></div>
+      <div class="row"><div class="txt"><div class="t">Where alerts go</div>
+        <div class="s">Telegram · last checked 2 min ago</div></div><span class="chew">›</span></div>
+
+      <div class="seg" role="tablist" id="seg">
+        <button role="tab" aria-selected="false" data-fam="notif">Notifications</button>
+        <button role="tab" aria-selected="true"  data-fam="sentry">Sentry</button>
+        <button role="tab" aria-selected="false" data-fam="climate">Climate</button>
+      </div>
+
+      <!-- Sentry family -->
+      <div data-panel="sentry">
+        <div class="cat">When</div>
+        <div class="row"><div class="txt"><div class="t">Triggers</div><div class="s">Hazards · doors · lamps · screen · motion</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Arm delay</div><div class="s">Right away</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Quiet hours</div><div class="s">22:00 – 07:00</div></div><span class="sw on"></span></div>
+        <div class="row"><div class="txt"><div class="t">Motion sensitivity</div><div class="s">4 of 10</div></div><span class="chew">›</span></div>
+        <div class="cat">Picture and clip</div>
+        <div class="row"><div class="txt"><div class="t">Picture</div><div class="s">One four-camera grid</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Camera clip</div><div class="s">On request · 10 s with sound</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">If I forget Sentry Mode</div><div class="s">Ask me first</div></div><span class="chew">›</span></div>
+      </div>
+
+      <!-- Climate family -->
+      <div data-panel="climate" hidden>
+        <div class="cat">Climate</div>
+        <div class="row"><span class="sw on"></span><div class="txt"><div class="t">Tell me when the cabin is too hot or too cold</div>
+          <div class="s">Only while parked with Sentry Mode on — that is when the head unit is awake</div></div></div>
+        <div class="row"><div class="txt"><div class="t">Too warm above</div><div class="s">30 °C in the cabin</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Too cold below</div><div class="s">5 °C in the cabin</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Warn even at night when someone is inside</div>
+          <div class="s">Above 35 °C with a seat occupied, or 40 °C regardless — ignores quiet hours</div></div><span class="sw on"></span></div>
+        <div class="cat">Reply to the alert</div>
+        <div class="row"><div class="txt"><div class="t">Default target</div><div class="s">22 °C · runs for 10 minutes, then off</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Seats with it</div><div class="s">Driver · heat below 20 °C outside, ventilation above</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Do not start below</div><div class="s">20 % battery</div></div><span class="chew">›</span></div>
+      </div>
+
+      <!-- Notifications family -->
+      <div data-panel="notif" hidden>
+        <div class="cat">Telegram</div>
+        <div class="row"><div class="txt"><div class="t">Bot token</div><div class="s">Set</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Chat</div><div class="s">…4239</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Answer commands from this chat</div><div class="s">On</div></div><span class="sw on"></span></div>
+        <div class="cat">Checks</div>
+        <div class="row"><div class="txt"><div class="t">Check the link</div><div class="s">Live state of the chosen exit</div></div></div>
+        <div class="row"><div class="txt"><div class="t">Every message, one by one</div><div class="s">Send each one for real, on demand</div></div><span class="chew">›</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="cap"><b>A</b> · depth stays 2 (left column → page), left column stays 8 rows, the switch idiom
+already ships (<code>SegmentedPreference</code>). Cost: one more variable inside
+<code>showAlertsRows</code>.</p>
+
+<h2>B · Alerts hub → three child pages</h2>
+<div class="duo">
+  <div class="frame" style="width:820px;height:520px">
+    <div class="left">
+      <div class="head">Settings</div>
+      <div class="nav">Recording<span class="st">Recording · Balanced</span></div>
+      <div class="nav">Storage<span class="st">52 GB free</span></div>
+      <div class="nav sel">Alerts<span class="st">Sentry on · climate off</span></div>
+      <div class="nav">Super mirror<span class="st">Four views</span></div>
+      <div class="nav">Blind spot<span class="st">Standard</span></div>
+      <div class="nav">Buttons<span class="st">2 on</span></div>
+      <div class="nav">General</div>
+      <div class="nav">Update &amp; about<span class="st">4.5.13-beta</span></div>
+    </div>
+    <div class="right">
+      <div class="titlebar"><span class="back">‹</span><span class="t">Alerts</span></div>
+      <div class="body hub">
+        <div class="row"><span class="sw on"></span><div class="txt"><div class="t">Alerts</div><div class="s">On</div></div></div>
+        <div class="row"><div class="txt"><div class="t">Notifications</div>
+          <div class="s">Telegram · …4239 · last checked 2 min ago</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Sentry</div>
+          <div class="s">Armed now · 5 triggers · quiet 22:00–07:00</div></div><span class="chew">›</span></div>
+        <div class="row"><div class="txt"><div class="t">Climate</div>
+          <div class="s">Off · target 22 °C · warn above 30 °C</div></div><span class="chew">›</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="stack" style="width:520px">
+    <div class="frame" style="width:520px;height:300px">
+      <div class="right">
+        <div class="titlebar"><span class="back">‹</span><span class="t">Alerts · Climate</span></div>
+        <div class="body">
+          <div class="row"><span class="sw on"></span><div class="txt"><div class="t">Tell me when the cabin is too hot or too cold</div>
+            <div class="s">Only while parked with Sentry Mode on</div></div></div>
+          <div class="row"><div class="txt"><div class="t">Too warm above</div><div class="s">30 °C</div></div><span class="chew">›</span></div>
+          <div class="row"><div class="txt"><div class="t">Too cold below</div><div class="s">5 °C</div></div><span class="chew">›</span></div>
+          <div class="row"><div class="txt"><div class="t">Default target</div><div class="s">22 °C · 10 min</div></div><span class="chew">›</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>B</b> · literally the proposed tree. Depth becomes 3, which is the app's own
+    ceiling (<code>ui-spec §13</code>): these pages may open dialogs, not further pages. Needs the
+    shell's nav button and back stack re-checked.</p>
+  </div>
+</div>
+
+<h2>C · three new left-column sections</h2>
+<div class="frame" style="width:700px;height:560px">
+  <div class="left" style="width:300px;flex:0 0 300px">
+    <div class="head">Settings</div>
+    <div class="nav">Recording<span class="st">Recording · Balanced</span></div>
+    <div class="nav">Storage<span class="st">52 GB free</span></div>
+    <div class="nav">Alerts · Notifications<span class="st">Telegram · checked 2 min ago</span></div>
+    <div class="nav sel">Alerts · Sentry<span class="st">Armed · 5 triggers</span></div>
+    <div class="nav">Alerts · Climate<span class="st">Off · target 22 °C</span></div>
+    <div class="nav">Super mirror<span class="st">Four views</span></div>
+    <div class="nav">Blind spot<span class="st">Standard</span></div>
+    <div class="nav">Buttons<span class="st">2 on</span></div>
+    <div class="nav">General</div>
+    <div class="nav">Update &amp; about<span class="st">4.5.13-beta</span></div>
+  </div>
+  <div class="right">
+    <div class="titlebar"><span class="back">‹</span><span class="t">Alerts · Sentry</span></div>
+    <div class="body">
+      <div class="row"><span class="sw on"></span><div class="txt"><div class="t">Sentry alerts</div><div class="s">On</div></div></div>
+      <div class="row"><div class="txt"><div class="t">Triggers</div><div class="s">Hazards · doors · lamps · screen · motion</div></div><span class="chew">›</span></div>
+      <div class="row"><div class="txt"><div class="t">Quiet hours</div><div class="s">22:00 – 07:00</div></div><span class="sw on"></span></div>
+      <div class="row"><div class="txt"><div class="t">Picture</div><div class="s">One four-camera grid</div></div><span class="chew">›</span></div>
+    </div>
+  </div>
+</div>
+<p class="cap"><b>C</b> · zero navigation risk and each row gets its own status line for free, but the
+left column grows to 11–12 rows and the master switch needs a home.</p>
+
+<h2>The reply, as it would look</h2>
+<div class="duo">
+  <div class="chat">
+    <div class="stack">
+      <div class="msg">Cabin 33 °C, outside 29 °C, AC off.<br>Reply with a target, or tap one.
+        <div class="meta">14:02 · Sentry Mode on</div></div>
+      <div class="keys">
+        <button data-hermes-send="ac on 20">AC 20°</button>
+        <button data-hermes-send="ac on 22">AC 22°</button>
+        <button data-hermes-send="ac on 24">AC 24°</button>
+        <button class="off" data-hermes-send="ac off">Off</button>
+      </div>
+      <div class="msg mine">ac on 22
+        <div class="meta">14:03</div></div>
+      <div class="msg">AC on, target 22 °C, driver seat ventilating.<br>
+        Cabin 33 °C → cooling. Off at 14:13 unless you say <code>ac off</code>.
+        <div class="meta">14:03 · read back from the car</div></div>
+    </div>
+  </div>
+  <div style="max-width:640px">
+    <p class="note"><b>One line in, one receipt out.</b> The receipt quotes what the car read back, not
+    what was asked for — the AU 7X finding is that a setter returning <code>true</code> is not proof
+    the car did it. Buttons carry a single-use token, so a week-old alert cannot start a heater.</p>
+    <p class="note"><b>Seat rule from the delta:</b> cabin 33 °C with outside 29 °C means ventilation,
+    never heat. Outside ≥ 20 °C vetoes seat heat outright, whatever the cabin says.</p>
+    <p class="note"><b>Honest limit:</b> Sentry Mode off means the head unit sleeps, so nothing is read
+    and nothing is heard. The settings row says so instead of pretending.</p>
+  </div>
+</div>
+
+<script>
+  const seg = document.getElementById('seg');
+  seg.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-fam]');
+    if (!btn) return;
+    const fam = btn.dataset.fam;
+    for (const b of seg.querySelectorAll('button')) {
+      b.setAttribute('aria-selected', String(b === btn));
+    }
+    for (const p of document.querySelectorAll('[data-panel]')) {
+      p.hidden = p.dataset.panel !== fam;
+    }
+  });
+</script>
+</body>
+</html>

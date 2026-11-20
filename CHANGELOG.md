@@ -11,6 +11,14 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.14.0-fab-beta] - 2026-11-20
+
+- Alerts: **cabin temperature**. While parked, the car says in the chat when the cabin has been too hot
+  or too cold for ten minutes — and, with a seat occupied at 35 °C or at 40 °C regardless, whether it
+  is unfit for people. Settings → Alerts → cabin temperature, off by default. The same section answers
+  `ac`, `ac on`, `ac on 22` and `ac off`, switches the climate on at the target and off again ten
+  minutes later, and picks seat heat or ventilation from the delta. Only while the car is awake.
+
 ## [4.13.0-fab-beta] - 2026-11-19
 
 This is the fork's build. Upstream's 4.13 is not merged here; the fork's number sits one
@@ -27,6 +35,7 @@ minor above the upstream release it contains, and every fork release carries the
 - Known gap: the Alerts screens and their settings rows are Chinese, English and Malay for
   now. Arabic is a separate pass; with Arabic selected those rows fall back to the default
   resources, which are Chinese.
+
 - Alerts: **Forgot Sentry**. Park away from home with Sentry Mode off and the car says so in the chat,
   with a button to switch it on — and switches it on 60 s later by itself unless you say no. Four
   modes under Settings → Alerts, off by default; "Also at home" lifts the away-from-home rule.

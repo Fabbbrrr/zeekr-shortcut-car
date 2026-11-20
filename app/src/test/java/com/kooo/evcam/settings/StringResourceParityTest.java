@@ -92,7 +92,16 @@ public class StringResourceParityTest {
      * <p>数字本身就是这条测试的一部分：条目被翻译掉、或者又加了一行还没翻的停车警报文案，
      * 都要回到这里改一下 —— 少一条就是好消息，多一条得知道多的是什么。</p>
      */
-    private static final int PENDING_ARABIC_COUNT = 319;
+    /**
+     * 还没翻成阿语的条数。319 是 4.13 的数字；车厢温度那一条加了 65 条
+     * （alert_climate_* / alert_event_climate_* / alert_headline_climate_* / set_alerts_climate_* /
+     * opt_alerts_*），阿语照 4.13 的已知缺口留到单独一轮，所以这里跟着加，不是放宽。
+     *
+     * How many strings still have no Arabic. 319 was 4.13; the cabin-temperature feature added 65,
+     * and Arabic for the Alerts screens is the documented separate pass, so the number follows
+     * deliberately instead of the check being weakened.
+     */
+    private static final int PENDING_ARABIC_COUNT = 384;
 
     @Test
     public void everyChineseStringHasATranslationWithMatchingPlaceholders() throws IOException {

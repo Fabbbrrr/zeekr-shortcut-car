@@ -161,6 +161,19 @@ public final class TelegramPoller {
         void onAlerts(TelegramCommand.AlertsState state, long requestedAt);
 
         /**
+         * {@code ac …}：报车厢温度，或者开 / 关空调。
+         *
+         * @param climate     {@link TelegramCommand.Climate}；不会为 {@code null}
+         * @param requestedAt 车主发命令的时刻（毫秒）；0 表示不知道
+         *
+         * {@code ac …}: report the cabin, or switch the climate on / off.
+         *
+         * @param climate     never null
+         * @param requestedAt when the owner sent the command (milliseconds); 0 means unknown
+         */
+        void onClimate(TelegramCommand.Climate climate, long requestedAt);
+
+        /**
          * 一颗按钮按下了。已经回过了（手机上不转了），剩下的事在这里做。
          *
          * @param data      按钮上的 {@code callback_data}，布局见 {@code GuardToken}
@@ -500,6 +513,9 @@ public final class TelegramPoller {
                         break;
                     case ALERTS:
                         handler.onAlerts(command.alerts, sentAt);
+                        break;
+                    case CLIMATE:
+                        handler.onClimate(command.climate, sentAt);
                         break;
                     default:
                         // 车主发的、但认不出来：回一句怎么用。不回的话，
