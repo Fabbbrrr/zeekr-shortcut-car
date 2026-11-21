@@ -11,6 +11,18 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.18.0-fab-beta] - 2026-11-21
+
+- Alerts: **Sentry Mode first**. The Alerts page now opens with a line saying the alerts need Sentry
+  Mode because that is what keeps the head unit awake, and the forgotten-Sentry setting (and "also arm
+  it at home") sit directly under the master switch instead of one page down.
+- Alerts: **one home point**. "Use this position as home" moved to the Notifications page, next to the
+  at-home switch that reads it, and it only appears while something needs it — the home exclusion or the
+  guard.
+- Alerts: each exit has a **setup row** — "Set up Telegram" / "Set up ntfy", turning into "… is set up —
+  run it again" once configured — and it opens the same wizard the token row's walkthrough uses. The raw
+  token/chat/topic rows stay below for typing.
+
 ## [4.17.0-fab-beta] - 2026-11-21
 
 - Alerts: `ac 22` now sets **both front zones**, and the receipt says "target 22" — the number you

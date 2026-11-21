@@ -141,8 +141,18 @@ public class StringResourceParityTest {
      * <p>The at-home pass added six: a title and a body for the Sentry and Notifications explainers, and the
      * title and summary of the notify-at-home switch. All Alerts copy, so Arabic stays in the documented
      * separate pass: 415 + 6 = 421.</p>
+     *
+     * <p>4.17 那一轮又加了七条，都是停车警报的文案（阿语照旧留到单独一轮，421 + 7 = 428）：
+     * 总开关下面那行要求的标题与正文（{@code set_alerts_required_note_title/_summary}）、行尾里那句
+     * 「要有哨兵模式」（{@code set_alerts_required_hint}），以及两条向导行的标题与说明
+     * （{@code set_alerts_telegram_setup_title/_again_title/_summary}、
+     * {@code set_alerts_ntfy_setup_again_title}）。换位置的那几行没有新的字。</p>
+     *
+     * <p>The 4.17 pass added seven, all Alerts copy: the requirement line under the master switch, the
+     * "Sentry Mode is required" clause its guard row ends with, and the two wizard rows' titles and summary
+     * (421 + 7 = 428). Rows that only moved need no new words.</p>
      */
-    private static final int PENDING_ARABIC_COUNT = 421;
+    private static final int PENDING_ARABIC_COUNT = 428;
 
     /**
      * 温度那一批占位符必须收「已经写好的数字」（{@code %1$s}），不能是 {@code %d}。

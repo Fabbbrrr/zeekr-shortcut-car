@@ -200,6 +200,13 @@
     <string name="alert_cmd_too_soon">等一下：%1$d 秒后再要</string>
     <!-- 忘了开哨兵：哨兵没开就下车了，车自己问一句、或者自己开（alarm.GuardPolicy 判） -->
     <string name="set_alerts_guard_title">忘了开哨兵模式</string>
+    <!-- 行尾 = 「哪一档」· 这一句（showAlertsRows 拼）：要求写在选项旁边，不能只在文档里。 -->
+    <string name="set_alerts_required_hint">要有哨兵模式：车只在开着的时候看得见、听得到</string>
+    <string name="set_alerts_required_note_title">要先开哨兵模式</string>
+    <string name="set_alerts_required_note_summary">哨兵模式是让车机一直醒着的那一样：它关着，下面这些警报一条都来不了。总开关开着也不等于它在看。</string>
+    <string name="set_alerts_telegram_setup_title">设置 Telegram</string>
+    <string name="set_alerts_telegram_setup_again_title">Telegram 已配好 —— 再走一遍</string>
+    <string name="set_alerts_telegram_setup_summary">造机器人、找会话号、试发一张，一步一步来</string>
     <string name="set_alerts_guard_mode_off">关</string>
     <string name="set_alerts_guard_mode_ask">先问我</string>
     <string name="set_alerts_guard_mode_ask_then_on">问一句，一分钟没人反对就自己开</string>
@@ -1603,6 +1610,7 @@
     <string name="set_alerts_channel_status_ntfy_public">警报发到：ntfy（公开话题）</string>
     <string name="set_alerts_channel_status_ntfy_protected">警报发到：ntfy（已保护）</string>
     <string name="set_alerts_ntfy_setup_title">设置 ntfy</string>
+    <string name="set_alerts_ntfy_setup_again_title">ntfy 已配好 —— 再走一遍</string>
     <string name="set_alerts_ntfy_setup_summary">生成话题、扫码、确认收到一条</string>
     <string name="set_alerts_ntfy_topic_title">话题</string>
     <string name="set_alerts_ntfy_topic_empty">还没设置</string>

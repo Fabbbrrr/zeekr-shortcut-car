@@ -184,6 +184,13 @@
     <string name="alert_cmd_too_soon">Tunggu %1$d saat sebelum minta lagi</string>
     <!-- Lupa Mod Sentri: kereta ditinggal dengan Mod Sentri tutup, jadi ia bertanya atau menghidupkannya sendiri -->
     <string name="set_alerts_guard_title">Kalau saya lupa Mod Sentri</string>
+    <!-- Baris ringkasan = "yang mana satu" · ayat ini (showAlertsRows gabungkan). -->
+    <string name="set_alerts_required_hint">Mod Sentri diperlukan: kereta hanya nampak dan dengar semasa ia hidup</string>
+    <string name="set_alerts_required_note_title">Mod Sentri dulu</string>
+    <string name="set_alerts_required_note_summary">Mod Sentri yang membuat unit utama kekal jaga. Kalau ia tutup, tiada amaran di bawah sampai. Suis ini hidup bukan bermakna kereta sedang menonton.</string>
+    <string name="set_alerts_telegram_setup_title">Sediakan Telegram</string>
+    <string name="set_alerts_telegram_setup_again_title">Telegram sudah siap — jalankan sekali lagi</string>
+    <string name="set_alerts_telegram_setup_summary">Buat bot, cari sembang, hantar satu gambar ujian</string>
     <string name="set_alerts_guard_mode_off">Tutup</string>
     <string name="set_alerts_guard_mode_ask">Tanya saya dulu</string>
     <string name="set_alerts_guard_mode_ask_then_on">Tanya, kemudian hidupkan selepas seminit</string>
@@ -1585,6 +1592,7 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_channel_status_ntfy_public">Amaran dihantar ke: ntfy (topik awam)</string>
     <string name="set_alerts_channel_status_ntfy_protected">Amaran dihantar ke: ntfy (terlindung)</string>
     <string name="set_alerts_ntfy_setup_title">Sediakan ntfy</string>
+    <string name="set_alerts_ntfy_setup_again_title">ntfy sudah siap — jalankan sekali lagi</string>
     <string name="set_alerts_ntfy_setup_summary">Buat topik, imbas, sahkan satu sampai</string>
     <string name="set_alerts_ntfy_topic_title">Topik</string>
     <string name="set_alerts_ntfy_topic_empty">Belum disediakan</string>

@@ -154,6 +154,14 @@ line in the black box (`alerts: armed N s ago, waiting for M min`).
 车机就一直在那儿醒着 —— 这就是它默认关、summary 明写代价的原因。它管的是「要不要把哨兵模式打开」，
 **不是发不发消息**：消息那一项在通知页上（`alerts_notify_at_home`，见 §1.11）。
 
+设置放在哪（4.17，项目所有者 2026-11-19）：`pref_alerts_guard` 和 `pref_alerts_guard_everywhere` 在**总开关那一页**上，
+关在总开关后面第二、第三行 —— 中间只隔着一行不可点的要求（「哨兵模式是让车机一直醒着的那一样：它关着，
+下面这些警报一条都来不了」，`pref_alerts_required_note`）。理由是项目所有者自己说的那句：它「required for other
+features」，所以要「as high as possible」—— 埋在哨兵那一页时，车主开着总开关、以为车在看，其实一条都收不到。
+行尾写的是「那一档 · 要有哨兵模式：车只在开着的时候看得见、听得到」（`set_alerts_required_hint`），
+要求就贴在选项旁边，不是只写在文档里。家的那个点（`pref_alerts_guard_home`）4.17 起不在这一对旁边，
+搬到了通知那一页、紧跟在「在家也发通知」后面（见 §1.11）。
+
 它**不是 AlertPolicy 的一次警报**：没有布防门、没有冷却、安静时段也不管 —— 那三样是为「车被人动了」写的，
 这一件事是「车主自己忘了」，按那套算只会让该说的话不说。它要的是 Telegram 那条路：按钮是回调
 （`callback_query`），别的传输方式没有回程，这一版只做 Telegram（`DECISIONS.md` D8）。
@@ -207,6 +215,16 @@ at all — may switch it on by itself.
 lifts that one rule: at home the car asks and switches on just the same. Off means a quiet garage; on
 means sentry also comes on in the owner's own driveway and the head unit stays awake there — which is
 why it is off by default and why its summary states the cost.
+
+Where the rows live (4.17, owner 2026-11-19): `pref_alerts_guard` and `pref_alerts_guard_everywhere` are on
+**the hub**, the second and third rows under the master switch, with only one non-selectable requirement line
+between them ("Sentry Mode is what keeps the head unit awake. With it off, none of the alerts below
+arrive", `pref_alerts_required_note`). The owner's own words: it is "required for other features", so it goes
+"as high as possible" — buried on the Sentry page, an owner could read the master switch as "on" while
+nothing arrived at all. The row's summary is the stored mode plus that requirement
+(`set_alerts_required_hint`), so it is read next to the option rather than only in a document. The home
+point (`pref_alerts_guard_home`) is no longer beside the pair: it moved to the Notifications page, right
+under the at-home switch (see §1.11).
 
 This is **not an AlertPolicy alert**: no armed gate, no cooldown, and quiet hours do not apply — those
 three were written for "someone touched the car", and this one is "the owner forgot". It needs the
@@ -393,6 +411,11 @@ triggers present. It answers "what does it send" once configured; the three setu
 默认**不发**（`alerts_notify_at_home`，设置 → 警报 → 通知 → 「在家也发通知」，默认关）。
 车停在自己院子里，邻居走过、猫跳上引擎盖、屏幕自己亮一下，都不是要吵醒车主的事。
 
+家的那个点（`pref_alerts_guard_home`，「把这里记成家」）4.17 起就在这一行下面（项目所有者 2026-11-19）：
+它原来在哨兵那一页上，可是家的坐标一共只用两处 —— 这里这一条排除，和「忘了开哨兵」在家问不问 ——
+两个用处都从这一页开始，所以它跟着这一页走。它只在真的读得到的时候出现：这一项关着（排除在用）、
+或者「忘了开哨兵」不是「关」。两样都不用的时候它收起来，屏上也没有别的行提着一个家。
+
 - 位置用的是「忘了开哨兵」那一套（`guard.GuardHome`）：同一个家、200 米内算在家、定位超过十分钟
   没更新算不知道。**没有第二个家点。**
 - 在家、开关关着：哨兵那六项（画面移动 / 双闪 / 远光 / 车门 / 车灯 / 屏幕）不发，热、冷两档不发，
@@ -400,8 +423,16 @@ triggers present. It answers "what does it send" once configured; the three setu
 - 在外面、或者不知道在哪儿：照发。没设家、没有定位、定位太旧、坐标不像话都算不知道 —— 猜「在家」
   会把真警报吞掉，猜错那一边只是多一条消息。
 - **危险那一档不看这一项**：座椅上有人 35 °C、或者 40 °C，在家也发。
-- 这一项只管**消息**。哨兵模式自己要不要在家打开是另一行（哨兵页的 `pref_alerts_guard_everywhere`），
+- 这一项只管**消息**。哨兵模式自己要不要在家打开是另一行（总开关那一页的 `pref_alerts_guard_everywhere`），
   两件不同的事，不共用一行；车在家也照样会有「忘了开哨兵」那一问。
+
+### 两条出口的向导（4.17）
+
+`pref_alerts_telegram_setup` 与 `pref_alerts_ntfy_setup`：通知那一页上每条出口一行，排在各自的凭据行（令牌、
+会话号、话题……）上面。标题按配好了没有换 —— 「设置 Telegram」/「Telegram 已配好 —— 再走一遍」，ntfy 同理；
+「配好了」问的是真出口那一份判断（令牌形状 + 会话号，话题形状 + 免费方案的提醒接受过），不是框里有没有字。
+点哪一行都进原来那个向导（`TelegramSetupDialog` / `NtfySetupDialog`），没有第二个；
+下面那几行留给宁可自己打字的人。
 
 ### 还没量的一件事
 

@@ -1000,6 +1000,19 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             });
         }
 
+        // Telegram 向导那一行（业主 2026-11-19）：组里的第一行就是「怎么开始配」，点一下直接进同一个向导 ——
+        // 令牌那一行里的「一步一步来」进的是它，这里不再另建一个。标题按配好了没有换，写在 showAlertsRows 一处。
+        // The Telegram wizard row: the first row of the group, and it launches the same TelegramSetupDialog the
+        // token row's "walk me through it" button does. Its title swaps with the state in showAlertsRows.
+        Preference telegramSetup = findPreference("pref_alerts_telegram_setup");
+        if (telegramSetup != null) {
+            telegramSetup.setPersistent(false);
+            telegramSetup.setOnPreferenceClickListener(preference -> {
+                startTelegramWizard();
+                return true;
+            });
+        }
+
         Preference chat = findPreference("pref_alerts_chat");
         if (chat != null) {
             chat.setPersistent(false);
@@ -1175,6 +1188,9 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
                 appConfig.setAlertsGuardMode(com.kooo.evcam.alarm.guard.GuardPolicy.Mode.of(value));
                 com.kooo.evcam.blackbox.BlackBox.noteImportant(
                         "设置变更: pref_alerts_guard → " + value);
+                // 行尾写着「哪一档 · 要有哨兵模式」，也要重算家的那一行在不在（换档会换掉它的去留）。
+                // The summary carries the mode and the home row's visibility follows it, so both are recomputed.
+                showAlertsRows();
                 return true;
             });
         }
@@ -1226,6 +1242,9 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
                 com.kooo.evcam.blackbox.BlackBox.noteImportant(
                         "开关变更: pref_alerts_notify_at_home → " + (atHome ? "开" : "关"));
                 com.kooo.evcam.alarm.SentryAlerts.get(requireContext()).refresh();
+                // 这一行开关一改，家的那一行就要出来 / 收起来：它是「在家不发消息」用的那个家。
+                // Toggling this decides whether the home row is needed at all, so the page is redrawn here.
+                showAlertsRows();
                 return true;
             });
         }
@@ -1732,6 +1751,56 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         }
     }
 
+    /**
+     * 这条出口配好了没有：两个向导行的标题用它（配好了就写「已配好 —— 再走一遍」）。
+     *
+     * <p>判法和真发出去的时候是同一份：令牌得像个令牌、会话号不能空；ntfy 得有一个像样的话题、
+     * 免费方案的提醒得被接受过（{@link com.kooo.evcam.alarm.ntfy.NtfyChannel#blockedReason()}）。
+     * 只看「框里有没有字」会写出一个已配好的标题，而每一条都被出口自己拒绝掉。</p>
+     *
+     * Whether an exit has what it needs, using the same judgement the sender uses: a token that looks like
+     * one plus a chat id; for ntfy a usable topic plus the accepted free-plan warning. Reading "configured"
+     * off the text boxes alone would label a row done while the exit refuses every alert.
+     */
+    private boolean telegramConfigured() {
+        return com.kooo.evcam.alarm.telegram.TelegramRequest
+                .looksLikeToken(appConfig.getAlertsTelegramToken())
+                && !appConfig.getAlertsTelegramChatId().isEmpty();
+    }
+
+    private boolean ntfyConfigured() {
+        return com.kooo.evcam.alarm.ntfy.NtfyChannel.of(appConfig).blockedReason()
+                == com.kooo.evcam.alarm.AlertChannel.Kind.OK;
+    }
+
+    /**
+     * 家的坐标到底用不用得上。一共只有两个用处：在家不发消息（那一项关着才用），在家不问哨兵
+     * （忘了开哨兵不是「关」才用）。两样都不用的时候，家的那一行收起来 —— 让它一直摆在那里，
+     * 等于叫车主去记一个没有任何一行会读的点。
+     *
+     * A home position has exactly two uses: the at-home notification exclusion (only while that switch is off)
+     * and the Forgot Sentry mode (any mode but off). With neither in use the row folds away, because nothing
+     * would ever read the point.
+     */
+    private boolean homePointNeeded() {
+        return !appConfig.isAlertsNotifyAtHome()
+                || appConfig.getAlertsGuardMode() != com.kooo.evcam.alarm.guard.GuardPolicy.Mode.OFF;
+    }
+
+    /** 「忘了开哨兵」那一档叫什么（和下拉里那四条是同一批字符串）。The stored mode's label. */
+    private String guardModeLabel(com.kooo.evcam.alarm.guard.GuardPolicy.Mode mode) {
+        switch (mode) {
+            case ASK:
+                return getString(R.string.set_alerts_guard_mode_ask);
+            case ASK_THEN_ON:
+                return getString(R.string.set_alerts_guard_mode_ask_then_on);
+            case ON:
+                return getString(R.string.set_alerts_guard_mode_on);
+            default:
+                return getString(R.string.set_alerts_guard_mode_off);
+        }
+    }
+
     /** 出口说「没配好」时，差的是哪一格。Which piece the exit is missing when it says it is not ready. */
     private String missingExitPiece() {
         if (appConfig.isAlertsNtfy()) {
@@ -1783,6 +1852,30 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         }
         showAlertsHubRows(alertsOn);
 
+        // 总开关下面那一行说明（哨兵模式是让车机醒着的那一样）（业主 2026-11-19）：它说的是这一栏的前提，
+        // 不是一项选项，所以任何一页、任何一个开关都不收起它 —— 总开关关着的时候正是该读它的时候。
+        // The requirement line under the master switch is a fact about the whole section, not an option: it
+        // never folds away, and with the master switch off it is the first thing worth reading.
+        show("pref_alerts_required_note", true);
+
+        // 忘了开哨兵那一对在总开关那一页上（4.17，业主 2026-11-19 从哨兵页提上来）：它们问的是
+        // 「这一栏到底有没有在看」，跟总开关是同一个问题，所以排在总开关（和那行说明）后面、出口前面。
+        // 它们跟出口有关：按钮是 callback_query，ntfy 没有回程，所以真正走 ntfy 时两者都不出现。
+        // The Forgot Sentry pair sits on the hub, right under the master switch: it asks whether the section is
+        // watching at all. It is still transport-dependent — the buttons are callback_query, ntfy has no return
+        // path. The home point is not here: it lives on the Notifications page, under the at-home switch.
+        boolean guardRows = alertsOn && !ntfy;
+        show("pref_alerts_guard", guardRows);
+        show("pref_alerts_guard_everywhere", guardRows);
+        // 行尾 = 「哪一档」· 「要有哨兵模式…」（业主 2026-11-19：要求写在选项旁边，不是只写在文档里）。
+        // The summary is the stored mode plus the requirement, so the requirement is read where it applies.
+        ListPreference guardRow = findPreference("pref_alerts_guard");
+        if (guardRow != null) {
+            guardRow.setSummary(getString(R.string.set_alerts_hub_two,
+                    guardModeLabel(appConfig.getAlertsGuardMode()),
+                    getString(R.string.set_alerts_required_hint)));
+        }
+
         // ---- 哨兵那一页：什么时候发、照片、短视频、忘了开哨兵的那几行
         // The Sentry page: when it fires, the picture, the clip, and the Forgot Sentry rows.
         boolean sentry = alertsOn;
@@ -1795,14 +1888,9 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         show("pref_alerts_quiet", sentry);
         show("pref_alerts_motion_sensitivity", sentry && com.kooo.evcam.alarm.policy.TriggerSet
                 .parse(appConfig.getAlertsTriggers()).has(com.kooo.evcam.alarm.policy.TriggerSet.MOTION));
-        // 忘了开哨兵那几行跟哪一页无关，但跟出口有关：按钮是 callback_query，ntfy 没有回程，
-        // 所以真正走 ntfy 时它们不出现（和 4.5 之前一样）。
-        // The Forgot Sentry rows are page-independent but transport-dependent: the buttons are
-        // callback_query, and ntfy has no return path, so they stay hidden on ntfy (unchanged).
-        boolean guardRows = alertsOn && !ntfy;
-        show("pref_alerts_guard", guardRows);
-        show("pref_alerts_guard_home", guardRows);
-        show("pref_alerts_guard_everywhere", guardRows);
+        // 忘了开哨兵那两行不在这一页上了：4.17 起它们渲染在总开关那一页上（见 showAlertsHubRows 后面那一段），
+        // 位置只在一处；这一页只剩照片和短视频。
+        // The Forgot Sentry pair no longer renders here: since 4.17 it lives on the hub.
         show("cat_alerts_picture", sentry);
         boolean picturesOn = sentry && appConfig.isAlertsPictureEnabled();
         show("pref_alerts_send_picture", sentry);
@@ -1824,6 +1912,28 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // sits right under it.
         show("pref_alerts_notifications_note", alertsOn);
         show("pref_alerts_notify_at_home", notifications);
+        // 家的位置（业主 2026-11-19 从哨兵那一页搬到这里）：紧跟在「在家也发通知」后面，因为家的坐标一共
+        // 只有两个用处 —— 在家不发消息（那一项关着才用）、在家不叫哨兵（忘了开哨兵不是关着才用）。
+        // 两样都不用的时候它收起来，而且这一页上没有任何一行还提着一个家。判断只有下面这一处。
+        // The home point, right under the at-home switch: a home position has exactly two uses — not sending at
+        // home (only while that switch is off) and not asking about Sentry at home (only while that mode is not
+        // off). With neither in use the row folds away, and nothing on the page claims a home point exists.
+        show("pref_alerts_guard_home", notifications && homePointNeeded());
+        // 两条出口各一行向导（业主 2026-11-19）：组的第一行就是「怎么开始配」，标题按配好了没有换。
+        // One wizard row per exit, first in its group, with the title following the state.
+        show("pref_alerts_telegram_setup", notifications && !ntfy);
+        Preference telegramSetupRow = findPreference("pref_alerts_telegram_setup");
+        if (telegramSetupRow != null) {
+            telegramSetupRow.setTitle(telegramConfigured()
+                    ? R.string.set_alerts_telegram_setup_again_title
+                    : R.string.set_alerts_telegram_setup_title);
+        }
+        Preference ntfySetupRow = findPreference("pref_alerts_ntfy_setup");
+        if (ntfySetupRow != null) {
+            ntfySetupRow.setTitle(ntfyConfigured()
+                    ? R.string.set_alerts_ntfy_setup_again_title
+                    : R.string.set_alerts_ntfy_setup_title);
+        }
         show("cat_alerts_telegram", notifications && !ntfy);
         show("cat_alerts_ntfy", notifications && ntfy);
         show("cat_alerts_checks", notifications);

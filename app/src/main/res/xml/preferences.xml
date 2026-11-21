@@ -96,6 +96,11 @@
 
       4.6 起这一页是入口：总开关、出口、状态行，然后三行进去各配一处（通知 / 哨兵 / 车厢温度）。
       三块内容不再叠在一屏上，各占下一层的一页。可见性仍然只在 showAlertsRows 一处判。
+
+      4.17 的次序（业主 2026-11-19）：总开关、说明「要有哨兵模式」、忘了开哨兵那两行，然后才是出口。
+      理由：哨兵模式是这一整栏的前提 —— 车机醒着才有警报，所以要求写在选项之前，不是写在最后一页里。
+      Since 4.17: the requirement comes before the options. Sentry Mode is what keeps the head unit awake,
+      so the forgotten-Sentry pair sits right under the master switch, above the exit.
       Since 4.6 this page is a hub: master switch, exit, status row, then one row per child page.
     -->
     <PreferenceScreen
@@ -108,9 +113,40 @@
             android:summary="@string/set_alerts_on_summary" />
 
         <!--
-          警报发到哪儿（车主 2026-11-15 从开发者选项搬到这里）：这一栏最上面的一行，先选路，
+          紧跟在总开关下面的一行说明（业主 2026-11-19）：哨兵模式是把车机留着醒的那一样东西，
+          下面每一条警报都要它 —— 所以这句话在选项前面，不在某一页的最下面。
+          它不跟着总开关收起：总开关关着的时候，这句话正是要先读的那一句。
+          The requirement line right under the master switch: Sentry Mode is what keeps the head unit awake,
+          and every alert below needs it. It stays with the master switch off, which is when it matters most.
+        -->
+        <Preference
+            android:key="pref_alerts_required_note"
+            android:selectable="false"
+            android:title="@string/set_alerts_required_note_title"
+            android:summary="@string/set_alerts_required_note_summary" />
+
+        <!--
+          忘了开哨兵（业主 2026-11-19 从哨兵那一页提到这里）：它问的是「这一栏到底有没有在看」，
+          和总开关是同一件事，所以放在总开关旁边；行尾由 showAlertsRows 写「哪一档 · 要有哨兵模式」。
+          「在家也开哨兵」跟着它一起搬，两行说的是同一件事（要不要把哨兵打开），不拆开。
+          Forgot Sentry, moved up from the Sentry page: it asks whether the car is watching at all, which is the
+          master switch's own question. "Sentry on at home too" moves with it so the pair stays together.
+          The summary (mode plus the requirement) is written in showAlertsRows.
+        -->
+        <ListPreference
+            android:key="pref_alerts_guard"
+            android:title="@string/set_alerts_guard_title" />
+
+        <SwitchPreferenceCompat
+            android:key="pref_alerts_guard_everywhere"
+            android:title="@string/set_alerts_guard_everywhere_title"
+            android:summary="@string/set_alerts_guard_everywhere_summary"
+            android:defaultValue="false" />
+
+        <!--
+          警报发到哪儿（车主 2026-11-15 从开发者选项搬到这里）：先选路，
           下面各组按选中的那条路出现。
-          Where alerts go: the first row under the master switch, so the exit is chosen before the details.
+          Where alerts go: the exit is chosen before the details.
         -->
         <ListPreference
             android:key="pref_alerts_transport"
@@ -189,6 +225,19 @@
                 android:defaultValue="false" />
 
             <!--
+              家的位置（业主 2026-11-19 从哨兵那一页搬到这里，紧跟在「在家也发通知」下面）：一个家只有两个用处 ——
+              在家不发消息、在家不叫哨兵 —— 两件事都从这一行开始，所以它跟着这一页走。
+              只在真的用得上家的坐标时出现（在家不发消息那条排除、或者忘了开哨兵不是关着）；藏着的时候，
+              这一页上没有任何一行还提着一个家。规则在 showAlertsRows 一处。
+              Home point, moved here right under the at-home switch: a home point has exactly two uses — not
+              sending at home, not asking about Sentry at home — and both start on this page. It shows only
+              while a home position is actually needed; while it is hidden nothing here claims one exists.
+            -->
+            <Preference
+                android:key="pref_alerts_guard_home"
+                android:title="@string/set_alerts_guard_home_title" />
+
+            <!--
               Telegram 那一组：只在「警报发到哪儿」选的是 Telegram 时出现（规则在 SettingsPreferenceFragment
               .showAlertsRows），和下面的 ntfy 组二选一。
               The Telegram block: shown only while the transport is Telegram; one of the two exclusive blocks.
@@ -196,6 +245,18 @@
             <PreferenceCategory
                 android:key="cat_alerts_telegram"
                 android:title="@string/set_group_alerts_telegram">
+
+                <!--
+                  Telegram 向导那一行（业主 2026-11-19）：一组的第一行必须是「怎么开始配」，不能只给一格空输入框。
+                  标题按配好了没有换（「设置 Telegram」/「Telegram 已配好 —— 再走一遍」），换的是同一个向导
+                  （TelegramSetupDialog，令牌那一行里的「一步一步来」进的就是它）。下面三行留给宁可自己打字的人。
+                  The wizard row, first in the group: titles swap with the state, and both launch the same
+                  TelegramSetupDialog. The three credential rows stay below it for people who prefer typing.
+                -->
+                <Preference
+                    android:key="pref_alerts_telegram_setup"
+                    android:title="@string/set_alerts_telegram_setup_title"
+                    android:summary="@string/set_alerts_telegram_setup_summary" />
 
                 <Preference
                     android:key="pref_alerts_token"
@@ -225,6 +286,9 @@
                 android:key="cat_alerts_ntfy"
                 android:title="@string/set_group_alerts_ntfy">
 
+                <!-- 标题按配好了没有换（「设置 ntfy」/「ntfy 已配好 —— 再走一遍」），换的是同一个向导
+                     （NtfySetupDialog）。下面的行留给宁可自己打字的人。
+                     The wizard row: the title swaps with the state, both launch the same NtfySetupDialog. -->
                 <Preference
                     android:key="pref_alerts_ntfy_setup"
                     android:title="@string/set_alerts_ntfy_setup_title"
@@ -310,8 +374,9 @@
         </PreferenceScreen>
 
         <!--
-          下一层：哨兵。什么时候发（含忘了开哨兵那三行）、照片、短视频。检查不在这里。
-          Child page: sentry. When it fires, the picture, the clip. No checks.
+          下一层：哨兵。什么时候发、照片、短视频。检查不在这里。
+          忘了开哨兵那两行不在这里（4.17 搬到总开关那一页），家的位置也不在这里（在通知那一页）。
+          Child page: sentry. When it fires, the picture, the clip. No checks, no Forgot Sentry pair.
         -->
         <PreferenceScreen
             android:key="screen_alerts_sentry"
@@ -351,23 +416,11 @@
                     android:key="pref_alerts_quiet_end"
                     android:title="@string/set_alerts_quiet_end_title" />
 
-                <!-- 忘了开哨兵：问不问、在家问不问（alarm.GuardPolicy 判，见 docs/sentry-alerts-spec.md §1.8）。
-                     它跟「什么时候发」有关，跟哪条出口无关，所以在这个组里，不在 Telegram 那组。
-                     Forgot Sentry: when parking should be caught, independent of the exit, so it lives here. -->
-                <ListPreference
-                    android:key="pref_alerts_guard"
-                    android:title="@string/set_alerts_guard_title"
-                    android:summary="%s" />
-
-                <Preference
-                    android:key="pref_alerts_guard_home"
-                    android:title="@string/set_alerts_guard_home_title" />
-
-                <SwitchPreferenceCompat
-                    android:key="pref_alerts_guard_everywhere"
-                    android:title="@string/set_alerts_guard_everywhere_title"
-                    android:summary="@string/set_alerts_guard_everywhere_summary"
-                    android:defaultValue="false" />
+                <!-- 忘了开哨兵那两行 4.17 搬到总开关那一页了（见 screen_alerts）：它们问的是这一栏到底有没有在看，
+                     不是「什么时候发」。这一页只剩「哪些动静算有事」。
+                     The Forgot Sentry pair moved to the hub in 4.17: it asks whether the car is watching at all.
+                     家的位置也搬到了通知那一页（紧跟在「在家也发通知」后面）。
+                     The home point moved to the Notifications page, right under the at-home switch. -->
 
                 <SeekBarPreference
                     android:key="pref_alerts_motion_sensitivity"

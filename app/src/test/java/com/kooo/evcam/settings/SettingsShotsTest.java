@@ -13,6 +13,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import android.app.Dialog;
+
 import androidx.preference.Preference;
 
 import com.kooo.evcam.AppConfig;
@@ -391,65 +393,93 @@ public class SettingsShotsTest {
     }
 
     /**
-     * 「忘了开哨兵」那三行在哨兵那一页的「什么时候发」那一组里，排在安静时段之后；跟着警报总开关走，
-     * 但走 ntfy 出口时收起来（按钮是 callback_query，ntfy 没有回程）。滚到它们另出一张图。
+     * 「忘了开哨兵」那一对在总开关那一页上（4.17 从哨兵那一页提上来），排在总开关和那行要求之后、出口之前。
      *
-     * <p>几种状态各开一屏新的页来验：总开关开着（在、位置对）、换成 ntfy（收起来）、
-     * 总开关关着（三行一起收起来）。出口那一组在另一页上，所以这一页上根本没有它。</p>
+     * <p>为什么值得钉：它问的是「这一栏到底有没有在看」，和总开关是同一个问题；埋在哨兵那一页时，车主开着
+     * 总开关、以为车在看，其实哨兵关着 —— 一切都收不到。它还得真的把「哪一档」写出来，并且每一档旁边都写着
+     * 「要有哨兵模式」，而不是只把下拉的选项原样当行尾。</p>
      *
-     * The three Forgot Sentry rows sit in the sentry page's "When it fires" group after quiet hours and
-     * follow the master switch only; they fold away on the ntfy exit. The exit block lives on another
-     * page, so it is not loaded here at all.
+     * <p>三种状态各开一屏新的页：总开关开着（在、位置对、行尾读档）、换成 ntfy（收起）、总开关关着（收起）。</p>
+     *
+     * The Forgot Sentry pair sits on the hub in 4.17, right under the master switch and the requirement line, above
+     * the exit. It answers the master switch's own question, and both rows are gone from the Sentry page.
      */
     @Test
-    public void forgotSentryRowsSitUnderWhenItFires() {
-        SettingsPreferenceFragment on = alertsChildPage(Shots.DAY_EN, true,
+    public void forgotSentryRowsSitUnderTheMasterSwitch() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        SettingsPreferenceFragment hub = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        androidx.preference.PreferenceGroup screen = hub.getPreferenceScreen();
+
+        // 总开关后面第一行是要求，然后才是忘了开哨兵那一对。
+        // The requirement line comes first, then the pair.
+        assertEquals("第一行还是总开关", "pref_alerts", screen.getPreference(0).getKey());
+        assertEquals("总开关后面第一行是那行要求", "pref_alerts_required_note",
+                screen.getPreference(1).getKey());
+        Preference note = hub.findPreference("pref_alerts_required_note");
+        assertNotNull("少了那行要求", note);
+        assertFalse("那行只是说明，点不动", note.isSelectable());
+        assertEquals("说明写的就是「要有哨兵模式」的那段话",
+                hub.getString(R.string.set_alerts_required_note_summary),
+                String.valueOf(note.getSummary()));
+        assertEquals("说明的标题", hub.getString(R.string.set_alerts_required_note_title),
+                String.valueOf(note.getTitle()));
+
+        int noteAt = indexIn(screen, "pref_alerts_required_note");
+        int guardAt = indexIn(screen, "pref_alerts_guard");
+        int everywhereAt = indexIn(screen, "pref_alerts_guard_everywhere");
+        int transportAt = indexIn(screen, "pref_alerts_transport");
+        assertTrue("要求那一行该在忘了开哨兵之前", noteAt >= 0 && noteAt < guardAt);
+        assertTrue("忘了开哨兵该排在「警报发到哪儿」前面: " + guardAt + " / " + transportAt,
+                guardAt > 0 && guardAt < transportAt);
+        assertEquals("「在家也开哨兵」紧跟着它，两行不拆开", guardAt + 1, everywhereAt);
+        assertTrue("这一对在总开关那一屏上", hub.findPreference("pref_alerts_guard").getParent() == screen);
+        assertTrue(shown(hub, "pref_alerts_guard"));
+        assertTrue(shown(hub, "pref_alerts_guard_everywhere"));
+
+        // 行尾 = 那一档 · 「要有哨兵模式」。只写一档就是没写要求，只写要求就是没写现在选的是哪一档。
+        String summary = String.valueOf(hub.findPreference("pref_alerts_guard").getSummary());
+        assertTrue("行尾要先写现在哪一档: " + summary,
+                summary.contains(hub.getString(R.string.set_alerts_guard_mode_off)));
+        assertTrue("行尾要写「要有哨兵模式」: " + summary,
+                summary.contains(hub.getString(R.string.set_alerts_required_hint)));
+
+        // 换一档：行尾跟着换（下拉的值存进了 AppConfig，行尾不是永远写着默认那档）。
+        // Change the mode: the summary follows the stored mode.
+        SettingsPreferenceFragment ask = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM,
+                config -> config.setAlertsGuardMode(
+                        com.kooo.evcam.alarm.guard.GuardPolicy.Mode.ASK));
+        String askSummary = String.valueOf(ask.findPreference("pref_alerts_guard").getSummary());
+        assertTrue("换到「先问我」，行尾要写这一档: " + askSummary,
+                askSummary.contains(ask.getString(R.string.set_alerts_guard_mode_ask)));
+        assertFalse("换了一档就不许还写着「关」: " + askSummary,
+                askSummary.contains(ask.getString(R.string.set_alerts_guard_mode_off)));
+
+        // 哨兵那一页上再也没有这一对：一行只在一页上。
+        // The pair is gone from the Sentry page: nothing may appear on two pages.
+        SettingsPreferenceFragment sentry = alertsChildPage(Shots.DAY_EN, true,
                 com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
                 CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
                 });
-        androidx.preference.PreferenceGroup when = (androidx.preference.PreferenceGroup)
-                on.findPreference("cat_alerts_when");
-        assertNotNull("少了「什么时候发」那一组", when);
-        for (String key : GUARD_ROWS) {
-            Preference row = on.findPreference(key);
-            assertNotNull("少了 " + key, row);
-            assertTrue(key + " 该在「什么时候发」那一组里", row.getParent() == when);
-            assertTrue(key + " 该看得见", row.isVisible());
-            assertTrue(key + " 该排在安静时段之后",
-                    indexIn(when, key) > indexIn(when, "pref_alerts_quiet_end"));
-        }
-        on.scrollToPreference("pref_alerts_guard_everywhere");
-        File file = Shots.save(shotActivity, "settings-alerts-day-guard");
-        assertTrue(file + " 是空的", file.length() > 10_000);
+        assertNull("忘了开哨兵那一行搬到总开关那一页了", sentry.findPreference("pref_alerts_guard"));
+        assertNull("「在家也开哨兵」也跟着走了", sentry.findPreference("pref_alerts_guard_everywhere"));
+        assertNull("家的位置在通知那一页", sentry.findPreference("pref_alerts_guard_home"));
 
-        // 换成 ntfy：忘了开哨兵那三行收起来；出口那一组在通知那一页上，而通知那一页照旧出现 ntfy 块。
-        // Switch to ntfy: the Forgot Sentry rows fold away, and the ntfy block shows on its own page.
-        SettingsPreferenceFragment ntfy = alertsChildPage(Shots.DAY_EN, true,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY, "pref_alerts_sentry",
-                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
-                });
-        for (String key : GUARD_ROWS) {
-            assertFalse("ntfy 时 " + key + " 该收起来", ntfy.findPreference(key).isVisible());
-        }
-        assertNull("出口那一组在通知那一页，不在哨兵这一页", ntfy.findPreference("cat_alerts_ntfy"));
+        // 换成 ntfy：这一对收起来（按钮是 callback_query，ntfy 没有回程），通知那一页照旧摆 ntfy 块。
+        // On ntfy the pair folds away, and the ntfy block still shows on its own page.
+        SettingsPreferenceFragment ntfy = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY);
+        assertFalse("ntfy 时忘了开哨兵该收起来", shown(ntfy, "pref_alerts_guard"));
+        assertFalse("ntfy 时「在家也开哨兵」也该收起来", shown(ntfy, "pref_alerts_guard_everywhere"));
+        assertTrue("要求那一行不跟着收起：它说的是前提", shown(ntfy, "pref_alerts_required_note"));
 
-        SettingsPreferenceFragment ntfyNotifications = alertsChildPage(Shots.DAY_EN, true,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY, "pref_alerts_notifications",
-                CHILD_NOTIFICATIONS, R.string.set_alerts_page_notifications, config -> {
-                });
-        assertTrue("ntfy 时通知那一页该摆 ntfy 那一组",
-                ntfyNotifications.findPreference("cat_alerts_ntfy").isVisible());
-        assertNull("通知那一页没有哨兵的「什么时候发」",
-                ntfyNotifications.findPreference("cat_alerts_when"));
+        // 总开关关着：这一对也收起，那行要求留着（正是该读它的时候）。
+        // Master off: the pair folds away and the requirement line stays.
+        SettingsPreferenceFragment off = alertsPage(false, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        assertFalse("总开关关着时忘了开哨兵收起", shown(off, "pref_alerts_guard"));
+        assertTrue("总开关关着时那行要求还在", shown(off, "pref_alerts_required_note"));
 
-        // 总开关关着：三行一起收起来。Master off: all three go with it.
-        SettingsPreferenceFragment off = alertsChildPage(Shots.DAY_EN, false,
-                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
-                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
-                });
-        for (String key : GUARD_ROWS) {
-            assertFalse("总开关关着时 " + key + " 该收起来", off.findPreference(key).isVisible());
-        }
+        // 收尾：这些都在同一份设置里，别把后面的测试带跑。
+        new AppConfig(RuntimeEnvironment.getApplication()).setAlertsGuardMode(
+                com.kooo.evcam.alarm.guard.GuardPolicy.Mode.OFF);
     }
 
     /**
@@ -481,8 +511,263 @@ public class SettingsShotsTest {
         assertFalse("没暂停时不该出现", shown(runningPage, "pref_alerts_paused"));
     }
 
-    private static final String[] GUARD_ROWS =
-            {"pref_alerts_guard", "pref_alerts_guard_home", "pref_alerts_guard_everywhere"};
+    /**
+     * 家的位置只在真的读得到它的时候出现（业主 2026-11-19）：两个用处，一个都不用时收起。
+     *
+     * <p>家的坐标一共只用两处：「在家不发消息」那一条排除（开关关着才用），和「忘了开哨兵」
+     * （不是「关」才用 —— 在家问不问是它自己的规则）。两样都不用的时候还摆着一行「把这里记成家」，
+     * 等于叫车主去记一个没有任何一行会读的点。藏着的时候，这一页上也不许有别的行提着一个家。</p>
+     *
+     * <p>三种组合都验：在家也发通知开着 + 忘了开哨兵关着 → 收起；后者不是关着 → 在；前者关着 → 在。
+     * 位置钉在「在家也发通知」下一行，行尾写记下没记下。</p>
+     *
+     * The home row appears exactly while something reads it: the at-home notification exclusion (only while
+     * that switch is off) or the Forgot Sentry mode (any mode but off). With neither in use it folds away.
+     */
+    @Test
+    public void theHomePointRowShowsOnlyWhileSomethingReadsIt() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+
+        // 两样都不用家：收起。Neither use: hidden.
+        SettingsPreferenceFragment unused = notificationsPage(config -> {
+            config.setAlertsNotifyAtHome(true);
+            config.setAlertsGuardMode(com.kooo.evcam.alarm.guard.GuardPolicy.Mode.OFF);
+        });
+        assertFalse("在家也发通知开着、忘了开哨兵关着：这一行收起",
+                shown(unused, "pref_alerts_guard_home"));
+
+        // 只有「忘了开哨兵」在用：在。The Sentry mode alone needs it.
+        SettingsPreferenceFragment guardOn = notificationsPage(config -> {
+            config.setAlertsNotifyAtHome(true);
+            config.setAlertsGuardMode(com.kooo.evcam.alarm.guard.GuardPolicy.Mode.ASK);
+        });
+        assertTrue("忘了开哨兵不是关着：这一行要在", shown(guardOn, "pref_alerts_guard_home"));
+
+        // 只有「在家不发消息」在用：在。而且紧跟在「在家也发通知」后面，行尾写家的位置记下没记下。
+        // Only the at-home exclusion: visible, right under the switch, with its distance-free summary.
+        SettingsPreferenceFragment atHomeOff = notificationsPage(config -> {
+            config.setAlertsNotifyAtHome(false);
+            config.setAlertsGuardMode(com.kooo.evcam.alarm.guard.GuardPolicy.Mode.OFF);
+        });
+        assertTrue("在家不发消息要用家：这一行要在", shown(atHomeOff, "pref_alerts_guard_home"));
+        androidx.preference.PreferenceGroup page = atHomeOff.getPreferenceScreen();
+        assertEquals("家的位置紧跟在「在家也发通知」后面",
+                indexIn(page, "pref_alerts_notify_at_home") + 1,
+                indexIn(page, "pref_alerts_guard_home"));
+        Preference home = atHomeOff.findPreference("pref_alerts_guard_home");
+        assertNotNull("那一行得接上线", home.getOnPreferenceClickListener());
+        assertEquals("没记过家就写家的位置忘掉了",
+                atHomeOff.getString(R.string.set_alerts_guard_home_none),
+                String.valueOf(home.getSummary()));
+
+        // 记下一个假的家：行尾换成「记下了」，仍然不提距离（数在 alarm.GuardHome 一处）。
+        // Record a fake home: the summary says so, and it still says no distance.
+        new AppConfig(RuntimeEnvironment.getApplication()).setAlertsGuardHome(31.2304f, 121.4737f);
+        SettingsPreferenceFragment recorded = notificationsPage(config -> {
+            config.setAlertsNotifyAtHome(false);
+            config.setAlertsGuardMode(com.kooo.evcam.alarm.guard.GuardPolicy.Mode.OFF);
+        });
+        assertEquals("记过家就写记下了",
+                recorded.getString(R.string.set_alerts_guard_home_set),
+                String.valueOf(recorded.findPreference("pref_alerts_guard_home").getSummary()));
+
+        // 一行只在一页上：它挂在通知那一页上，不在总开关那一页、不在哨兵那一页。
+        // One page only: it hangs off the Notifications page, not the hub or the Sentry page.
+        SettingsPreferenceFragment hub = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        assertTrue("家的位置挂在通知那一页上",
+                hub.findPreference("pref_alerts_guard_home").getParent()
+                        == hub.findPreference(CHILD_NOTIFICATIONS));
+
+        // 收尾：这些都在同一份设置里，别把后面的测试带跑。
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        config.clearAlertsGuardHome();
+        config.setAlertsNotifyAtHome(false);
+        config.setAlertsGuardMode(com.kooo.evcam.alarm.guard.GuardPolicy.Mode.OFF);
+    }
+
+    /**
+     * 两条出口各一行向导，排在凭据那几行上面（业主 2026-11-19）：第一行是「怎么开始配」，标题按配好了没有换。
+     *
+     * <p>「配好了没有」问的是真出口那一份判断（令牌形状 + 会话号；话题形状 + 免费方案提醒接受过），
+     * 不是「框里有没有字」—— 只看框的话，换过话题之后标题会写着已配好，而每一条都被出口拒绝掉。</p>
+     *
+     * <p>点一下进的就是原来那个向导（{@code TelegramSetupDialog} / {@code NtfySetupDialog}）：这里把「点那一行」
+     * 弹出来的框和「直接调那个向导」弹出来的框比一遍，字和按钮都一样才算通过。</p>
+     *
+     * One wizard row per exit, above the credential rows, with the title following the real readiness. Both
+     * launch the existing wizards, checked by comparing the dialog the row opens with the one the wizard's own
+     * entry point opens.
+     */
+    @Test
+    public void eachExitHasItsOwnSetupRow() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+
+        // ---- Telegram：没配过时写「设置 Telegram」，在令牌 / 会话号 / 找会话号上面。
+        // Telegram with nothing filled in: "Set up Telegram", above the credential rows.
+        SettingsPreferenceFragment empty = notificationsPage(config -> {
+            config.setAlertsTelegramToken("");
+            config.setAlertsTelegramChatId("");
+        });
+        Preference setupRow = empty.findPreference("pref_alerts_telegram_setup");
+        assertNotNull("少了 Telegram 向导那一行", setupRow);
+        assertTrue("走 Telegram 时这一行要在", setupRow.isVisible());
+        assertEquals("没配过：就写「设置 Telegram」",
+                empty.getString(R.string.set_alerts_telegram_setup_title),
+                String.valueOf(setupRow.getTitle()));
+        androidx.preference.PreferenceGroup telegramGroup =
+                (androidx.preference.PreferenceGroup) empty.findPreference("cat_alerts_telegram");
+        assertNotNull("少了 Telegram 那一组", telegramGroup);
+        for (String below : new String[]{"pref_alerts_token", "pref_alerts_chat",
+                "pref_alerts_find_chat"}) {
+            assertTrue("向导那一行该在 " + below + " 上面",
+                    indexIn(telegramGroup, "pref_alerts_telegram_setup") < indexIn(telegramGroup, below));
+        }
+        assertNotNull("那一行得接上线", setupRow.getOnPreferenceClickListener());
+
+        // 配好了（令牌像令牌、会话号有）：标题换成「已配好 —— 再走一遍」。
+        // Configured: the title says it is set up and offers to run it again.
+        SettingsPreferenceFragment configured = notificationsPage(config -> {
+            config.setAlertsTelegramToken("123456789:AAHexampleTOKENvalue0123456789");
+            config.setAlertsTelegramChatId("123456789");
+        });
+        Preference configuredRow = configured.findPreference("pref_alerts_telegram_setup");
+        assertEquals("配好了就写「已配好 —— 再走一遍」",
+                configured.getString(R.string.set_alerts_telegram_setup_again_title),
+                String.valueOf(configuredRow.getTitle()));
+
+        // 点这一行弹出来的框，和直接调 TelegramSetupDialog 弹出来的是同一屏。
+        // The dialog the row opens is the one TelegramSetupDialog opens.
+        configuredRow.performClick();
+        Shots.settle();
+        Dialog viaRow = latestDialog();
+        String fromRow = dialogWords(viaRow);
+        String rowNext = dialogButton(viaRow);
+        viaRow.dismiss();
+        TelegramSetupDialog.show(configured,
+                new AppConfig(RuntimeEnvironment.getApplication()), () -> { });
+        Shots.settle();
+        Dialog direct = latestDialog();
+        assertEquals("点那一行进的就是那个向导（同一屏的字）", dialogWords(direct), fromRow);
+        assertEquals("同一个向导的第一步（同一颗按钮）", dialogButton(direct), rowNext);
+        assertTrue("那一屏就是令牌那一步: " + fromRow,
+                fromRow.contains(configured.getString(R.string.set_alerts_wizard_bot_title)));
+        direct.dismiss();
+
+        // ---- ntfy：同样一行，同样换标题，同样进原来那个向导。
+        // ntfy: the same row, the same title swap, the same existing wizard.
+        String topic = "zeekrsc_kymoy9m40cuQYXmHabcdefghijklmnopqrstu";
+        SettingsPreferenceFragment ntfyEmpty = ntfyPage(config -> {
+            config.setAlertsNtfyTopic("");
+            config.setAlertsNtfyRiskAck("");
+        });
+        Preference ntfySetupRow = ntfyEmpty.findPreference("pref_alerts_ntfy_setup");
+        assertNotNull("少了 ntfy 向导那一行", ntfySetupRow);
+        assertTrue("走 ntfy 时这一行要在", ntfySetupRow.isVisible());
+        assertEquals("没配过：就写「设置 ntfy」",
+                ntfyEmpty.getString(R.string.set_alerts_ntfy_setup_title),
+                String.valueOf(ntfySetupRow.getTitle()));
+        assertTrue("ntfy 向导那一行在话题那一行上面",
+                indexIn((androidx.preference.PreferenceGroup) ntfyEmpty.findPreference("cat_alerts_ntfy"),
+                        "pref_alerts_ntfy_setup")
+                        < indexIn((androidx.preference.PreferenceGroup) ntfyEmpty.findPreference("cat_alerts_ntfy"),
+                        "pref_alerts_ntfy_topic"));
+
+        // 话题有了、提醒也接受过：才算配好了（只填了话题不算）。
+        // A topic with the warning accepted is what "set up" means here; a topic alone is not.
+        SettingsPreferenceFragment ntfyHalf = ntfyPage(config -> {
+            config.setAlertsNtfyTopic(topic);
+            config.setAlertsNtfyRiskAck("");
+        });
+        assertEquals("话题填了、提醒没接受，还不算配好",
+                ntfyHalf.getString(R.string.set_alerts_ntfy_setup_title),
+                String.valueOf(ntfyHalf.findPreference("pref_alerts_ntfy_setup").getTitle()));
+
+        SettingsPreferenceFragment ntfyReady = ntfyPage(config -> {
+            config.setAlertsNtfyTopic(topic);
+            config.setAlertsNtfyRiskAck(com.kooo.evcam.alarm.ntfy.NtfyRisk.ackFor(topic));
+        });
+        Preference ntfyReadyRow = ntfyReady.findPreference("pref_alerts_ntfy_setup");
+        assertEquals("配好了就写「已配好 —— 再走一遍」",
+                ntfyReady.getString(R.string.set_alerts_ntfy_setup_again_title),
+                String.valueOf(ntfyReadyRow.getTitle()));
+
+        // 配好了的那条路回头走一遍是先念风险 -> 不，是先看代码那一步；这里比的是「同一个向导」。
+        // With a topic already accepted the wizard opens its code step, so compare the row's dialog with the
+        // one the wizard's own entry point opens in the same state.
+        ntfyReadyRow.performClick();
+        Shots.settle();
+        Dialog ntfyViaRow = latestDialog();
+        // 那一屏上有一个随机四位数（给隔壁手机填的），两份不可能一样：比字之前先把它抹掉。
+        // That screen carries a random four-digit code, so the code is blanked before the words are compared.
+        String ntfyFromRow = dialogWords(ntfyViaRow).replaceAll("\\d{4}", "####");
+        String ntfyPositive = dialogButton(ntfyViaRow);
+        assertTrue("那一屏就是「收到一条通知了吗」那一步: " + ntfyFromRow,
+                ntfyFromRow.contains(ntfyReady.getString(R.string.set_alerts_ntfy_code_title)));
+        ntfyViaRow.dismiss();
+        NtfySetupDialog.show(ntfyReady, new AppConfig(RuntimeEnvironment.getApplication()), () -> { });
+        Shots.settle();
+        Dialog ntfyDirect = latestDialog();
+        assertEquals("点那一行进的就是那个向导（同一屏的字）",
+                dialogWords(ntfyDirect).replaceAll("\\d{4}", "####"), ntfyFromRow);
+        assertEquals("同一个向导的那一屏（同一颗按钮）", dialogButton(ntfyDirect), ntfyPositive);
+        ntfyDirect.dismiss();
+
+        // 走 Telegram 时 ntfy 那一行不出现（它跟那一组一起收着）。
+        // On the Telegram exit the ntfy row is not on screen: it goes with its group.
+        assertFalse("走 Telegram 时 ntfy 向导那一行不该出现",
+                shown(configured, "pref_alerts_ntfy_setup"));
+
+        // 收尾：这些都在同一份设置里，别把后面的测试带跑。
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        config.setAlertsNtfyTopic("");
+        config.setAlertsNtfyRiskAck("");
+    }
+
+    /** 通知那一页（走 Telegram），改一点设置再开。The Notifications page with the Telegram exit. */
+    private SettingsPreferenceFragment notificationsPage(java.util.function.Consumer<AppConfig> tweak) {
+        return alertsChildPage(Shots.DAY_EN, true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM,
+                "pref_alerts_notifications", CHILD_NOTIFICATIONS,
+                R.string.set_alerts_page_notifications, tweak);
+    }
+
+    private static Dialog latestDialog() {
+        Dialog dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotNull("这一步没有弹出对话框", dialog);
+        assertTrue("这一步的对话框关着", dialog.isShowing());
+        return dialog;
+    }
+
+    /** 框里所有文字接起来：是同一个框，字就得一样。All the dialog's words in one string. */
+    private static String dialogWords(Dialog dialog) {
+        StringBuilder all = new StringBuilder();
+        collectDialogTexts(dialog.getWindow().getDecorView(), all);
+        return all.toString();
+    }
+
+    private static void collectDialogTexts(android.view.View root, StringBuilder all) {
+        if (root instanceof android.widget.TextView) {
+            if (all.length() > 0) {
+                all.append(' ');
+            }
+            all.append(((android.widget.TextView) root).getText());
+        }
+        if (root instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                collectDialogTexts(group.getChildAt(i), all);
+            }
+        }
+    }
+
+    /** 框上那颗「下一步 / 收到」按钮的字。The dialog's positive button text. */
+    private static String dialogButton(Dialog dialog) {
+        assertTrue("这个框该是 AlertDialog: " + dialog, dialog instanceof androidx.appcompat.app.AlertDialog);
+        android.widget.Button button =
+                ((androidx.appcompat.app.AlertDialog) dialog).getButton(
+                        android.content.DialogInterface.BUTTON_POSITIVE);
+        assertNotNull("这个框没有那颗按钮", button);
+        return String.valueOf(button.getText());
+    }
 
     /** 停车警报下面那三页的 key（和 PreferencesFragment 里的常量一致）。 */
     private static final String CHILD_NOTIFICATIONS = "screen_alerts_notifications";
@@ -1008,11 +1293,11 @@ public class SettingsShotsTest {
     /**
      * 「在家也发通知」只在通知那一页上，而且开关跟着存着的值。
      *
-     * <p>它管的是消息；「在家要不要把哨兵模式打开」是哨兵那一页上的另一行（{@code pref_alerts_guard_everywhere}）。
-     * 两行一个开关两个意思，所以两个都在的位置不能串。</p>
+     * <p>它管的是消息；「在家要不要把哨兵模式打开」是另一行 —— 4.17 起两行都在同一页上（后者在
+     * 总开关那一页，后者就在这一行下面），一个管消息一个管哨兵，所以位置靠得近但不共用一行。</p>
      *
-     * The at-home switch lives on the notifications page only and follows the stored value; the row about
-     * switching Sentry Mode on at home is a different row on a different page.
+     * The at-home switch lives on the notifications page only and follows the stored value. The row about
+     * switching Sentry Mode on at home is a different row, now on the hub; the two sit close but share nothing.
      */
     @Test
     public void theAtHomeSwitchLivesOnTheNotificationsPage() {
@@ -1036,8 +1321,14 @@ public class SettingsShotsTest {
                 });
         assertNull("哨兵那一页没有这一行：它管消息，不管哨兵模式",
                 sentry.findPreference("pref_alerts_notify_at_home"));
-        assertNotNull("「在家也开哨兵」还在哨兵那一页",
+        assertNull("「在家也开哨兵」也不在哨兵那一页了（4.17 提到总开关那一页）",
                 sentry.findPreference("pref_alerts_guard_everywhere"));
+
+        // 它还在，只是在总开关那一页上：两件事分开，两个开关也不共用一行。
+        // It still exists, just on the hub: two switches, two rows.
+        SettingsPreferenceFragment hub = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        assertNotNull("「在家也开哨兵」该在总开关那一页上",
+                hub.findPreference("pref_alerts_guard_everywhere"));
 
         // 收尾：这些都在同一份设置里，别把后面的测试带跑。
         new AppConfig(RuntimeEnvironment.getApplication()).setAlertsNotifyAtHome(false);

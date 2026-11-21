@@ -184,6 +184,13 @@
     <string name="alert_cmd_too_soon">Wait %1$d s before asking again</string>
     <!-- Forgot Sentry: the car was left with Sentry Mode off, so it asks, or switches it on itself -->
     <string name="set_alerts_guard_title">If I forget Sentry Mode</string>
+    <!-- The summary is the mode plus this sentence (showAlertsRows joins them): the requirement sits next to the option. -->
+    <string name="set_alerts_required_hint">Sentry Mode is required: the car only sees and hears while it is on</string>
+    <string name="set_alerts_required_note_title">Sentry Mode comes first</string>
+    <string name="set_alerts_required_note_summary">Sentry Mode is what keeps the head unit awake. With it off, none of the alerts below arrive. This switch being on does not mean the car is watching.</string>
+    <string name="set_alerts_telegram_setup_title">Set up Telegram</string>
+    <string name="set_alerts_telegram_setup_again_title">Telegram is set up — run it again</string>
+    <string name="set_alerts_telegram_setup_summary">Make a bot, find the chat, send one test picture</string>
     <string name="set_alerts_guard_mode_off">Off</string>
     <string name="set_alerts_guard_mode_ask">Ask me first</string>
     <string name="set_alerts_guard_mode_ask_then_on">Ask, then switch it on after a minute</string>
@@ -1609,6 +1616,7 @@ If I forget: %3$s</string>
     <string name="set_alerts_channel_status_ntfy_public">Alerts go to: ntfy (public topic)</string>
     <string name="set_alerts_channel_status_ntfy_protected">Alerts go to: ntfy (protected)</string>
     <string name="set_alerts_ntfy_setup_title">Set up ntfy</string>
+    <string name="set_alerts_ntfy_setup_again_title">ntfy is set up — run it again</string>
     <string name="set_alerts_ntfy_setup_summary">Make a topic, scan it, confirm one arrived</string>
     <string name="set_alerts_ntfy_topic_title">Topic</string>
     <string name="set_alerts_ntfy_topic_empty">Not set up yet</string>
