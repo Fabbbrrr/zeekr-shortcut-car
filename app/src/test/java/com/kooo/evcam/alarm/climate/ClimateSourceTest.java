@@ -31,6 +31,7 @@ public class ClimateSourceTest {
 
     private static final int FRONT = 0x8;
     private static final int DRIVER = 0x1;
+    private static final int PASSENGER = 0x4;
 
     private static final int POWER = 0x821;
     private static final int TEMP = 0xA01;
@@ -200,10 +201,10 @@ public class ClimateSourceTest {
     @Test
     public void reportPrintsOneDecimal() {
         ClimateSource.Report half = new ClimateSource.Report(
-                ClimateSource.Outcome.DONE, 22.5f, true, true, false, "x");
+                ClimateSource.Outcome.DONE, 22.5f, true, true, true, false, false, "x");
         assertTrue(half.toString(), half.toString().contains("target=22.5"));
         ClimateSource.Report whole = new ClimateSource.Report(
-                ClimateSource.Outcome.DONE, 22f, true, true, false, "x");
+                ClimateSource.Outcome.DONE, 22f, true, true, true, false, false, "x");
         assertTrue(whole.toString(), whole.toString().contains("target=22.0"));
     }
 
@@ -567,7 +568,7 @@ public class ClimateSourceTest {
         FakeCar car = car();
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(),
-                new ClimateSource.Plan(true, 22f, true, true, false, 0));
+                new ClimateSource.Plan(true, 22f, true, false, true, false, 0));
 
         assertEquals(ClimateSource.Outcome.DONE, report.outcome);
         assertTrue(car.calls.toString(),
@@ -580,7 +581,7 @@ public class ClimateSourceTest {
         FakeCar car = car();
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(),
-                new ClimateSource.Plan(true, 22f, true, false, true, 9));
+                new ClimateSource.Plan(true, 22f, true, false, false, true, 9));
 
         assertEquals(ClimateSource.Outcome.DONE, report.outcome);
         assertTrue(car.calls.toString(),
@@ -647,7 +648,7 @@ public class ClimateSourceTest {
         assertFalse(report.powerOn);
         assertTrue("开关那一笔车机受理了：读回看不到也是我们让它开的，自动关靠的就是这一位",
                 report.powerWrote);
-        assertTrue("座椅那一笔写了也受理了", report.seatWrote);
+        assertTrue("座椅那一笔写了也受理了", report.seatWroteLeft);
         assertEquals(22f, report.targetC, 1e-3f);
         assertEquals(12, clock.sleeps);
         assertTrue(report.detail, report.detail.contains("back power 0x0"));
@@ -699,10 +700,10 @@ public class ClimateSourceTest {
         assertEquals(ClimateSource.Outcome.DONE, report.outcome);
         assertTrue(report.detail, report.detail.contains("seat write refused"));
         assertTrue(report.detail, report.detail.contains("climate kept"));
-        assertFalse("座椅没写进去：回执就不许说它", report.seatWrote);
+        assertFalse("座椅没写进去：回执就不许说它", report.seatWroteLeft);
     }
 
-    /** 反方向：座椅真的写了并受理了，{@code seatWrote} 就是 true（否则上面那一条是空过）。 */
+    /** 反方向：座椅真的写了并受理了，{@code seatWroteLeft} 就是 true（否则上面那一条是空过）。 */
     @Test
     public void anAcceptedSeatWriteIsReportedAsSuch() {
         FakeCar car = car();
@@ -710,7 +711,7 @@ public class ClimateSourceTest {
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
 
         assertEquals(ClimateSource.Outcome.DONE, report.outcome);
-        assertTrue(report.seatWrote);
+        assertTrue(report.seatWroteLeft);
     }
 
     /** 不需要座椅时就不能声称写了座椅。 */
@@ -721,13 +722,13 @@ public class ClimateSourceTest {
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, false, true));
 
         assertEquals(ClimateSource.Outcome.DONE, report.outcome);
-        assertFalse(report.seatWrote);
+        assertFalse(report.seatWroteLeft);
     }
 
     @Test
     public void onVentilationOnlyWhenNoHeat() {
         FakeCar car = car();
-        ClimateSource.Plan plan = new ClimateSource.Plan(true, 22f, true, false, true, 1);
+        ClimateSource.Plan plan = new ClimateSource.Plan(true, 22f, true, false, false, true, 1);
 
         ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), plan);
 
@@ -814,7 +815,7 @@ public class ClimateSourceTest {
 
         assertEquals(ClimateSource.Outcome.NO_CHANGE, report.outcome);
         assertTrue("开关读回是 1", report.powerOn);
-        assertFalse(report.seatWrote);
+        assertFalse(report.seatWroteLeft);
         assertTrue(report.detail, report.detail.contains("want 22.0"));
     }
 
@@ -896,7 +897,8 @@ public class ClimateSourceTest {
         assertTrue(car.names.asked.contains("IHvac.TEMPERATURE_UNIT_C"));
         assertTrue(car.names.asked.contains("IHvac.HVAC_FUNC_SEAT_HEATING"));
         assertTrue(car.names.asked.contains("IHvac.HVAC_FUNC_SEAT_VENTILATION"));
-        assertEquals(List.of("zone:ROW_1", "zone:ROW_1_LEFT"), car.names.zonesAsked);
+        assertEquals(List.of("zone:ROW_1", "zone:ROW_1_LEFT", "zone:ROW_1_RIGHT"),
+                car.names.zonesAsked);
         assertTrue("ids in hex: " + car.calls, car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.0"));
     }
 
@@ -950,14 +952,248 @@ public class ClimateSourceTest {
         assertEquals(null, ClimateSource.snapped(22f, 30, 16, 1));
     }
 
+    // ================================================================= 设定温度：两个前排区域
+
+    /**
+     * 设定温度两个前排区域都写，同一个值、同一次单位换算：车是双区的，只写主驾那边，
+     * 副驾那一侧就停在旧温度（车主 2026-11-21 上车看到的正是这一条）。
+     *
+     * <p>把副驾那一笔删掉，这条就红；把两边的值写错开，这条也红。</p>
+     *
+     * Both front zones get the setpoint, the same value from the same conversion: writing the driver side
+     * alone leaves the passenger side at its old target, which is what the owner found getting in. Drop the
+     * passenger write and this goes red; give the two sides different values and it goes red too.
+     */
+    @Test
+    public void theSetpointGoesToBothFrontZones() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, false, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.0"));
+        assertTrue("副驾那一侧也要写到: " + car.calls,
+                car.calls.contains("writeFloat " + TEMP + "@" + PASSENGER + "=22.0"));
+        assertTrue("副驾那一笔受理了", report.passengerWrote);
+        assertEquals(Float.valueOf(22f), car.floats.get(writeKey(TEMP, PASSENGER)));
+        assertTrue("两侧都写在明细里: " + report.detail,
+                report.detail.contains("@" + ClimateSource.hex(DRIVER))
+                        && report.detail.contains("@" + ClimateSource.hex(PASSENGER)));
+    }
+
+    /** 华氏车：换算后的度数两边一样写下去，回执仍然是摄氏度。 */
+    @Test
+    public void aFahrenheitCarGetsTheConvertedTargetOnBothZones() {
+        FakeCar car = car();
+        car.putFloat(TEMP, DRIVER, 68f);
+        car.putFloat(TEMP, PASSENGER, 68f);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, false, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals("回执说的是摄氏度", 22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=71.6"));
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + PASSENGER + "=71.6"));
+    }
+
+    /** 主驾被拒、副驾受理：一样算写到了（一边受理就够了），接着写开关。 */
+    @Test
+    public void oneFrontZoneAcceptingIsEnoughToPowerOn() {
+        FakeCar car = car();
+        car.refusedFloats.add(writeKey(TEMP, DRIVER));
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, false, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue("受理的是副驾那一笔", report.passengerWrote);
+        assertTrue("开关照样写: " + car.calls, car.calls.contains("write " + POWER + "@" + FRONT + "=1"));
+        assertEquals("读回看的是受理温度的那个区域",
+                Float.valueOf(22f), car.floats.get(writeKey(TEMP, PASSENGER)));
+        assertEquals("主驾那一侧没转为", Float.valueOf(21f), car.floats.get(writeKey(TEMP, DRIVER)));
+    }
+
+    /** 两个前排区域都拒：{@code REFUSED}，开关一笔都不写。 */
+    @Test
+    public void bothFrontZonesRefusedIsRefused() {
+        FakeCar car = car();
+        car.refusedFloats.add(writeKey(TEMP, DRIVER));
+        car.refusedFloats.add(writeKey(TEMP, PASSENGER));
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, false, false));
+
+        assertEquals(ClimateSource.Outcome.REFUSED, report.outcome);
+        assertFalse(report.passengerWrote);
+        assertFalse("没写成设定温度就不许写开关: " + car.calls,
+                car.calls.contains("write " + POWER + "@" + FRONT + "=1"));
+        assertEquals("没写就没有设定温度", 0f, report.targetC, 0f);
+    }
+
+    // ================================================================= 座椅：两个前排座椅
+
+    /**
+     * {@code seats = both}：加热写到主驾、副驾两个区域，报告两位都是 true。
+     *
+     * <p>只写主驾的时候副驾那一位是 false —— 回执就只许说主驾。</p>
+     *
+     * With "both", heat goes to the driver and the passenger zone and both flags are set. With driver only,
+     * the right flag stays false, so the receipt can only claim the driver's seat.
+     */
+    @Test
+    public void bothSeatsGetTheHeatWhenTheSettingSaysBoth() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(),
+                onBothSeats(22f, true));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(car.calls.toString(),
+                car.calls.contains("write " + SEAT_HEAT + "@" + DRIVER + "=" + (SEAT_HEAT + 2)));
+        assertTrue("副驾那一侧也要写: " + car.calls,
+                car.calls.contains("write " + SEAT_HEAT + "@" + PASSENGER + "=" + (SEAT_HEAT + 2)));
+        assertTrue(report.seatWroteLeft);
+        assertTrue(report.seatWroteRight);
+    }
+
+    /** 反方向：只主驾时副驾那一笔不许出现，{@code seatWroteRight} 是 false。 */
+    @Test
+    public void driverOnlyDoesNotTouchThePassengerSeat() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
+
+        assertFalse("副驾的座椅没被写: " + car.calls,
+                car.calls.contains("write " + SEAT_HEAT + "@" + PASSENGER + "=" + (SEAT_HEAT + 2)));
+        assertTrue(report.seatWroteLeft);
+        assertFalse(report.seatWroteRight);
+    }
+
+    /** 关空调时 {@code seats = both}：加热、通风在前排两个座椅上都写 0。 */
+    @Test
+    public void offZeroesBothSeatsWhenTheSettingSaysBoth() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(),
+                new ClimateSource.Plan(false, 0f, true, true, true, false, 2));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(car.calls.contains("write " + SEAT_HEAT + "@" + PASSENGER + "=0"));
+        assertTrue(car.calls.contains("write " + SEAT_VENT + "@" + PASSENGER + "=0"));
+        assertTrue(report.seatWroteRight);
+    }
+
+    // ================================================================= 只写座椅（回执下面那排按钮）
+
+    /** 副驾加热 2 档：只写副驾、只写加热、值是功能号加档位，空调一笔不碰。 */
+    @Test
+    public void aSeatOnlyWriteTouchesOneSeatAndNoClimate() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.applySeats(car, names(), new FakeClock(),
+                new ClimateSource.Seats(false, true, true, 2));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertTrue(car.calls.toString(),
+                car.calls.contains("write " + SEAT_HEAT + "@" + PASSENGER + "=" + (SEAT_HEAT + 2)));
+        assertFalse("主驾没被写: " + car.calls,
+                car.calls.contains("write " + SEAT_HEAT + "@" + DRIVER + "=" + (SEAT_HEAT + 2)));
+        assertFalse("空调开关不许碰: " + car.calls, car.calls.contains("write " + POWER));
+        assertFalse("设定温度不许碰: " + car.calls, car.calls.toString().contains("writeFloat"));
+        assertTrue(report.seatWroteRight);
+        assertFalse(report.seatWroteLeft);
+        assertTrue("读回要记一笔: " + report.detail, report.detail.contains("back seat right="));
+    }
+
+    /** 主驾通风：写的是通风那个功能号，不是加热。 */
+    @Test
+    public void aSeatOnlyVentWriteUsesTheVentilationFunction() {
+        FakeCar car = car();
+
+        ClimateSource.applySeats(car, names(), new FakeClock(),
+                new ClimateSource.Seats(true, false, false, 3));
+
+        assertTrue(car.calls.toString(),
+                car.calls.contains("write " + SEAT_VENT + "@" + DRIVER + "=" + (SEAT_VENT + 3)));
+        assertFalse(car.calls.contains("write " + SEAT_HEAT + "@" + DRIVER + "=" + (SEAT_HEAT + 3)));
+    }
+
+    /**
+     * 关座椅：0 档就是关，加热和通风两个功能号在前排两个座椅上都写 0。
+     *
+     * <p>只写一个功能号的话，车主开着通风按「关座椅」，通风还在吹 —— 那一句「都关了」就是假话。</p>
+     *
+     * Seats off writes 0 to both seat functions on both front seats: switching only the heater off would
+     * leave the ventilation running while the reply said they were off.
+     */
+    @Test
+    public void seatsOffZeroesBothFunctionsOnBothSeats() {
+        FakeCar car = car();
+        car.putInt(SEAT_HEAT, DRIVER, SEAT_HEAT + 2);
+        car.putInt(SEAT_VENT, PASSENGER, SEAT_VENT + 1);
+
+        ClimateSource.Report report = ClimateSource.applySeats(car, names(), new FakeClock(),
+                new ClimateSource.Seats(true, true, true, 0));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        for (int id : new int[] {SEAT_HEAT, SEAT_VENT}) {
+            for (int zone : new int[] {DRIVER, PASSENGER}) {
+                assertTrue(car.calls.toString(), car.calls.contains("write " + id + "@" + zone + "=0"));
+            }
+        }
+        assertTrue(report.seatWroteLeft);
+        assertTrue(report.seatWroteRight);
+    }
+
+    /** 车机拒了那一笔：{@code REFUSED}，回话就是「不受理」。 */
+    @Test
+    public void aRefusedSeatOnlyWriteIsRefused() {
+        FakeCar car = car();
+        car.refused.add(writeKey(SEAT_HEAT, DRIVER));
+
+        ClimateSource.Report report = ClimateSource.applySeats(car, names(), new FakeClock(),
+                new ClimateSource.Seats(true, false, true, 2));
+
+        assertEquals(ClimateSource.Outcome.REFUSED, report.outcome);
+        assertFalse(report.seatWroteLeft);
+    }
+
+    /** 车机没有座椅那个功能号：{@code UNAVAILABLE}，一笔都不写。 */
+    @Test
+    public void aMissingSeatFunctionIsUnavailable() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.applySeats(car,
+                names().without("HVAC_FUNC_SEAT_VENTILATION"), new FakeClock(),
+                new ClimateSource.Seats(true, false, false, 2));
+
+        assertEquals(ClimateSource.Outcome.UNAVAILABLE, report.outcome);
+        assertNoWrites(car);
+    }
+
+    /** 座椅写车抛异常也不崩：{@code UNAVAILABLE}；少参数也一样。 */
+    @Test
+    public void aThrowingSeatWriteIsUnavailableNotACrash() {
+        FakeCar car = car();
+        car.throwOn.add(SEAT_HEAT);
+
+        assertEquals(ClimateSource.Outcome.UNAVAILABLE, ClimateSource.applySeats(car, names(),
+                new FakeClock(), new ClimateSource.Seats(true, false, true, 2)).outcome);
+        assertEquals(ClimateSource.Outcome.UNAVAILABLE,
+                ClimateSource.applySeats(car, names(), new FakeClock(), null).outcome);
+    }
+
     // ================================================================= 假的
 
     private static ClimateSource.Plan off(boolean seats) {
-        return new ClimateSource.Plan(false, 0f, seats, true, false, 2);
+        return new ClimateSource.Plan(false, 0f, seats, false, true, false, 2);
     }
 
     private static ClimateSource.Plan on(float targetC, boolean seats, boolean heat) {
-        return new ClimateSource.Plan(true, targetC, seats, heat, !heat, 2);
+        return new ClimateSource.Plan(true, targetC, seats, false, heat, !heat, 2);
+    }
+
+    /** 前排两个座椅都写的计划（设置里的 {@code both}）。 */
+    private static ClimateSource.Plan onBothSeats(float targetC, boolean heat) {
+        return new ClimateSource.Plan(true, targetC, true, true, heat, !heat, 2);
     }
 
     private static String writeKey(int id, int zone) {
@@ -980,6 +1216,7 @@ public class ClimateSourceTest {
         car.putInt(TEMP_UNIT, DRIVER, UNIT_C);
         car.putInt(POWER, FRONT, 0);
         car.putFloat(TEMP, DRIVER, 21f);
+        car.putFloat(TEMP, PASSENGER, 21f);
         return car;
     }
 
@@ -1007,6 +1244,7 @@ public class ClimateSourceTest {
             functions.put("IHvac.HVAC_FUNC_SEAT_VENTILATION", SEAT_VENT);
             zones.put("ROW_1", FRONT);
             zones.put("ROW_1_LEFT", DRIVER);
+            zones.put("ROW_1_RIGHT", PASSENGER);
         }
 
         FakeNames without(String field) {
@@ -1053,6 +1291,8 @@ public class ClimateSourceTest {
         final Map<String, Float> readBackOffset = new HashMap<>();
         final List<String> calls = new ArrayList<>();
         final Set<String> refused = new HashSet<>();
+        /** 浮点通道上被拒的号（车机说这个区域不受理）：整型和浮点是两条路。 */
+        final Set<String> refusedFloats = new HashSet<>();
         final Set<String> ignored = new HashSet<>();
         final Set<Integer> throwOn = new HashSet<>();
         /** 浮点通道里少数几个号不回报值（范围报、设定值不报）。 */
@@ -1138,7 +1378,7 @@ public class ClimateSourceTest {
         @Override
         public boolean writeFloat(int id, int zone, float value) {
             calls.add(String.format(java.util.Locale.US, "writeFloat %d@%d=%.1f", id, zone, value));
-            if (!customWrites) {
+            if (!customWrites || refusedFloats.contains(writeKey(id, zone))) {
                 return false;
             }
             if (!ignored.contains(writeKey(id, zone))) {

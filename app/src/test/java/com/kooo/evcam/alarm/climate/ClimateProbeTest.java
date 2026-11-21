@@ -316,7 +316,46 @@ public class ClimateProbeTest {
             assertTrue("不是 ASCII：" + line, isAscii(line));
             assertTrue("太长（" + line.length() + "）：" + line, line.length() <= 80);
         }
-        assertTrue(report.text(), report.says("climate probe target=22.5"));
+        assertTrue(report.text(), report.says("climate probe configured target=22.5"));
+    }
+
+    // ================================================================= 那个 20
+
+    /**
+     * 「target 20」那个误会：那一行写的是<b>设置里的默认值</b>，不是上一条命令要的温度。
+     *
+     * <p>车主发的是 {@code ac 22}，探针却印了 target 20 —— 他会以为车把 22 改成了 20。
+     * 现在配置那个写 {@code configured target=20.0}，命令那个写 {@code your last ac target=22.0}，
+     * 两行都在，谁也不冒充谁。</p>
+     *
+     * The 20 that was never asked for: that line is the configured default, not what the last command
+     * wanted. The owner sent {@code ac 22} and the probe printed target 20, so it read as if the car had
+     * moved the setpoint. Configured and commanded are now two lines, and neither pretends to be the other.
+     */
+    @Test
+    public void theConfiguredDefaultAndTheLastCommandGetOneLineEach() {
+        FakeCar car = car();
+
+        ClimateProbe.Report report = ClimateProbe.run(car, car.names, new FakeClock(), 20f, 22f);
+
+        assertTrue("配置的那一个: " + report.text(), report.says("climate probe configured target=20.0"));
+        assertTrue("命令的那一个: " + report.text(), report.says("your last ac target=22.0"));
+        assertFalse("旧的那一行不能再印：它分不清哪一个是哪一个: " + report.text(),
+                report.says("climate probe target="));
+    }
+
+    /** 还没下过 {@code ac}（传 0）：命令那一行就不出现，也不印成 {@code your last ac target=0.0}。 */
+    @Test
+    public void withNoLastCommandThereIsNoCommandedLine() {
+        FakeCar car = car();
+
+        ClimateProbe.Report report = ClimateProbe.run(car, car.names, new FakeClock(), 22f, 0f);
+
+        assertTrue(report.says("climate probe configured target=22.0"));
+        assertFalse("没下过命令就不该有这一行: " + report.text(),
+                report.says("your last ac target="));
+        // 老的四参数入口就是这个意思：只有配置值。
+        assertFalse(ClimateProbe.run(car, car.names, new FakeClock(), 22f).says("your last ac target="));
     }
 
     /** 一次探针不会睡过头：每一觉都只是读回那一步，最长 3 秒。 */

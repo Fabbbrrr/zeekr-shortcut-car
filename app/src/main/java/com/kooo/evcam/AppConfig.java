@@ -158,6 +158,7 @@ public class AppConfig {
     private static final String KEY_ALERTS_GUARD_MODE = "alerts_guard_mode";
     private static final String KEY_ALERTS_GUARD_HOME = "alerts_guard_home";  // "lat,lon"，存在 secrets 里
     private static final String KEY_ALERTS_GUARD_EVERYWHERE = "alerts_guard_everywhere";  // 在家也开
+    private static final String KEY_ALERTS_NOTIFY_AT_HOME = "alerts_notify_at_home";  // 在家也发通知
     // 车厢温度警报（climate alerts，契约见 docs/climate-alerts/DECISIONS.md）：同一套出口、同一条命令通道，
     // 只在停着、哨兵模式开着时能动 —— 那时候车机才醒着。
     // 枚举型的 alerts_climate_seats 不在这里：它声明在 settings.SettingsRegistry 里。
@@ -2788,6 +2789,36 @@ public class AppConfig {
     }
 
     /**
+     * 车在家的时候发不发消息。默认不发。
+     *
+     * <p>和 {@link #isAlertsGuardEverywhere()} 是两件事：那一项管「在家要不要把哨兵模式打开」，
+     * 这一项管「在家要不要发消息」。车停在自己院子里，邻居走过、猫跳上车都不是要吵醒车主的事；
+     * 所以默认在家不发。危险那一档（车厢 35 °C 且有人 / 40 °C）不看这一项，永远发。</p>
+     *
+     * <p>位置用的是「忘了开哨兵」那一套（{@link com.kooo.evcam.alarm.guard.GuardHome}）：
+     * 同一个家、200 米、定位超过十分钟没更新就当不知道 —— 而<b>不知道就发</b>。没设家、没有定位、
+     * 在移动的车，全都不受这一项影响。</p>
+     *
+     * <h3>为什么不归开发者选项</h3>
+     *
+     * <p>这一项不需要连电脑、不需要看日志，开不开只由「车停哪儿」决定，所以不在
+     * {@link #DEVELOPER_KEYS} 里；它也不是运行状态，所以不在 {@link #RUNTIME_KEYS} 里。</p>
+     *
+     * <p>Whether alert messages go out while the car is at home. Off by default. This is not the Forgot
+     * Sentry row: that one switches Sentry Mode on at home, this one mutes messages there. The danger tier
+     * ignores it. The location is the Forgot Sentry one — same home point, 200 m, a fix older than ten
+     * minutes is unknown, and unknown sends. It answers to no developer switch and is not runtime state.</p>
+     */
+    public boolean isAlertsNotifyAtHome() {
+        return prefs.getBoolean(KEY_ALERTS_NOTIFY_AT_HOME, false);
+    }
+
+    public void setAlertsNotifyAtHome(boolean notifyAtHome) {
+        prefs.edit().putBoolean(KEY_ALERTS_NOTIFY_AT_HOME, notifyAtHome).apply();
+        AppLog.i(TAG, "在家也发通知 = " + notifyAtHome);
+    }
+
+    /**
      * 「检查更新」去自己的 fork，而不是上游（{@link com.kooo.evcam.update.UpdateSource}）。
      *
      * <p>测试用，开发者选项里，默认关。</p>
@@ -2842,6 +2873,20 @@ public class AppConfig {
     public static final int ALERTS_CLIMATE_SOC_DEFAULT = 20;
     public static final int[] ALERTS_CLIMATE_MINUTES_CHOICES = {5, 10, 15};
     public static final int[] ALERTS_CLIMATE_SEAT_LEVEL_CHOICES = {1, 2, 3};
+
+    /**
+     * 座椅那三个取值（{@link SettingsRegistry#ALERTS_CLIMATE_SEATS}）：不动 / 只主驾 / 前排两个。
+     *
+     * <p>名字写在这里只此一份 —— 存的值和代码里认的值不会因为拼错而分开。读出来的值已经过
+     * {@link #readEnum} 那一关：不在单子里就是默认的主驾。</p>
+     *
+     * The three seat values: off, driver only, both front seats. Declared once here so the stored string
+     * and the compared string cannot drift, and {@link #readEnum} already sends anything else back to the
+     * driver-only default.
+     */
+    public static final String ALERTS_CLIMATE_SEATS_OFF = "off";
+    public static final String ALERTS_CLIMATE_SEATS_DRIVER = "driver";
+    public static final String ALERTS_CLIMATE_SEATS_BOTH = "both";
 
     /** 不在范围里就夹到最近的一头（读和写都过这里，所以存不进一个用不了的值）。 */
     private static int clampTo(int value, int min, int max) {
@@ -2936,13 +2981,27 @@ public class AppConfig {
         return Math.round(clamped * 2f) / 2f;
     }
 
-    /** 开空调时动不动座椅：{@code off} / {@code driver} / {@code front}，默认主驾。 */
+    /** 开空调时动不动座椅：{@code off} / {@code driver} / {@code both}，默认主驾。 */
     public String getAlertsClimateSeats() {
         return readEnum(SettingsRegistry.ALERTS_CLIMATE_SEATS);
     }
 
     public void setAlertsClimateSeats(String seats) {
         writeEnum(SettingsRegistry.ALERTS_CLIMATE_SEATS, seats);
+    }
+
+    /**
+     * 前排两个座椅都要动（{@code both}）：主驾和副驾各写一笔。
+     *
+     * <p>只比一个字符串，值本身由 {@link #getAlertsClimateSeats()} 夹过 —— 存着一个旧的、认不得的值时，
+     * 这里就是 false，和界面上写的一致。</p>
+     *
+     * Both front seats ({@code both}): one write each side. The value is already sanitised by
+     * {@link #getAlertsClimateSeats()}, so an old unrecognised string reads as false here — the same thing
+     * the settings screen shows.
+     */
+    public boolean isAlertsClimateSeatsBoth() {
+        return ALERTS_CLIMATE_SEATS_BOTH.equals(getAlertsClimateSeats());
     }
 
     /** 座椅加热 / 通风的档位：1..3，默认 2。 */

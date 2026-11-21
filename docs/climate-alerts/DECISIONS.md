@@ -12,9 +12,10 @@ Ships:
 
 1. **Detection** — cabin too hot / too cold / safety, text alerts only, on the existing transports.
 2. **Command** — `ac`, `ac on`, `ac off`, `ac on 23`, `ac 23`; buttons on the alert itself.
-3. **Writes** — power, setpoint (float channel), driver seat heat or ventilation; bounded by a
-   10-minute auto-off, an SoC floor, and `gear != P` refusal. Every write is verified by readback and
-   every failure is reported honestly to the chat.
+3. **Writes** — power (front zone), setpoint (float channel, both front zones, one value), seat heat
+   or ventilation on one or both front seats; bounded by a 10-minute auto-off, an SoC floor, and
+   `gear != P` refusal. Every write is verified by readback and every failure is reported honestly to
+   the chat.
 4. **Settings** — the Alerts page is a hub with three child pages (`Notifications`, `Sentry`,
    `Climate`); the climate page holds its own switch, four sliders, the seat/level/minutes lists and the
    honest note.
@@ -49,7 +50,7 @@ a new wake path, Fahrenheit UI, any automatic write that is not an owner command
 | `alerts_climate_cold_c` | int °C | 5 | `pref_alerts_climate_cold` (slider −10–15) |
 | `alerts_climate_safety` | bool | true | `pref_alerts_climate_safety` |
 | `alerts_climate_target_c` | int °C | 22 | `pref_alerts_climate_target` (slider 16–30) |
-| `alerts_climate_seats` | string enum `off\|driver\|front` | `driver` | `pref_alerts_climate_seats` |
+| `alerts_climate_seats` | string enum `off\|driver\|both` | `driver` | `pref_alerts_climate_seats` |
 | `alerts_climate_seat_level` | int 1..3 | 2 | `pref_alerts_climate_seat_level` |
 | `alerts_climate_minutes` | int | 10 | `pref_alerts_climate_minutes` (list 5/10/15) |
 | `alerts_climate_soc_floor` | int % | 20 | `pref_alerts_climate_soc_floor` (slider 20–99) |
@@ -111,10 +112,14 @@ public final class ClimateSource {
    (`atLeastPlausible`, 10–35) instead of refusing. Unit read, when
    non-null and not `TEMPERATURE_UNIT_C` → `WRONG_UNIT`. Target outside min..max → `REFUSED`.
    Snap to step.
-4. write setpoint float on the **driver** zone; false → `REFUSED`.
+4. write setpoint float on **both front zones** (`ROW_1_LEFT`, then `ROW_1_RIGHT`, same value, one unit
+   conversion); the driver write refused → `REFUSED`, the passenger write refused is recorded in
+   `detail` and does not fail the command (the cabin still heats or cools on its own).
 5. write power 1 on the front zone; false → `REFUSED`.
-6. seats (only when `seats`): heating level or ventilation level on the driver zone. A refused seat
-   write does not fail the climate; it is recorded in `detail`.
+6. seats (only when `seats`): heating or ventilation level on the driver zone, on the passenger zone
+   when the setting is `both`, or on neither when it is `off`. A refused seat
+   write does not fail the climate; it is recorded in `detail` and the receipt names only the seats the
+   car accepted.
 7. read back power and setpoint for up to 3 s. `DONE` when power reads 1 and the setpoint is within
    half a step; power reading 1 with an unreadable setpoint is also `DONE` (this adapter answers nothing
    for some ids) with `power on, setpoint unreadable` in `detail`; a mismatched setpoint is `NO_CHANGE`.
@@ -123,7 +128,9 @@ public final class ClimateSource {
    the accepted write is the only evidence. The task writes off only on a positive parked reading, retries
    every 30 s, and after 3 × minutes without one sends `alert_climate_off_unconfirmed`.
 
-Front zone is `names.zone("ROW_1")` (0x08); the driver seat zone is `names.zone("ROW_1_LEFT")` (0x01).
+Front zone is `names.zone("ROW_1")` (0x08); the driver zone is `names.zone("ROW_1_LEFT")` (0x01), the
+passenger zone `names.zone("ROW_1_RIGHT")` (0x04). The setpoint is a two-zone value on this car, so it is
+written to both front zones; the seat settings name neither zone, they name seats (`off` / `driver` / `both`).
 
 ### `alarm/policy/ClimatePolicy` and `alarm/policy/ClimateSeats`
 

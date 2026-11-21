@@ -103,10 +103,13 @@ public final class ClimateProbe {
     /**
      * 探一次。不抛：车接口出的错都是 {@link Report} 里的一行。
      *
-     * @param targetC 车主现在设的目标温度（摄氏度）；不确定就传 {@link #DEFAULT_TARGET_C}
+     * @param configuredTargetC 设置里那个目标温度（摄氏度）—— <b>这是配置的默认值，不是后面那条命令要的
+     *                          温度</b>；探针里写的那一笔照它
+     * @param lastCommandedC    上一条 {@code ac <度数>} 要的温度；没下过就是 0（探针里那一行
+     *                          {@code your last ac target=} 就不出现）
      */
     public static Report run(CarAccess access, ClimateSource.Names names, ClimateSource.Clock clock,
-                             float targetC) {
+                            float configuredTargetC, float lastCommandedC) {
         if (access == null || names == null || clock == null) {
             List<String> lines = new ArrayList<>();
             lines.add("ERROR missing argument: probe not run");
@@ -114,11 +117,17 @@ public final class ClimateProbe {
         }
         Run run = new Run(access, names, clock);
         try {
-            run.go(targetC);
+            run.go(configuredTargetC, lastCommandedC);
         } catch (RuntimeException e) {
             run.add("ERROR stopped: " + e);
         }
         return new Report(run.lines);
+    }
+
+    /** 同上，不知道上一条命令的温度（{@code 0}）。 The same, with no last commanded target known. */
+    public static Report run(CarAccess access, ClimateSource.Names names, ClimateSource.Clock clock,
+                            float configuredTargetC) {
+        return run(access, names, clock, configuredTargetC, 0f);
     }
 
     // ================================================================= 一次探
@@ -156,14 +165,22 @@ public final class ClimateProbe {
             lines.add(ClimateSource.ascii(line));
         }
 
-        void go(float targetC) {
-            Float plausible = ClimateSource.atLeastPlausible(targetC);
+        void go(float configuredTargetC, float lastCommandedC) {
+            Float plausible = ClimateSource.atLeastPlausible(configuredTargetC);
             float target = plausible == null ? DEFAULT_TARGET_C : plausible;
-            if (Math.abs(target - targetC) > ClimateSource.EPSILON) {
+            if (Math.abs(target - configuredTargetC) > ClimateSource.EPSILON) {
                 add(String.format(Locale.US, "target %.1f is outside what a person sets, probing %.1f",
-                        targetC, target));
+                        configuredTargetC, target));
             }
-            add(String.format(Locale.US, "climate probe target=%.1f", target));
+            // 两行分开写：车主看到「target 20」以为车把 22 改成了 20，其实那是设置里的默认值。
+            // 配置的默认值写 configured target，上一条命令真正要的那个写 your last ac target。
+            // Two lines, kept apart: "target 20" read as the car having been moved to 20 when it was only
+            // the configured default. The setting says configured target; the last command says its own.
+            add(String.format(Locale.US, "climate probe configured target=%.1f", target));
+            Float commanded = ClimateSource.atLeastPlausible(lastCommandedC);
+            if (commanded != null && commanded > 0f) {
+                add(String.format(Locale.US, "your last ac target=%.1f", lastCommandedC));
+            }
 
             frontZone = zone(ClimateSource.FRONT_ZONE);
             driverZone = zone(ClimateSource.DRIVER_ZONE);

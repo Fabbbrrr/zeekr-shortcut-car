@@ -13,6 +13,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import androidx.preference.ListPreference;
 import androidx.preference.Preference;
 import androidx.preference.SeekBarPreference;
 
@@ -211,6 +212,32 @@ public class ClimateSettingsWiringTest {
 
         assertFalse("开关关着：下面几行收起来", shown(page, "pref_alerts_climate_hot"));
         assertTrue("那一行实话不能被一起收起来", shown(page, "pref_alerts_climate_note"));
+        assertEquals("而且它在最上面（三页一样）", "pref_alerts_climate_note",
+                page.getPreferenceScreen().getPreference(0).getKey());
+    }
+
+    // ================================================================= 在家也发通知
+
+    /**
+     * 「在家也发通知」：存进 AppConfig，并且当场告诉跑着的那一套。
+     *
+     * <p>这一项和这一栏里每一个开关一样 —— 设置存了、跑着的那一套没听见，就是「重启才生效」。</p>
+     *
+     * The at-home switch stores the value and tells the running alerts, like every other switch in this
+     * section: stored but unheard means it only works after a restart.
+     */
+    @Test
+    public void theAtHomeSwitchTellsTheRunningAlerts() throws Exception {
+        SettingsPreferenceFragment page = notificationsPage();
+        Preference row = page.findPreference("pref_alerts_notify_at_home");
+        assertNotNull("少了「在家也发通知」那个开关", row);
+        assertNull("开始时没有策略（没人叫过 refresh）", policy());
+
+        assertEquals(Boolean.TRUE, row.callChangeListener(true));
+
+        assertTrue("开关的值存进了设置", config.isAlertsNotifyAtHome());
+        assertNotNull("开关改完必须叫 refresh()，否则改到的东西不算数", policy());
+        config.setAlertsNotifyAtHome(false);
     }
 
     // ================================================================= 左栏再点一次
@@ -250,6 +277,55 @@ public class ClimateSettingsWiringTest {
                 now.findPreference("pref_alerts_notifications"));
     }
 
+    // ================================================================= 座椅：前排两个
+
+    /**
+     * 座椅那一行三个选项（不动 / 只主驾 / 两个前排），存的值就叫 {@code both}，改完要叫 refresh()。
+     *
+     * <p>第三个值以前被拿掉了：车主在车上发了一句 {@code ac 22}，主驾的座椅热了，副驾那边没动，
+     * 他要的就是「两个一起」。存的值不能叫 {@code front} 也不能叫别的 —— 代码认的是 {@code both}，
+     * 两边拼错一个字母，选完就当没选。</p>
+     *
+     * The seat row offers three values again, and the stored one is {@code both}. The third value had been
+     * dropped: one {@code ac 22} warmed the driver seat and left the passenger side alone, which is exactly
+     * what the owner asked to change.
+     */
+    @Test
+    public void theSeatsRowOffersBothFrontSeatsAndStoresIt() throws Exception {
+        ListPreference seats = climatePage().findPreference("pref_alerts_climate_seats");
+        assertNotNull("少了动不动座椅那一行", seats);
+        CharSequence[] values = seats.getEntryValues();
+        assertEquals("三项：不动 / 只主驾 / 两个前排", 3, values.length);
+        assertEquals("off", String.valueOf(values[0]));
+        assertEquals("driver", String.valueOf(values[1]));
+        assertEquals("both", String.valueOf(values[2]));
+        assertFalse("存的值不叫 front", java.util.Arrays.asList(values).contains("front"));
+        assertNull("开始时没有策略（没人叫过 refresh）", policy());
+
+        assertEquals(Boolean.FALSE, seats.callChangeListener("both"));
+
+        assertEquals("both 存进了设置", "both", config.getAlertsClimateSeats());
+        assertTrue("副驾也要跟着开", config.isAlertsClimateSeatsBoth());
+        assertNotNull("改完必须叫 refresh()，否则改到的东西不算数", policy());
+        assertTrue("行尾要写刚选的那一项: " + seats.getSummary(),
+                String.valueOf(seats.getSummary())
+                        .contains(String.valueOf(seats.getEntries()[2])));
+    }
+
+    /** 存着一个认不得的值（旧的 {@code front}）：读出来是默认的主驾，副驾那一位是 false。 */
+    @Test
+    public void anUnknownStoredSeatValueReadsAsDriverOnly() throws Exception {
+        // 直接写存储：{@code setAlertsClimateSeats} 自己就会拒掉不合法的值，那条路测不到「读到旧值」。
+        // Written straight into the store: the setter refuses an invalid value, so the read-back of an old
+        // stored string is only reachable from the storage side.
+        RuntimeEnvironment.getApplication()
+                .getSharedPreferences(AppConfig.PREF_NAME, android.content.Context.MODE_PRIVATE)
+                .edit().putString("alerts_climate_seats", "front").commit();
+
+        assertEquals("认不得的值读出来是默认的主驾", "driver", config.getAlertsClimateSeats());
+        assertFalse("副驾没跟着开", config.isAlertsClimateSeatsBoth());
+    }
+
     // ================================================================= 小工具
 
     /** 走车主的路进车厢温度那一页：点总开关那一页上那一行。 */
@@ -265,6 +341,22 @@ public class ClimateSettingsWiringTest {
                 .findFragmentById(R.id.settings_detail);
         assertNotNull("车厢温度那一页没打开", page);
         assertNotNull("该换成下一层那一页", page.findPreference("pref_alerts_climate"));
+        return page;
+    }
+
+    /** 走车主的路进通知那一页：点总开关那一页上那一行。 */
+    private SettingsPreferenceFragment notificationsPage() {
+        SettingsPreferenceFragment hub = (SettingsPreferenceFragment) shell.getChildFragmentManager()
+                .findFragmentById(R.id.settings_detail);
+        assertNotNull(hub);
+        Preference entry = hub.findPreference("pref_alerts_notifications");
+        assertNotNull("少了通知那一行的入口", entry);
+        entry.getOnPreferenceClickListener().onPreferenceClick(entry);
+        Shots.settle();
+        SettingsPreferenceFragment page = (SettingsPreferenceFragment) shell.getChildFragmentManager()
+                .findFragmentById(R.id.settings_detail);
+        assertNotNull("通知那一页没打开", page);
+        assertNotNull("该换成下一层那一页", page.findPreference("pref_alerts_notify_at_home"));
         return page;
     }
 

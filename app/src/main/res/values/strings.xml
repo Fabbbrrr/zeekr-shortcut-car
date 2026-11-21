@@ -151,8 +151,23 @@
     <string name="alert_climate_state_unknown">不知道</string>
     <string name="alert_climate_receipt">空调开了，目标 %1$s °C%2$s。%3$s 关，关不掉我会告诉你。</string>
     <string name="alert_climate_receipt_off">空调关了。</string>
-    <string name="alert_climate_seat_heat">，主驾座椅加热</string>
-    <string name="alert_climate_seat_vent">，主驾座椅通风</string>
+    <!-- 回执里的座椅那一句：哪几个座椅真的受理了（主驾 / 副驾 / 两个）。 -->
+    <string name="alert_climate_seat_heat_left">，主驾座椅加热</string>
+    <string name="alert_climate_seat_heat_right">，副驾座椅加热</string>
+    <string name="alert_climate_seat_heat_both">，主驾和副驾座椅加热</string>
+    <string name="alert_climate_seat_vent_left">，主驾座椅通风</string>
+    <string name="alert_climate_seat_vent_right">，副驾座椅通风</string>
+    <string name="alert_climate_seat_vent_both">，主驾和副驾座椅通风</string>
+    <!-- 回执之后那条座椅问句，和它下面那五颗按钮。 -->
+    <string name="alert_climate_seat_ask">座椅要不要也开？</string>
+    <string name="alert_climate_seat_btn_driver_heat">主驾加热</string>
+    <string name="alert_climate_seat_btn_passenger_heat">副驾加热</string>
+    <string name="alert_climate_seat_btn_driver_vent">主驾通风</string>
+    <string name="alert_climate_seat_btn_passenger_vent">副驾通风</string>
+    <string name="alert_climate_seat_btn_off">关座椅</string>
+    <string name="alert_climate_seat_done">%1$s，%2$d 档。</string>
+    <string name="alert_climate_seat_off_done">前排两个座椅都关了。</string>
+    <string name="alert_climate_seat_refused">车机不受理座椅那一笔。</string>
     <string name="alert_climate_btn">空调 %1$s°</string>
     <string name="alert_climate_btn_off">关</string>
     <string name="alert_climate_refused">车机不受理这次写入（%1$s）。</string>
@@ -190,8 +205,8 @@
     <string name="set_alerts_guard_mode_ask_then_on">问一句，一分钟没人反对就自己开</string>
     <string name="set_alerts_guard_mode_on">不问，自己开</string>
     <string name="set_alerts_guard_home_title">把这里记成家</string>
-    <string name="set_alerts_guard_everywhere_title">在哪都开哨兵</string>
-    <string name="set_alerts_guard_everywhere_summary">在家也算：每次停车都问、都开。代价是车机在车库里也不睡</string>
+    <string name="set_alerts_guard_everywhere_title">在家也开哨兵</string>
+    <string name="set_alerts_guard_everywhere_summary">在家也把哨兵模式打开，也照常问一句 —— 这一行管的是开不开车，跟发不发消息无关；消息那一项在「通知」页上</string>
     <string name="set_alerts_guard_home_set">记下了，只存在这辆车上，不会发出去</string>
     <string name="set_alerts_guard_home_missing">车现在没有定位。开着车，等行驶信息条上有经纬度再试</string>
     <string name="set_alerts_guard_home_none">家的位置忘掉了</string>
@@ -1652,6 +1667,13 @@
     <string name="set_alerts_page_notifications">警报 · 通知</string>
     <string name="set_alerts_page_sentry">警报 · 哨兵</string>
     <string name="set_alerts_page_climate">警报 · 车厢温度</string>
+    <!-- 三页各一行说明（ui-spec §十六）：都在这一页最上面，上面没有组名，点不动，总开关关着也留着。 -->
+    <string name="set_alerts_notifications_note_title">这一页做什么</string>
+    <string name="set_alerts_notifications_note_summary">这一页管消息往哪儿发、发不发得出去；要发哪几条在「哨兵」和「车厢温度」两页上选</string>
+    <string name="set_alerts_sentry_note_title">这一页做什么</string>
+    <string name="set_alerts_sentry_note_summary">车停着的时候哪些动静算「有事」，以及跟着发照片和短视频；在家发不发在「通知」页上选</string>
+    <string name="set_alerts_notify_at_home_title">在家也发通知</string>
+    <string name="set_alerts_notify_at_home_summary">关着：车在家就不发提醒，安全那条照发；位置不知道算在外面</string>
     <string name="set_alerts_hub_two">%1$s · %2$s</string>
     <string name="set_alerts_hub_three">%1$s · %2$s · %3$s</string>
     <string name="set_alerts_hub_ready">已填好</string>
@@ -1682,7 +1704,7 @@
     <string name="set_alerts_climate_minutes_summary">开 %1$s，到点自己关</string>
     <string name="set_alerts_climate_soc_floor_title">电量下限</string>
     <string name="set_alerts_climate_soc_floor_summary">电量低于 %1$s 就不开</string>
-    <string name="set_alerts_climate_note_title">这一组做什么</string>
+    <string name="set_alerts_climate_note_title">这一页做什么</string>
     <string name="set_alerts_climate_note_summary">叫一次开 %1$d 分钟，到点它自己关，关不掉我会告诉你；不会有任何东西自己开起来；要哨兵模式开着，车才听得见</string>
     <!-- 探针：车上回「车机拒绝了这条命令」时，点这一行把原因问出来。它会写一笔设定温度、写一笔开关，
          然后把两样都放回去（开关一定回到原样）；结果是一个能拍照的对话框。 -->
@@ -1692,6 +1714,7 @@
     <string name="set_alerts_climate_probe_failed">探针没跑起来：现在拿不到车辆接口。开一下哨兵模式再试</string>
     <string name="opt_alerts_climate_seats_off">不动座椅</string>
     <string name="opt_alerts_climate_seats_driver">只主驾</string>
+    <string name="opt_alerts_climate_seats_both">主驾和副驾</string>
     <string name="opt_alerts_climate_degrees">%1$s °C</string>
     <string name="opt_alerts_climate_minutes">%d 分钟</string>
     <string name="opt_alerts_climate_soc">%d%%</string>

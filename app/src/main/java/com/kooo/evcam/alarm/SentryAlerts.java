@@ -329,6 +329,17 @@ public final class SentryAlerts implements Telemetry.Listener {
     private volatile ClimateOffGuard.Clock climateOffClock = SystemClock::elapsedRealtime;
     /** 这一次温度警报的按钮记号（{@link AlertButton}）：换一条警报就换一个号。 */
     private volatile String climateToken = "";
+    /**
+     * 上一条 {@code ac on <度数>} 要的那个温度（摄氏度），探针里就写 {@code your last ac target=}。
+     *
+     * <p>0 就是「还没下过」。它就是<b>命令的那个度数</b>，不是设置里的默认值 —— 两者分开写，探针才不会让
+     * 车主以为车把他的 22 改成了 20。</p>
+     *
+     * The target of the last {@code ac on <degrees>} command, and what the probe prints as
+     * {@code your last ac target=}. 0 means none yet. It is the commanded value, never the configured
+     * default — keeping the two apart is what stops the probe reading as if the car moved 22 to 20.
+     */
+    private volatile float climateLastTargetC;
     /** 我们让空调开着（上一次写入读回来的结果），不是实时读数 —— 主线程上不许去读车。 */
     private volatile boolean climateBelievedOn;
     /** 上一次写入真的读回确认了没有；没确认就报「不知道」，不猜。 */
@@ -1144,6 +1155,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         final String gear = state == null || state.gear == null ? "?" : String.valueOf(state.gear);
         final boolean sentry = sentryOn();
         final float target = config.getAlertsClimateTargetC();
+        final float lastCommanded = climateLastTargetC;
         climateWork.execute(() -> {
             final java.util.List<String> lines = new java.util.ArrayList<>();
             lines.add("parked: " + (parked ? "yes" : "NO"));
@@ -1163,7 +1175,8 @@ public final class SentryAlerts implements Telemetry.Listener {
                 return;
             }
             try {
-                lines.addAll(ClimateProbe.run(access, CLIMATE_NAMES, SystemClock::sleep, target).lines);
+                lines.addAll(ClimateProbe.run(access, CLIMATE_NAMES, SystemClock::sleep, target,
+                        lastCommanded).lines);
             } catch (RuntimeException e) {
                 BlackBox.note("climate probe: could not run (" + e + ")");
                 final String text = app.getString(R.string.set_alerts_climate_probe_failed);
@@ -1389,7 +1402,12 @@ public final class SentryAlerts implements Telemetry.Listener {
         boolean screenRising = SentryFacts.rising(screenOn, lastScreenOn);
 
         heartbeatIfDue();
-        watchForForgottenSentry(readings, state, sentry, parked, screenOn);
+        // 位置先记下：警报那边「在家不发」要和「忘了开哨兵」用同一个家的判断，而那条路
+        // （watchForForgottenSentry）在 ntfy 下整段不做 —— 记位置不能跟着它走。
+        // The fix is remembered here, before either path asks where the car is: at-home muting and the
+        // Forgot Sentry reminder must read the same home, and that reminder stands down under ntfy.
+        guardRememberFix(state);
+        watchForForgottenSentry(readings, sentry, parked, screenOn);
         // 车厢温度：停着的时候看一眼，过热 / 过冷 / 有人坐在里面危险。
         // The cabin: while parked, look for too hot, too cold, or dangerous with someone inside.
         climateCheck(state, readings);
@@ -1457,6 +1475,11 @@ public final class SentryAlerts implements Telemetry.Listener {
         }
         if (quietNow()) {
             BlackBox.note("alerts: " + headline + " seen, quiet hours");
+            return;
+        }
+        // 在家、而且车主没开「在家也发通知」：不发。判断在 {@link #mayNotify} 一处，和温度那两条一样。
+        // At home with at-home notifications off: nothing leaves the car (mayNotify).
+        if (!mayNotify(headline)) {
             return;
         }
         AlertPolicy.Decision decision = policy.reserve(now);
@@ -1582,6 +1605,11 @@ public final class SentryAlerts implements Telemetry.Listener {
         String headline = app.getString(R.string.alert_headline_motion);
         if (!armDelayPassed() || quietNow()) {
             BlackBox.note("alerts: motion seen, quiet hours");
+            return;
+        }
+        // 画面里有人动：在家、而且没开「在家也发通知」时同样不发（和别的触发同一条判断）。
+        // Movement at home with at-home notifications off: same gate as the other triggers.
+        if (!mayNotify(headline)) {
             return;
         }
         AlertPolicy.Decision decision = policy.reserve(now);
@@ -2294,10 +2322,29 @@ public final class SentryAlerts implements Telemetry.Listener {
         // Each row has its own token (the picture row uses alertToken, the climate row climateToken): the
         // right row must be recognised first, or a fresh button is mistaken for a stale one.
         String climateAction = AlertButton.actionFor(data, climateToken);
+        // 回执下面那排座椅按钮先认：它们不是「几百度」，落了下面那道就会被当成陈按钮。
+        // The seat row is recognised first: it carries no temperature, so the checks below would drop it.
+        if (climateAction != null && AlertButton.isSeatAction(climateAction)) {
+            onSeatButton(climateAction);
+            return;
+        }
         if (climateAction != null
                 && (AlertButton.ACTION_CLIMATE_OFF.equals(climateAction)
                         || AlertButton.climateTarget(climateAction) >= 10)) {
             onClimateButton(climateAction);
+            return;
+        }
+        // 陈的座椅按钮：同样回一句话，同样一笔都不写。
+        // A stale seat button gets the same one-line answer, and writes nothing.
+        String staleSeat = AlertButton.seatActionOf(data);
+        if (staleSeat != null) {
+            BlackBox.note("alerts: a seat button from an older alert, answered not acted on");
+            AlertChannel staleChannel = channel();
+            if (!staleChannel.ready()) {
+                blockedChannel(staleChannel);
+                return;
+            }
+            deliverText(staleChannel, app.getString(R.string.alert_climate_stale_button));
             return;
         }
         // 号码对不上、但确实是一颗空调按钮（不是照片那一排）：回一句话，不闷着。
@@ -2596,7 +2643,7 @@ public final class SentryAlerts implements Telemetry.Listener {
      */
 
     /** 屏幕亮 → 灭，或者主驾有人 → 没人：车主走了；车里还坐着人就不算（{@link GuardEdge}）。 */
-    private void watchForForgottenSentry(Readings readings, VehicleState state, Integer sentry,
+    private void watchForForgottenSentry(Readings readings, Integer sentry,
                                          boolean parked, Boolean screenOn) {
         // 按钮是 Telegram 的回程，别的出口没有：这一项在 ntfy 下整段不做（DECISIONS.md D8）。
         // The buttons are Telegram's return path and the other exit has none, so under ntfy this whole
@@ -2613,7 +2660,6 @@ public final class SentryAlerts implements Telemetry.Listener {
                 lastScreenLit, screenOn);
         lastScreenLit = screenOn;
         lastSeatOccupied = seatOccupied;
-        guardRememberFix(state);
         if (leaving == GuardEdge.Leaving.STILL_SEATED) {
             // 在车里按了锁车（屏幕同样会黑）：主驾还坐着人，这不是离开，也不能问。
             // Locked from inside (the screen blacks all the same): someone is still in the driver seat, so
@@ -2686,6 +2732,43 @@ public final class SentryAlerts implements Telemetry.Listener {
 
     private boolean guardHomeConfigured() {
         return GuardHome.parse(config.getAlertsGuardHome()) != null;
+    }
+
+    // ================================================================= 在家不发消息 (at home)
+
+    /**
+     * 这一条要不要发出去：车在家、而车主没开「在家也发通知」时，不发。
+     *
+     * <h3>为什么要一个公用的一处</h3>
+     *
+     * <p>哨兵那几条（双闪 / 远光 / 车门 / 车灯 / 屏幕 / 画面移动）和车厢温度那两条（热 / 冷）
+     * 问的是同一个问题，用的也是同一个家的判断（{@link GuardHome}，和「忘了开哨兵」那一套完全相同：
+     * 一个家、200 米、定位超过十分钟没更新算不知道）。两处各写一份判断，迟早有一处会改歪。</p>
+     *
+     * <h3>不知道就发</h3>
+     *
+     * <p>UNKNOWN 一律当「在外面」：没设家、没有定位、定位太旧、坐标不像话。判断错成「在家」会把
+     * 真的警报吞掉，而判断错成「在外面」只是多一条消息 —— 代价不对等，所以只吞「确定在家」。</p>
+     *
+     * <p>危险那一档不走这里：车里可能坐着人，那一档永远发（{@code climateCheck} 里单写）。</p>
+     *
+     * @param label 黑匣子里那一条的名字（标题、或者 {@code climate HOT}）
+     * @return 这一条可以发
+     *
+     * <p>One decision for both alert paths: sentry triggers and the two comfort climate tiers ask the same
+     * question about the same home point as the Forgot Sentry reminder. UNKNOWN counts as away — mistaking
+     * "at home" for "away" costs one message, the other way round swallows a real alert. The danger tier
+     * never comes through here.</p>
+     */
+    boolean mayNotify(String label) {
+        if (config.isAlertsNotifyAtHome()) {
+            return true;
+        }
+        if (guardWhere() != GuardHome.Where.HOME) {
+            return true;
+        }
+        BlackBox.note("alerts: " + label + " not sent (at home, notify at home off)");
+        return false;
     }
 
     /** 问一句，带两颗按钮。 */
@@ -3297,6 +3380,13 @@ public final class SentryAlerts implements Telemetry.Listener {
         if (verdict.kind == ClimatePolicy.Kind.SAFETY && !config.isAlertsClimateSafety()) {
             return;
         }
+        // 舒适那两档（热 / 冷）和哨兵那几条同一条规矩：在家、而车主没开「在家也发通知」就不发。
+        // 危险那一档不看这一项：车里可能坐着人（业主 2026-11-19）。
+        // Comfort tiers obey the at-home rule; the danger tier always fires, because somebody may be
+        // sitting in there.
+        if (verdict.kind != ClimatePolicy.Kind.SAFETY && !mayNotify("climate " + verdict.kind)) {
+            return;
+        }
         BlackBox.note("alerts: climate " + verdict.kind + " (" + verdict.reason + ")");
         sendClimateAlert(verdict.kind, cabin, outside, seatOccupied(readings));
     }
@@ -3414,6 +3504,109 @@ public final class SentryAlerts implements Telemetry.Listener {
     }
 
     /**
+     * 回执下面那一颗座椅按钮：只写座椅，不碰空调；读回之后回一句「车受理了什么」。
+     *
+     * <p>要停着才写，和空调那一条一个门：车在跑的时候没人能看见座椅热没热，写下去只能烧电。
+     * 写车排到 {@code alert-climate} 那条线程上（一笔写加一段读回，主线程上等不起）。</p>
+     *
+     * One seat button under the receipt: seats only, the climate untouched, and the car has to be parked —
+     * the same gate as the AC write, because nobody can feel a seat heater while driving. The write goes
+     * out on the climate thread: one write plus a bounded readback must not sit on the main thread.
+     */
+    void onSeatButton(String action) {
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
+            return;
+        }
+        if (!config.isAlertsActive() || config.isAlertsPaused()) {
+            deliverText(channel, app.getString(R.string.alert_climate_paused));
+            return;
+        }
+        VehicleState state = Telemetry.get().latest();
+        if (state == null || state.gear == null || !parkedNow(state)) {
+            deliverText(channel, app.getString(R.string.alert_climate_moving));
+            return;
+        }
+        final ClimateSource.Seats seats = seatPlan(action);
+        if (seats == null) {
+            return;
+        }
+        BlackBox.note("alerts: seat command " + action + " level " + seats.level);
+        climateWork.execute(() -> {
+            try {
+                CarAccess access = Telemetry.get().carAccess();
+                final ClimateSource.Report report = ClimateSource.applySeats(access, CLIMATE_NAMES,
+                        SystemClock::sleep, seats);
+                app.getMainExecutor().execute(() -> onSeatReport(report, action));
+            } catch (RuntimeException e) {
+                BlackBox.note("alerts: seat write failed (" + e + ")");
+            }
+        });
+    }
+
+    /**
+     * 一颗座椅按钮要写什么：哪个座椅、加热还是通风、几档（{@code soff} 是 0 档、前排两个都写）。
+     *
+     * <p>档位从设置来（{@link com.kooo.evcam.AppConfig#getAlertsClimateSeatLevel()}），不在按钮里写死：
+     * 车主在设置里改成 3 档，按钮按下去就是 3 档。</p>
+     *
+     * What one seat button writes: which seats, heat or ventilation, and how hard. The level comes from
+     * the settings, so changing it there changes what the button does.
+     */
+    ClimateSource.Seats seatPlan(String action) {
+        int level = config.getAlertsClimateSeatLevel();
+        if (AlertButton.ACTION_SEAT_OFF.equals(action)) {
+            return new ClimateSource.Seats(true, true, true, 0);
+        }
+        if (AlertButton.ACTION_SEAT_HEAT_LEFT.equals(action)) {
+            return new ClimateSource.Seats(true, false, true, level);
+        }
+        if (AlertButton.ACTION_SEAT_HEAT_RIGHT.equals(action)) {
+            return new ClimateSource.Seats(false, true, true, level);
+        }
+        if (AlertButton.ACTION_SEAT_VENT_LEFT.equals(action)) {
+            return new ClimateSource.Seats(true, false, false, level);
+        }
+        if (AlertButton.ACTION_SEAT_VENT_RIGHT.equals(action)) {
+            return new ClimateSource.Seats(false, true, false, level);
+        }
+        return null;
+    }
+
+    /**
+     * 写完座椅之后那一句话：什么被受理了，就说什么。
+     *
+     * <p>做成了说「主驾加热，2 档」；车机不受理就说一句不受理；受理了但车厢状态没变就用那句现成的。
+     * 不去猜车上的真实温度 —— 那不是这一笔能读到的。</p>
+     *
+     * The one line after a seat write: what the car accepted, said plainly. "Driver heat, level 2" when
+     * it took it, one line when it refused, and the existing no-change sentence when it accepted and
+     * nothing moved.
+     */
+    void onSeatReport(ClimateSource.Report report, String action) {
+        AlertChannel channel = channel();
+        if (!channel.ready()) {
+            blockedChannel(channel);
+            return;
+        }
+        BlackBox.note("alerts: seat write " + report.outcome + " (" + report.detail + ")");
+        String text;
+        if (report.outcome == ClimateSource.Outcome.DONE) {
+            ClimateSource.Seats seats = seatPlan(action);
+            text = seats == null || seats.level == 0
+                    ? app.getString(R.string.alert_climate_seat_off_done)
+                    : app.getString(R.string.alert_climate_seat_done,
+                            app.getString(seatLabel(action)), seats.level);
+        } else if (report.outcome == ClimateSource.Outcome.NO_CHANGE) {
+            text = app.getString(R.string.alert_climate_no_change_plain);
+        } else {
+            text = app.getString(R.string.alert_climate_seat_refused);
+        }
+        deliverText(channel, text);
+    }
+
+    /**
      * 开（{@code targetC > 0}）或者关（{@code 0}）空调：先在本地把能拒绝的都拒了，再排到写车那条线程。
      *
      * <p>主线程上不碰车辆接口：写一次要读回，最长三秒。这里只读手上已有的快照（{@code Telemetry.readings()}）
@@ -3455,7 +3648,11 @@ public final class SentryAlerts implements Telemetry.Listener {
                     degrees(cabin), String.format(Locale.US, "%.1f", TARGET_BAND_C), degrees(targetC)));
             return;
         }
-        boolean seats = targetC > 0 && !"off".equals(config.getAlertsClimateSeats());
+        boolean seats = targetC > 0
+                && !AppConfig.ALERTS_CLIMATE_SEATS_OFF.equals(config.getAlertsClimateSeats());
+        // seats = both 时前排两个座椅都写（车主 2026-11-21 车上：开了主驾，副驾没开）。
+        // With seats = both, both front seats are written — on the car the passenger side stayed cold.
+        boolean seatsBoth = seats && config.isAlertsClimateSeatsBoth();
         boolean heat = false;
         boolean vent = false;
         if (seats && cabin != null && outside != null) {
@@ -3465,11 +3662,17 @@ public final class SentryAlerts implements Telemetry.Listener {
             vent = choice.vent;
         }
         final boolean planSeats = seats;
+        final boolean planSeatsBoth = seatsBoth;
         final boolean planHeat = heat;
         final boolean planVent = vent;
         final int level = config.getAlertsClimateSeatLevel();
         final ClimateSource.Plan plan = new ClimateSource.Plan(targetC > 0, Math.max(0f, targetC),
-                planSeats, planHeat, planVent, level);
+                planSeats, planSeatsBoth, planHeat, planVent, level);
+        if (targetC > 0) {
+            // 探针要回答的是「上一条命令要了多少度」，不是设置里的默认值。
+            // The probe answers "what did the last command ask for", not the configured default.
+            climateLastTargetC = targetC;
+        }
         BlackBox.note("alerts: climate command " + (targetC > 0 ? "on " + targetC : "off"));
         final int session = climateSession;
         climateWork.execute(() -> {
@@ -3544,12 +3747,10 @@ public final class SentryAlerts implements Telemetry.Listener {
         }
         String text;
         if (report.outcome == ClimateSource.Outcome.DONE && targetC > 0) {
-            // 座椅只在车上真的受理了那一笔时才写进回执。
-            // The seat is named in the receipt only when the car accepted that write.
-            String seat = report.seatWrote
-                    ? heat ? app.getString(R.string.alert_climate_seat_heat)
-                            : vent ? app.getString(R.string.alert_climate_seat_vent) : ""
-                    : "";
+            // 座椅只在车上真的受理了那一笔时才写进回执，并且说清楚是哪几个座椅受理的。
+            // The seats are named in the receipt only where the car accepted the write, and the line says
+            // which of them.
+            String seat = seatClause(report, heat, vent);
             int minutes = config.getAlertsClimateMinutes();
             String offAt = AlertMoment.clock(System.currentTimeMillis() + minutes * 60_000L);
             text = app.getString(R.string.alert_climate_receipt,
@@ -3564,6 +3765,104 @@ public final class SentryAlerts implements Telemetry.Listener {
             text = app.getString(R.string.alert_climate_refused_plain);
         }
         deliverText(channel, text);
+        // 空调真的开了：接一句座椅问句和那五颗按钮。只对 Telegram —— ntfy 没有按钮，
+        // 发一句「座椅要不要也开」等于给车主一个按不到的东西，所以那边静默跳过。
+        // A DONE "ac on" is followed by one seat question with its five buttons. Telegram only: ntfy has
+        // no buttons, so a question with nothing to press is skipped there, silently.
+        if (report.outcome == ClimateSource.Outcome.DONE && targetC > 0) {
+            sendSeatAsk();
+        }
+    }
+
+    /**
+     * 回执里的座椅那一句：哪几个座椅真的受理了（主驾 / 副驾 / 两个），加热和通风分开说。
+     *
+     * <p>一个都没受理就是空串 —— 回执不能声称一笔没写成的座椅。</p>
+     *
+     * The seat clause in the receipt: which seats really took the write, and whether that was heat or
+     * ventilation. A refusal on both sides means no clause at all.
+     */
+    private String seatClause(ClimateSource.Report report, boolean heat, boolean vent) {
+        boolean left = report.seatWroteLeft;
+        boolean right = report.seatWroteRight;
+        if (!left && !right) {
+            return "";
+        }
+        int both = heat ? R.string.alert_climate_seat_heat_both : R.string.alert_climate_seat_vent_both;
+        int onlyLeft = heat ? R.string.alert_climate_seat_heat_left : R.string.alert_climate_seat_vent_left;
+        int onlyRight = heat ? R.string.alert_climate_seat_heat_right
+                : R.string.alert_climate_seat_vent_right;
+        if (heat || vent) {
+            return app.getString(left && right ? both : left ? onlyLeft : onlyRight);
+        }
+        return "";
+    }
+
+    /**
+     * 回执之后那一句座椅问句 + 五颗按钮；不该问（ntfy，没有按钮）就返回 {@code null}。
+     *
+     * <p>把「该不该发」和「发什么」放在同一个能测的地方：{@code AlertClimateAutoOffTest} 直接看
+     * 它在 ntfy 上是 {@code null}、在 Telegram 上是五个按钮，而不用真的去连网。</p>
+     *
+     * The seat question and its five buttons as {@code {text, markup}}, or {@code null} when this channel
+     * cannot show buttons. Keeping both the decision and the content here is what makes it testable without
+     * a network: the ntfy case is null, the Telegram case is five buttons.
+     */
+    String[] seatAsk() {
+        if (config.isAlertsNtfy()) {
+            return null;
+        }
+        if (climateToken == null || climateToken.isEmpty()) {
+            // 这一条回执不是从温度警报来的（车主直接发的 ac on）：自己发一个号，这排按钮才有主人。
+            // This receipt did not come from a temperature alert, so the row mints its own token.
+            climateToken = GuardToken.mint(System.currentTimeMillis());
+        }
+        String markup = seatMarkup();
+        if (markup.isEmpty()) {
+            return null;
+        }
+        return new String[] {app.getString(R.string.alert_climate_seat_ask), markup};
+    }
+
+    /** 发那一句座椅问句（Telegram 才有按钮）。 Send the seat question; only Telegram has buttons. */
+    private void sendSeatAsk() {
+        String[] ask = seatAsk();
+        if (ask == null) {
+            BlackBox.note("alerts: seat buttons not offered on this channel");
+            return;
+        }
+        guardSend(ask[0], ask[1]);
+    }
+
+    /** 五颗座椅按钮：一排两颗，号码用 {@link #climateToken}。 Five seat buttons, two per row. */
+    String seatMarkup() {
+        String[] actions = {AlertButton.ACTION_SEAT_HEAT_LEFT, AlertButton.ACTION_SEAT_HEAT_RIGHT,
+                AlertButton.ACTION_SEAT_VENT_LEFT, AlertButton.ACTION_SEAT_VENT_RIGHT,
+                AlertButton.ACTION_SEAT_OFF};
+        String[] labels = new String[actions.length];
+        String[] datas = new String[actions.length];
+        for (int i = 0; i < actions.length; i++) {
+            labels[i] = app.getString(seatLabel(actions[i]));
+            datas[i] = AlertButton.data(actions[i], climateToken);
+        }
+        return TelegramRequest.inlineKeyboard(labels, datas, 2);
+    }
+
+    /** 一颗座椅按钮上的字（回执、回话都用它，所以三处不会各说一个名字）。 */
+    private static int seatLabel(String action) {
+        if (AlertButton.ACTION_SEAT_HEAT_LEFT.equals(action)) {
+            return R.string.alert_climate_seat_btn_driver_heat;
+        }
+        if (AlertButton.ACTION_SEAT_HEAT_RIGHT.equals(action)) {
+            return R.string.alert_climate_seat_btn_passenger_heat;
+        }
+        if (AlertButton.ACTION_SEAT_VENT_LEFT.equals(action)) {
+            return R.string.alert_climate_seat_btn_driver_vent;
+        }
+        if (AlertButton.ACTION_SEAT_VENT_RIGHT.equals(action)) {
+            return R.string.alert_climate_seat_btn_passenger_vent;
+        }
+        return R.string.alert_climate_seat_btn_off;
     }
 
     /**
@@ -3657,7 +3956,8 @@ public final class SentryAlerts implements Telemetry.Listener {
             climateOffPending = null;
             final ClimateSource.Report report = ClimateSource.apply(Telemetry.get().carAccess(),
                     CLIMATE_NAMES, SystemClock::sleep,
-                    new ClimateSource.Plan(false, 0f, true, false, false, level));
+                    new ClimateSource.Plan(false, 0f, true, config.isAlertsClimateSeatsBoth(),
+                            false, false, level));
             app.getMainExecutor().execute(() -> {
                 if (!climateOffCurrent(generation)) {
                     // 写的时候这一条被取消了：读回的结果不归它了，也不要再说话。

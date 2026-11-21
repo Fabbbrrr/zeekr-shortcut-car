@@ -137,8 +137,21 @@
     <string name="alert_climate_state_unknown">tidak diketahui</string>
     <string name="alert_climate_receipt">Penghawa dingin dihidupkan, sasaran %1$s °C%2$s. Mati pada %3$s, atau saya beritahu kalau tidak dapat.</string>
     <string name="alert_climate_receipt_off">Penghawa dingin dimatikan.</string>
-    <string name="alert_climate_seat_heat">, pemanas tempat duduk pemandu</string>
-    <string name="alert_climate_seat_vent">, pengudaraan tempat duduk pemandu</string>
+    <string name="alert_climate_seat_heat_left">, pemanas tempat duduk pemandu</string>
+    <string name="alert_climate_seat_heat_right">, pemanas tempat duduk penumpang</string>
+    <string name="alert_climate_seat_heat_both">, pemanas kedua-dua tempat duduk hadapan</string>
+    <string name="alert_climate_seat_vent_left">, pengudaraan tempat duduk pemandu</string>
+    <string name="alert_climate_seat_vent_right">, pengudaraan tempat duduk penumpang</string>
+    <string name="alert_climate_seat_vent_both">, pengudaraan kedua-dua tempat duduk hadapan</string>
+    <string name="alert_climate_seat_ask">Tempat duduk juga?</string>
+    <string name="alert_climate_seat_btn_driver_heat">Pemanas pemandu</string>
+    <string name="alert_climate_seat_btn_passenger_heat">Pemanas penumpang</string>
+    <string name="alert_climate_seat_btn_driver_vent">Pengudaraan pemandu</string>
+    <string name="alert_climate_seat_btn_passenger_vent">Pengudaraan penumpang</string>
+    <string name="alert_climate_seat_btn_off">Mati tempat duduk</string>
+    <string name="alert_climate_seat_done">%1$s, tahap %2$d.</string>
+    <string name="alert_climate_seat_off_done">Kedua-dua tempat duduk hadapan dimatikan.</string>
+    <string name="alert_climate_seat_refused">Kereta menolak tempat duduk itu.</string>
     <string name="alert_climate_btn">AC %1$s°</string>
     <string name="alert_climate_btn_off">Mati</string>
     <string name="alert_climate_refused">Kereta menolak perubahan itu (%1$s).</string>
@@ -176,8 +189,8 @@
     <string name="set_alerts_guard_mode_ask_then_on">Tanya, kemudian hidupkan selepas seminit</string>
     <string name="set_alerts_guard_mode_on">Hidupkan tanpa bertanya</string>
     <string name="set_alerts_guard_home_title">Guna lokasi ini sebagai rumah</string>
-    <string name="set_alerts_guard_everywhere_title">Juga di rumah</string>
-    <string name="set_alerts_guard_everywhere_summary">Di mana-mana dikira, termasuk laman rumah. Kosnya kepala unit juga kekal jaga di situ</string>
+    <string name="set_alerts_guard_everywhere_title">Sentri di rumah juga</string>
+    <string name="set_alerts_guard_everywhere_summary">Baris ini tentang Mod Sentri sendiri: ia bertanya dan menghidupkannya di rumah juga. Ia tidak berkata apa-apa tentang mesej — suis itu ada di halaman Makluman</string>
     <string name="set_alerts_guard_home_set">Disimpan, dalam kereta ini sahaja. Tidak dihantar ke mana-mana</string>
     <string name="set_alerts_guard_home_missing">Kereta tiada lokasi sekarang. Pandu sehingga bar maklumat menunjukkan lokasi</string>
     <string name="set_alerts_guard_home_none">Lokasi rumah dilupakan</string>
@@ -1637,6 +1650,13 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_page_notifications">Amaran · Makluman</string>
     <string name="set_alerts_page_sentry">Amaran · Sentri</string>
     <string name="set_alerts_page_climate">Amaran · Iklim</string>
+    <!-- Satu penerangan setiap halaman, baris pertama, tiada kategori di atasnya, kekal nampak walau suis halaman itu mati. -->
+    <string name="set_alerts_notifications_note_title">Apa halaman ini buat</string>
+    <string name="set_alerts_notifications_note_summary">Halaman ini mengurus ke mana mesej pergi dan sama ada ia boleh keluar; peristiwa mana yang dihantar dipilih di halaman Sentri dan Iklim</string>
+    <string name="set_alerts_sentry_note_title">Apa halaman ini buat</string>
+    <string name="set_alerts_sentry_note_summary">Apa yang dikira berlaku semasa kereta parkir, serta gambar dan klipnya; sama ada ia dihantar di rumah ditentukan di halaman Makluman</string>
+    <string name="set_alerts_notify_at_home_title">Hantar di rumah juga</string>
+    <string name="set_alerts_notify_at_home_summary">Mati: di rumah tiada amaran dihantar, yang keselamatan tetap dihantar; lokasi tidak diketahui dikira di luar</string>
     <string name="set_alerts_hub_two">%1$s · %2$s</string>
     <string name="set_alerts_hub_three">%1$s · %2$s · %3$s</string>
     <string name="set_alerts_hub_ready">Sudah diisi</string>
@@ -1667,7 +1687,7 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_climate_minutes_summary">Hidup %1$s, kemudian mati sendiri</string>
     <string name="set_alerts_climate_soc_floor_title">Had bawah bateri</string>
     <string name="set_alerts_climate_soc_floor_summary">Tiada apa-apa dihidupkan di bawah %1$s</string>
-    <string name="set_alerts_climate_note_title">Apa kumpulan ini buat</string>
+    <string name="set_alerts_climate_note_title">Apa halaman ini buat</string>
     <string name="set_alerts_climate_note_summary">Satu arahan menjalankan penghawa dingin selama %1$d minit dan ia berhenti sendiri, atau saya beritahu kalau tidak dapat; tiada apa-apa dihidupkan sendiri; Mod Sentri mesti hidup supaya kereta mendengar</string>
     <string name="set_alerts_climate_probe_title">Probe iklim kabin</string>
     <string name="set_alerts_climate_probe_summary">Menjalankan beberapa pemeriksaan baca sahaja dan satu tulisan pendek, kemudian memulihkannya</string>
@@ -1675,6 +1695,7 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_climate_probe_failed">Probe tidak dapat dijalankan: antara muka kereta tidak dapat dicapai sekarang. Hidupkan Mod Sentri dan cuba lagi</string>
     <string name="opt_alerts_climate_seats_off">Jangan sentuh</string>
     <string name="opt_alerts_climate_seats_driver">Pemandu sahaja</string>
+    <string name="opt_alerts_climate_seats_both">Pemandu dan penumpang</string>
     <string name="opt_alerts_climate_degrees">%1$s °C</string>
     <string name="opt_alerts_climate_minutes">%d min</string>
     <string name="opt_alerts_climate_soc">%d%%</string>

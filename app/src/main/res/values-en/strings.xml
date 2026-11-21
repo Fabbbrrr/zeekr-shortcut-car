@@ -137,8 +137,21 @@
     <string name="alert_climate_state_unknown">unknown</string>
     <string name="alert_climate_receipt">AC on, target %1$s °C%2$s. Off at %3$s, or I\'ll tell you if I couldn\'t.</string>
     <string name="alert_climate_receipt_off">AC off.</string>
-    <string name="alert_climate_seat_heat">, driver seat heating</string>
-    <string name="alert_climate_seat_vent">, driver seat ventilating</string>
+    <string name="alert_climate_seat_heat_left">, driver seat heating</string>
+    <string name="alert_climate_seat_heat_right">, passenger seat heating</string>
+    <string name="alert_climate_seat_heat_both">, both front seats heating</string>
+    <string name="alert_climate_seat_vent_left">, driver seat ventilating</string>
+    <string name="alert_climate_seat_vent_right">, passenger seat ventilating</string>
+    <string name="alert_climate_seat_vent_both">, both front seats ventilating</string>
+    <string name="alert_climate_seat_ask">Seats as well?</string>
+    <string name="alert_climate_seat_btn_driver_heat">Driver heat</string>
+    <string name="alert_climate_seat_btn_passenger_heat">Passenger heat</string>
+    <string name="alert_climate_seat_btn_driver_vent">Driver vent</string>
+    <string name="alert_climate_seat_btn_passenger_vent">Passenger vent</string>
+    <string name="alert_climate_seat_btn_off">Seats off</string>
+    <string name="alert_climate_seat_done">%1$s, level %2$d.</string>
+    <string name="alert_climate_seat_off_done">Both front seats are off.</string>
+    <string name="alert_climate_seat_refused">The car refused the seat.</string>
     <string name="alert_climate_btn">AC %1$s°</string>
     <string name="alert_climate_btn_off">Off</string>
     <string name="alert_climate_refused">The car refused the change (%1$s).</string>
@@ -176,8 +189,8 @@
     <string name="set_alerts_guard_mode_ask_then_on">Ask, then switch it on after a minute</string>
     <string name="set_alerts_guard_mode_on">Switch it on without asking</string>
     <string name="set_alerts_guard_home_title">Use this position as home</string>
-    <string name="set_alerts_guard_everywhere_title">Also at home</string>
-    <string name="set_alerts_guard_everywhere_summary">Everywhere counts, the driveway included. The cost is the head unit staying awake there too</string>
+    <string name="set_alerts_guard_everywhere_title">Sentry on at home too</string>
+    <string name="set_alerts_guard_everywhere_summary">This row is about Sentry Mode itself: it asks, and switches it on, at home as well. It says nothing about messages — that switch is on the Notifications page</string>
     <string name="set_alerts_guard_home_set">Saved, on this car only. It is never sent anywhere</string>
     <string name="set_alerts_guard_home_missing">The car has no position right now. Drive until the info bar shows one, then try again</string>
     <string name="set_alerts_guard_home_none">Home forgotten</string>
@@ -1661,6 +1674,13 @@ If I forget: %3$s</string>
     <string name="set_alerts_page_notifications">Alerts · Notifications</string>
     <string name="set_alerts_page_sentry">Alerts · Sentry</string>
     <string name="set_alerts_page_climate">Alerts · Climate</string>
+    <!-- One explainer per page, first row, no category above it, visible with the page's switches off. -->
+    <string name="set_alerts_notifications_note_title">What this page does</string>
+    <string name="set_alerts_notifications_note_summary">This page is where messages go and whether they can leave; which events get one is chosen on the Sentry and Climate pages</string>
+    <string name="set_alerts_sentry_note_title">What this page does</string>
+    <string name="set_alerts_sentry_note_summary">What counts as something happening while the car is parked, and its picture and clip; whether that is sent at home is on the Notifications page</string>
+    <string name="set_alerts_notify_at_home_title">Send at home too</string>
+    <string name="set_alerts_notify_at_home_summary">Off: at home no alert is sent, safety ones still are; an unknown position counts as away</string>
     <string name="set_alerts_hub_two">%1$s · %2$s</string>
     <string name="set_alerts_hub_three">%1$s · %2$s · %3$s</string>
     <string name="set_alerts_hub_ready">Filled in</string>
@@ -1691,7 +1711,7 @@ If I forget: %3$s</string>
     <string name="set_alerts_climate_minutes_summary">Runs for %1$s, then switches off by itself</string>
     <string name="set_alerts_climate_soc_floor_title">Battery floor</string>
     <string name="set_alerts_climate_soc_floor_summary">Nothing turns on below %1$s</string>
-    <string name="set_alerts_climate_note_title">What this group does</string>
+    <string name="set_alerts_climate_note_title">What this page does</string>
     <string name="set_alerts_climate_note_summary">One command runs the AC for %1$d minutes and it stops by itself, or I tell you if it could not; nothing starts on its own; Sentry Mode has to be on for the car to hear you</string>
     <string name="set_alerts_climate_probe_title">Cabin climate probe</string>
     <string name="set_alerts_climate_probe_summary">Runs a few read-only checks and one short write, then puts it back</string>
@@ -1699,6 +1719,7 @@ If I forget: %3$s</string>
     <string name="set_alerts_climate_probe_failed">The probe could not run: the car interface is not reachable right now. Turn Sentry Mode on and try again</string>
     <string name="opt_alerts_climate_seats_off">Leave them alone</string>
     <string name="opt_alerts_climate_seats_driver">Driver only</string>
+    <string name="opt_alerts_climate_seats_both">Driver and passenger</string>
     <string name="opt_alerts_climate_degrees">%1$s °C</string>
     <string name="opt_alerts_climate_minutes">%d min</string>
     <string name="opt_alerts_climate_soc">%d%%</string>

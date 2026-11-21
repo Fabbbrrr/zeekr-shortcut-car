@@ -149,9 +149,10 @@ line in the black box (`alerts: armed N s ago, waiting for M min`).
 家是一个点（`alarm.GuardHome`）：**离家 200 m** 以内算在家，定位超过 **10 分钟**没更新算不知道在哪。
 在家不动；在外面、或者根本不知道在哪，可以问；只有「在外面」或者「压根没设过家」才会自己开。
 
-「在哪都开哨兵」（`pref_alerts_guard_everywhere`，存 `alerts_guard_everywhere`，默认关）把「在家不动」这一条
-放开：在家也照样问、照样开。关着时是车库里安安静静；开着时是每次停进自家车道哨兵也跟着开，
-车机就一直在那儿醒着 —— 这就是它默认关、summary 明写代价的原因。
+「在家也开哨兵」（原来的「在哪都开哨兵」；`pref_alerts_guard_everywhere`，存 `alerts_guard_everywhere`，默认关）
+把「在家不动」这一条放开：在家也照样问、照样开。关着时是车库里安安静静；开着时是每次停进自家车道哨兵也跟着开，
+车机就一直在那儿醒着 —— 这就是它默认关、summary 明写代价的原因。它管的是「要不要把哨兵模式打开」，
+**不是发不发消息**：消息那一项在通知页上（`alerts_notify_at_home`，见 §1.11）。
 
 它**不是 AlertPolicy 的一次警报**：没有布防门、没有冷却、安静时段也不管 —— 那三样是为「车被人动了」写的，
 这一件事是「车主自己忘了」，按那套算只会让该说的话不说。它要的是 Telegram 那条路：按钮是回调
@@ -367,16 +368,40 @@ triggers present. It answers "what does it send" once configured; the three setu
 | 车外正好 20 °C，或者差值还在死区里 | 什么都不写 |
 
 车外温度是一票否决：外面 ≥ 20 °C 绝不加热座椅，不管车厢读得多冷。一个座椅通道都不写的时候，空调照开。
-设置里两档 `alerts_climate_seats`（`off` / `driver`）：这一版只写主驾区域（`ROW_1_LEFT`）。
-副驾、后排没有做，所以设置里也不给「主驾和副驾」这一档 —— 给了却只写主驾，比不给更糟。
+设置里三档 `alerts_climate_seats`：`off`（不动座椅）/ `driver`（只主驾，默认）/ `both`（主驾和副驾）。
+两个前排座椅各有一个区域（`ROW_1_LEFT` / `ROW_1_RIGHT`），用的是同一个档位。后排没有做。
+
+设定温度是**两个前排区域都写**（主驾写完写副驾，同一个值、同一次单位换算）：这台 7X 的空调是双区的，
+只写主驾时副驾那一侧还是老设定，车主把「22 度」说出来，副驾坐着的人感受到的是另一个数。
+副驾那一笔被拒不影响结果，只在黑匣子里记一笔 —— 车厢照样在降温或升温。
+
+回执下面还有一排座椅按钮（只 Telegram 有）：主驾加热 / 副驾加热 / 主驾通风 / 副驾通风 / 关座椅，
+带的是这一次警报的号（旧消息上的按钮不作答）。点一颗只写座椅，不碰空调；回一句话说车受理了哪几个座椅、
+第几档。没受理的座椅不出现在那句话里 —— 多写一个没动过的座椅，车主会去找一个不存在的加热。
 
 ### 设置在哪
 
 设置 → 警报 → 「车厢温度」那一行进子页（4.15 起，三个子页：通知 / 哨兵 / 车厢温度，各自一页，
-`pref_alerts_climate_page` → `screen_alerts_climate`）。子页第一行就是这一组的总开关，下面才是：
-太热、太冷、高温安全提醒、目标温度、座椅、档位、开多久、电量下限（电量 20–99%）。总开关关着时下面几行收起来，
-最后那一行实话留着 —— 它说的「只关不开、要靠哨兵」恰恰是开关关着时最该看的。
+`pref_alerts_climate_page` → `screen_alerts_climate`）。子页第一行是这一页的说明（三页一样，都在最上面），
+第二行才是这一组的总开关，下面才是：太热、太冷、高温安全提醒、目标温度、座椅、档位、开多久、电量下限
+（电量 20–99%）。总开关关着时下面几行收起来，那一行说明留着 —— 它说的「只关不开、要靠哨兵」恰恰是开关
+关着时最该看的。
 太热 / 太冷 / 目标 / 电量是滑条（25–40 °C、-10–15 °C、16–30 °C、20–99%）。
+
+### 车在家的时候发不发
+
+默认**不发**（`alerts_notify_at_home`，设置 → 警报 → 通知 → 「在家也发通知」，默认关）。
+车停在自己院子里，邻居走过、猫跳上引擎盖、屏幕自己亮一下，都不是要吵醒车主的事。
+
+- 位置用的是「忘了开哨兵」那一套（`guard.GuardHome`）：同一个家、200 米内算在家、定位超过十分钟
+  没更新算不知道。**没有第二个家点。**
+- 在家、开关关着：哨兵那六项（画面移动 / 双闪 / 远光 / 车门 / 车灯 / 屏幕）不发，热、冷两档不发，
+  黑匣子里各记一行原因（`not sent (at home, notify at home off)`）。
+- 在外面、或者不知道在哪儿：照发。没设家、没有定位、定位太旧、坐标不像话都算不知道 —— 猜「在家」
+  会把真警报吞掉，猜错那一边只是多一条消息。
+- **危险那一档不看这一项**：座椅上有人 35 °C、或者 40 °C，在家也发。
+- 这一项只管**消息**。哨兵模式自己要不要在家打开是另一行（哨兵页的 `pref_alerts_guard_everywhere`），
+  两件不同的事，不共用一行；车在家也照样会有「忘了开哨兵」那一问。
 
 ### 还没量的一件事
 
@@ -403,14 +428,28 @@ minutes of fresh samples before speaking, so a sleeping car reports nothing; the
 with a front seat occupied or 40 °C regardless, at most three times per park. In the chat, `ac` reads the
 state, `ac on` starts the climate at the configured target, `ac on 22.5` names one, `ac off` stops it, and
 only whole degrees 10–35 parse. The setpoint goes through the float channel (`CarAccess.writeCustom`),
-because the integer channel is refused by the vendor; the range is read from the car and a missing range
-means no write, and the receipt reports what the car read back rather than what was asked for. The
+because the integer channel is refused by the vendor, and it is written to **both front zones** with one
+value — this car has a two-zone climate, so writing the driver side alone leaves the passenger side on the
+old setpoint. The range is read from the car and a missing range
+means the owner's degree is written as asked, and the receipt reports what the car read back rather than
+what was asked for. The
 climate switches itself off after ten minutes by default, refuses below the state-of-charge floor, refuses
 when the last snapshot says the car is not parked, and picks seat heat or ventilation from the
 cabin-to-target delta with an
-outside ≥ 20 °C veto. Quiet hours silence the comfort tiers without latching them (so daylight still gets one) and
+outside ≥ 20 °C veto; the seat setting is `off` / `driver` / `both` and `both` writes the same level to both
+front seats, while a row of five seat buttons under a receipt writes seats only and names only the seats the
+car accepted. Quiet hours silence the comfort tiers without latching them (so daylight still gets one) and
 never the danger tier, and the danger tier can be switched off on its own. The one thing still
 unmeasured is whether a locked, parked 7X accepts the write at all.
+
+At home the messages are muted by default (`alerts_notify_at_home`, on the Notifications page, off by
+default): a car in its own driveway with a neighbour walking past is not news. The location is the Forgot
+Sentry one — the same home point, 200 m, a fix older than ten minutes is unknown, and there is no second
+home point. At home with the switch off the six sentry triggers and the two comfort tiers send nothing and
+each writes one black-box line with the reason; away, and whenever the position is unknown, they send as
+before. The danger tier ignores the switch and fires at home too. The switch is about messages only:
+switching Sentry Mode on at home is the separate row on the Sentry page, and a car at home still gets its
+Forgot Sentry question.
 
 The last row on that page is the cabin climate probe (`pref_alerts_climate_probe`), for the moment the
 car answers "it refused the command, nothing was changed" — the black box records which write was

@@ -12,7 +12,7 @@ import com.kooo.evcam.telemetry.CarAccess;
 import java.util.Locale;
 
 /**
- * 气候告警的写车（T2）：空调开关、设定温度、主驾座椅加热或通风。只有车主下的命令走这里，自动的只许关（见
+ * 气候告警的写车（T2）：空调开关、设定温度（前排两个区域）、前排座椅加热或通风。只有车主下的命令走这里，自动的只许关（见
  * {@code docs/climate-alerts/DECISIONS.md}）。
  *
  * <ul>
@@ -22,6 +22,8 @@ import java.util.Locale;
  *       16–31 这种数不能写死在代码里。车机不说（这台 7X 就不说）就照车主说的整度写，写完用读回说话 ——
  *       4.14.0 要「先读到范围才肯写」，在车上就是每一条 ac on 都回「车机不报温度范围」。单位同理，读到的不是
  *       单位按设定值判（见 {@link #speaksFahrenheit}），判成华氏就换算后写。</li>
+ *   <li>设定温度两个前排区域都写（{@code ROW_1_LEFT} 然后 {@code ROW_1_RIGHT}，同一个值、同一次单位换算）：
+ *       车是双区的，只写主驾那边，副驾那一侧就停在旧温度。一边受理就算写到了，两边都拒才是 {@link Outcome#REFUSED}。</li>
  *   <li>车机说受理了不等于做到了：写完 3 秒内每 250 毫秒读回开关和设定温度，都对上才算做成（{@link Outcome#DONE}），
  *       否则是 {@link Outcome#NO_CHANGE}，读到的值记在 {@link Report#detail} 里。</li>
  *   <li>功能号、区域照系统的常量名取（{@link Names}），这台车机上没有的就是做不了。纯 Java，没有安卓的东西：车接口、
@@ -29,8 +31,9 @@ import java.util.Locale;
  *   <li>{@link Report#detail} 只放 ASCII 和号码、读到的值，进黑匣子；给人看的字在 {@code strings.xml}。</li>
  * </ul>
  *
- * <p>Writes for the climate alerts (ticket T2): power, setpoint, driver seat heat or ventilation. Only an owner
- * command comes through here — the automatic path may switch the climate off and nothing else.</p>
+ * <p>Writes for the climate alerts (ticket T2): power, setpoint (both front zones), and the front seats'
+ * heat or ventilation. Only an owner command comes through here — the automatic path may switch the
+ * climate off and nothing else.</p>
  *
  * <p><b>Why the float channel.</b> The setpoint goes through {@link CarAccess#writeFloat}
  * ({@code setCustomizeFunctionValue}): temperature-style functions take decimals only, and the integer
@@ -59,6 +62,8 @@ public final class ClimateSource {
     static final String FRONT_ZONE = "ROW_1";
     /** 主驾区域（{@code ROW_1_LEFT}，0x01）：设定温度和座椅写在这里。 */
     static final String DRIVER_ZONE = "ROW_1_LEFT";
+    /** 副驾区域（{@code ROW_1_RIGHT}，0x04）：设定温度和座椅也写在这里（车是双区的，两边各一个设定值）。 */
+    static final String PASSENGER_ZONE = "ROW_1_RIGHT";
 
     /** 读回最多等多久。 */
     static final long BACK_MS = 3_000;
@@ -113,13 +118,44 @@ public final class ClimateSource {
         public final boolean vent;
         /** 1..3，加热、通风都用它。 */
         public final int level;
+        /** 座椅写前排两个（副驾那一侧也写）；只有 {@link #seats} 时才有意义。 */
+        public final boolean seatsBoth;
 
-        public Plan(boolean on, float targetC, boolean seats, boolean heat, boolean vent, int level) {
+        public Plan(boolean on, float targetC, boolean seats, boolean seatsBoth, boolean heat,
+                    boolean vent, int level) {
             this.on = on;
             this.targetC = targetC;
             this.seats = seats;
+            this.seatsBoth = seatsBoth;
             this.heat = heat;
             this.vent = vent;
+            this.level = level;
+        }
+    }
+
+    /**
+     * 只写座椅（回执下面那排座椅按钮）：写哪几个座椅、加热还是通风、几档。
+     *
+     * <p>{@link #level} 是 0 就是关：加热、通风两个功能号在选中的座椅上都写 0（车上那个功能号的值就是「功能号 + 档位」）。</p>
+     *
+     * A seat-only write (the seat row under the receipt): which seats, heat or ventilation, and how
+     * hard. A level of 0 is off, and off writes 0 to both seat functions on every selected seat — the
+     * value the car holds is the function id plus the level.
+     */
+    public static final class Seats {
+        /** 写主驾（{@code ROW_1_LEFT}）。 */
+        public final boolean left;
+        /** 写副驾（{@code ROW_1_RIGHT}）。 */
+        public final boolean right;
+        /** true 加热、false 通风；{@link #level} 是 0 时两个功能号都写 0。 */
+        public final boolean heat;
+        /** 0（关）..{@link #MAX_LEVEL}。 */
+        public final int level;
+
+        public Seats(boolean left, boolean right, boolean heat, int level) {
+            this.left = left;
+            this.right = right;
+            this.heat = heat;
             this.level = level;
         }
     }
@@ -139,25 +175,39 @@ public final class ClimateSource {
          * the head unit sleeps it always is, so this is what the auto-off hangs on.
          */
         public final boolean powerWrote;
-        /** 写座椅那一笔（有的话）车机受理了。没写座椅、或者被拒了，都是 false。 */
-        public final boolean seatWrote;
+        /**
+         * 设定温度写到副驾那一笔车机受理了。两个区域都写同一个值（车是双区的），一边拒一边受也算写成了。
+         *
+         * The passenger setpoint write was accepted. Both front zones get the same value; one refusal
+         * beside one acceptance still means the target reached the car.
+         */
+        public final boolean passengerWrote;
+        /** 座椅写到主驾那一笔车机受理了。没写座椅、或者被拒了，都是 false。 */
+        public final boolean seatWroteLeft;
+        /** 座椅写到副驾那一笔车机受理了。 */
+        public final boolean seatWroteRight;
         /** ASCII，只进黑匣子：功能号（号码用十六进制）和读到的值。 */
         public final String detail;
 
         public Report(Outcome outcome, float targetC, boolean powerOn, boolean powerWrote,
-                      boolean seatWrote, String detail) {
+                      boolean passengerWrote, boolean seatWroteLeft, boolean seatWroteRight,
+                      String detail) {
             this.outcome = outcome;
             this.targetC = targetC;
             this.powerOn = powerOn;
             this.powerWrote = powerWrote;
-            this.seatWrote = seatWrote;
+            this.passengerWrote = passengerWrote;
+            this.seatWroteLeft = seatWroteLeft;
+            this.seatWroteRight = seatWroteRight;
             this.detail = detail;
         }
 
         @Override
         public String toString() {
-            return String.format(Locale.US, "%s target=%.1f power=%s wrote=%s seat=%s (%s)",
-                    outcome, targetC, powerOn, powerWrote, seatWrote, detail);
+            return String.format(Locale.US,
+                    "%s target=%.1f power=%s wrote=%s passenger=%s seats=%s/%s (%s)",
+                    outcome, targetC, powerOn, powerWrote, passengerWrote, seatWroteLeft,
+                    seatWroteRight, detail);
         }
     }
 
@@ -169,11 +219,35 @@ public final class ClimateSource {
      */
     public static Report apply(CarAccess access, Names names, Clock clock, Plan plan) {
         if (access == null || names == null || clock == null || plan == null) {
-            return new Report(Outcome.UNAVAILABLE, 0f, false, false, false, "missing argument");
+            return new Report(Outcome.UNAVAILABLE, 0f, false, false, false, false, false,
+                    "missing argument");
         }
         Run run = new Run(access, names, clock);
         try {
             return run.go(plan);
+        } catch (RuntimeException e) {
+            run.note("failed: " + e);
+            return run.report(Outcome.UNAVAILABLE, 0f, false);
+        }
+    }
+
+    /**
+     * 只写座椅：回执下面那排座椅按钮走的入口，空调一笔都不碰。不抛：出了问题都是 {@link Outcome#UNAVAILABLE}。
+     *
+     * <p>和 {@link #apply} 同为纯函数：车接口、常量名、等待都是参数。结果里的 {@link Report#seatWroteLeft} /
+     * {@link Report#seatWroteRight} 说哪几个座椅受理了，{@link Report#detail} 记读回。</p>
+     *
+     * Seats only: the entry the seat row under a receipt uses; the climate is not touched at all. Never
+     * throws. The same pure shape as {@link #apply}: the car, the names and the wait are parameters.
+     */
+    public static Report applySeats(CarAccess access, Names names, Clock clock, Seats seats) {
+        if (access == null || names == null || clock == null || seats == null) {
+            return new Report(Outcome.UNAVAILABLE, 0f, false, false, false, false, false,
+                    "missing argument");
+        }
+        Run run = new Run(access, names, clock);
+        try {
+            return run.seatsOnly(seats);
         } catch (RuntimeException e) {
             run.note("failed: " + e);
             return run.report(Outcome.UNAVAILABLE, 0f, false);
@@ -190,8 +264,11 @@ public final class ClimateSource {
         private final StringBuilder detail = new StringBuilder();
         /** 开关那一笔受理了没有（{@link Report#powerWrote}）。 */
         private boolean powerWrote;
-        /** 座椅那一笔写了并且受理了没有（{@link Report#seatWrote}）。 */
-        private boolean seatWrote;
+        /** 设定温度写到副驾那一笔受理了没有（{@link Report#passengerWrote}）。 */
+        private boolean passengerWrote;
+        /** 座椅那一笔写了并且受理了没有，两侧各一位（{@link Report#seatWroteLeft} / {@link Report#seatWroteRight}）。 */
+        private boolean seatWroteLeft;
+        private boolean seatWroteRight;
 
         Run(CarAccess access, Names names, Clock clock) {
             this.access = access;
@@ -207,29 +284,75 @@ public final class ClimateSource {
         }
 
         Report report(Outcome outcome, float target, boolean powerOn) {
-            return new Report(outcome, target, powerOn, powerWrote, seatWrote, ascii(detail.toString()));
+            return new Report(outcome, target, powerOn, powerWrote, passengerWrote, seatWroteLeft,
+                    seatWroteRight, ascii(detail.toString()));
         }
 
         Report go(Plan plan) {
             int front = zone(FRONT_ZONE);
             int driver = zone(DRIVER_ZONE);
-            note(String.format(Locale.US, "zone front=%s driver=%s", hex(front), hex(driver)));
+            int passenger = zone(PASSENGER_ZONE);
+            note(String.format(Locale.US, "zone front=%s driver=%s passenger=%s",
+                    hex(front), hex(driver), hex(passenger)));
             Integer power = function("HVAC_FUNC_POWER");
             if (power == null) {
                 return report(Outcome.UNAVAILABLE, 0f, false);
             }
             note("power " + hex(power));
-            return plan.on ? on(plan, power, front, driver) : off(plan, power, front, driver);
+            return plan.on ? on(plan, power, front, driver, passenger)
+                    : off(plan, power, front, driver, passenger);
+        }
+
+        // ------------------------------------------------------------- 只写座椅
+
+        /**
+         * 只写座椅、不碰空调：回执下面那排座椅按钮走的就是这里。
+         *
+         * <p>读回照 {@link ClimateSource#BACK_MS} 看一遍，但结果认「车机受理了没有」—— 和开关那条一个道理：
+         * 这台车机的适配层里不少号读回来是空的，把读不到当成「没做」等于回一句假话。读到的值记进 detail。</p>
+         *
+         * <p>The seat row under the receipt: seats only, the climate untouched. The readback is taken, but
+         * acceptance decides the outcome — the same rule as the power write, because much of this adapter
+         * answers nothing to a read and calling that a failure would be a false line. What was read is
+         * recorded in {@link Report#detail}.</p>
+         */
+        Report seatsOnly(Seats seats) {
+            int driver = zone(DRIVER_ZONE);
+            int passenger = zone(PASSENGER_ZONE);
+            note(String.format(Locale.US, "zone driver=%s passenger=%s", hex(driver), hex(passenger)));
+            int level = Math.max(0, Math.min(MAX_LEVEL, seats.level));
+            if (level == 0) {
+                seatOff(driver, passenger, seats.left, seats.right);
+            } else {
+                Integer id = function(seats.heat ? "HVAC_FUNC_SEAT_HEATING"
+                        : "HVAC_FUNC_SEAT_VENTILATION");
+                if (id == null) {
+                    note("no seat channel");
+                    return report(Outcome.UNAVAILABLE, 0f, false);
+                }
+                if (seats.left) {
+                    seatWrite(id, driver, id + level, "left", "seat write refused");
+                    backSeat(id, driver, id + level, "left");
+                }
+                if (seats.right) {
+                    seatWrite(id, passenger, id + level, "right", "seat write refused");
+                    backSeat(id, passenger, id + level, "right");
+                }
+            }
+            if (!seatWroteLeft && !seatWroteRight) {
+                return report(Outcome.REFUSED, 0f, false);
+            }
+            return report(Outcome.DONE, 0f, false);
         }
 
         // ------------------------------------------------------------- 关
 
         /** 关：开关写 0，座椅写 0；读回开关是 0 算做成，别的都是没生效。 */
-        private Report off(Plan plan, int power, int front, int driver) {
+        private Report off(Plan plan, int power, int front, int driver, int passenger) {
             boolean accepted = write(power, front, 0);
             powerWrote = accepted;
             if (plan.seats) {
-                seatOff(driver);
+                seatOff(driver, passenger, true, plan.seatsBoth);
             } else {
                 note("no seats");
             }
@@ -246,30 +369,65 @@ public final class ClimateSource {
             return report(Outcome.NO_CHANGE, 0f, seen != null && seen == 1);
         }
 
-        /** 关座椅：加热、通风都写 0；不受理不影响空调，记一笔。 */
-        private void seatOff(int driver) {
+        /** 关座椅：加热、通风都写 0；{@code right} 时副驾那一侧也写。不受理不影响空调，记一笔。 */
+        private void seatOff(int driver, int passenger, boolean left, boolean right) {
             Integer heat = function("HVAC_FUNC_SEAT_HEATING");
             Integer vent = function("HVAC_FUNC_SEAT_VENTILATION");
-            if (heat != null) {
-                if (write(heat, driver, 0)) {
-                    seatWrote = true;
-                } else {
-                    note("seat heating off refused");
+            if (left) {
+                seatZero(heat, driver, "left", "seat heating off refused");
+                seatZero(vent, driver, "left", "seat ventilation off refused");
+            }
+            if (right) {
+                seatZero(heat, passenger, "right", "seat heating off refused");
+                seatZero(vent, passenger, "right", "seat ventilation off refused");
+            }
+        }
+
+        /** 一个座椅功能号写 0（关）：受理了记在哪一侧，拒了记一笔。 */
+        private void seatZero(Integer id, int zone, String side, String refused) {
+            seatWrite(id, zone, 0, side, refused);
+        }
+
+        /**
+         * 座椅的一笔写：受理了就记在哪一侧（{@link Report#seatWroteLeft} / {@link Report#seatWroteRight}），
+         * 没受理就记一笔 —— 座椅不成不影响空调。
+         */
+        private boolean seatWrite(Integer id, int zone, int value, String side, String refused) {
+            if (id == null) {
+                return false;
+            }
+            if (!write(id, zone, value)) {
+                note(refused + " (" + side + ")");
+                return false;
+            }
+            if ("left".equals(side)) {
+                seatWroteLeft = true;
+            } else {
+                seatWroteRight = true;
+            }
+            return true;
+        }
+
+        /** 座椅读回：{@link #BACK_MS} 内看一眼，读到什么记什么（读回不决定结果，见 {@link #seatsOnly}）。 */
+        private void backSeat(int id, int zone, int want, String side) {
+            Integer seen = null;
+            long waited = 0;
+            for (long step = BACK_STEP_MS; step <= BACK_MS; step += BACK_STEP_MS) {
+                clock.sleep(BACK_STEP_MS);
+                waited = step;
+                seen = read(id, zone);
+                if (seen != null && seen == want) {
+                    break;
                 }
             }
-            if (vent != null) {
-                if (write(vent, driver, 0)) {
-                    seatWrote = true;
-                } else {
-                    note("seat ventilation off refused");
-                }
-            }
+            note(String.format(Locale.US, "back seat %s=%s want %d after %d ms", side,
+                    seen == null ? "?" : String.valueOf(seen), want, waited));
         }
 
         // ------------------------------------------------------------- 开
 
-        /** 开：先读范围，再写设定温度、写开关、写座椅，最后读回开关和设定温度。 */
-        private Report on(Plan plan, int power, int front, int driver) {
+        /** 开：先读范围，再写设定温度（两个前排区域）、写开关、写座椅，最后读回开关和设定温度。 */
+        private Report on(Plan plan, int power, int front, int driver, int passenger) {
             Integer temp = function("HVAC_FUNC_TEMP");
             Integer minId = function("HVAC_FUNC_TEMP_MIN");
             Integer maxId = function("HVAC_FUNC_TEMP_MAX");
@@ -340,11 +498,17 @@ public final class ClimateSource {
                 return report(Outcome.REFUSED, 0f, false);
             }
 
+            // 车是双区的：设定温度两个前排区域都写，同一个值、同一次单位换算。一边受理就算写到了 ——
+            // 车上实测（探针）两边都受理；只写主驾，副驾那一侧就一直是旧温度，车主第一次上车就看到了。
+            // Both front zones get the same value in the same unit: the car is dual-zone, so writing the
+            // driver side alone leaves the passenger side at the old target — which the owner saw first
+            // thing getting into the car. One acceptance is enough; both refused is a refusal.
             float written_value = fahrenheit ? celsiusToFahrenheit(target) : target;
-            boolean written = access.writeFloat(temp, driver, written_value);
-            note(String.format(Locale.US, "write temp %s@%s=%.1f %s %s", hex(temp), hex(driver),
-                    written_value, fahrenheit ? "F" : "C", written ? "ok" : "refused"));
-            if (!written) {
+            String unitText = fahrenheit ? "F" : "C";
+            boolean leftWritten = writeFloat(temp, driver, written_value, "left", unitText);
+            boolean rightWritten = writeFloat(temp, passenger, written_value, "right", unitText);
+            passengerWrote = rightWritten;
+            if (!leftWritten && !rightWritten) {
                 return report(Outcome.REFUSED, 0f, false);
             }
 
@@ -354,15 +518,30 @@ public final class ClimateSource {
                 return report(Outcome.REFUSED, target, false);
             }
 
-            seatOn(plan, driver, heat, vent);
+            seatOn(plan, driver, passenger, heat, vent);
 
             float tolerance = rangeKnown ? step / 2f : 0.5f;
-            return back(power, front, temp, driver, target, written_value,
+            // 读回看受理温度的那个区域：主驾受理就看主驾，否则看副驾。
+            // The readback watches the zone that took the setpoint: the driver side when it accepted,
+            // otherwise the passenger side.
+            int tempZone = leftWritten || !rightWritten ? driver : passenger;
+            return back(power, front, temp, tempZone, target, written_value,
                     fahrenheit ? tolerance * 9f / 5f : tolerance);
         }
 
-        /** 座椅：只写一个号（加热优先），档位的值是功能号加档位；不受理不影响空调。 */
-        private void seatOn(Plan plan, int driver, Integer heat, Integer vent) {
+        /** 写一笔设定温度并记一笔（哪个区域、写下去多少、什么单位、受理了没有）。 */
+        private boolean writeFloat(int id, int zone, float value, String side, String unit) {
+            boolean written = access.writeFloat(id, zone, value);
+            note(String.format(Locale.US, "write temp %s@%s=%.1f %s %s %s", hex(id), hex(zone),
+                    value, side, unit, written ? "ok" : "refused"));
+            return written;
+        }
+
+        /**
+         * 座椅：只写一个通道（加热优先），档位的值是功能号加档位；{@code seatsBoth} 时前排两个座椅都写。
+         * 不受理不影响空调。
+         */
+        private void seatOn(Plan plan, int driver, int passenger, Integer heat, Integer vent) {
             if (!plan.seats) {
                 note("no seats");
                 return;
@@ -379,22 +558,21 @@ public final class ClimateSource {
                 return;
             }
             int level = Math.max(1, Math.min(MAX_LEVEL, plan.level));
-            if (write(id, driver, id + level)) {
-                seatWrote = true;
-            } else {
-                note("seat write refused, climate kept");
+            seatWrite(id, driver, id + level, "left", "seat write refused, climate kept");
+            if (plan.seatsBoth) {
+                seatWrite(id, passenger, id + level, "right", "seat write refused, climate kept");
             }
         }
 
         /** 读回：{@link #BACK_MS} 内开关读到 1、设定温度在容差以内算做成。 */
-        private Report back(int power, int front, int temp, int driver, float target,
+        private Report back(int power, int front, int temp, int tempZone, float target,
                            float writtenValue, float half) {
             Integer seenPower = null;
             Float seenTemp = null;
             for (long waited = BACK_STEP_MS; waited <= BACK_MS; waited += BACK_STEP_MS) {
                 clock.sleep(BACK_STEP_MS);
                 seenPower = read(power, front);
-                seenTemp = access.readFloat(temp, driver);
+                seenTemp = access.readFloat(temp, tempZone);
                 if (seenPower != null && seenPower == 1 && seenTemp != null
                         && Math.abs(seenTemp - writtenValue) <= half + EPSILON) {
                     note(String.format(Locale.US, "back power %s setpoint %.1f after %d ms",

@@ -1211,6 +1211,25 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             });
         }
 
+        // 在家也发通知（业主 2026-11-19）：开关只在「通知」这一页上。它管的是「发不发消息」；
+        // 「在家要不要把哨兵模式打开」是哨兵那一页的 pref_alerts_guard_everywhere，两个不共用一行。
+        // 改完叫 refresh()：和这栏其它开关一样，跑着的那一套要知道设置刚改过。
+        // Notify at home: this page only, and refresh() is told like every other switch in this section.
+        androidx.preference.SwitchPreferenceCompat notifyAtHome =
+                findPreference("pref_alerts_notify_at_home");
+        if (notifyAtHome != null) {
+            notifyAtHome.setPersistent(false);
+            notifyAtHome.setChecked(appConfig.isAlertsNotifyAtHome());
+            notifyAtHome.setOnPreferenceChangeListener((preference, newValue) -> {
+                boolean atHome = Boolean.TRUE.equals(newValue);
+                appConfig.setAlertsNotifyAtHome(atHome);
+                com.kooo.evcam.blackbox.BlackBox.noteImportant(
+                        "开关变更: pref_alerts_notify_at_home → " + (atHome ? "开" : "关"));
+                com.kooo.evcam.alarm.SentryAlerts.get(requireContext()).refresh();
+                return true;
+            });
+        }
+
         // ------------------------------------------------------------------ 下层页（4.6）
         // 三行入口：通知、哨兵、车厢温度各占下一层的一页（ui-spec §十六）。行尾写在 showAlertsRows 里，
         // 点一下就用同一份 XML 的那一棵子树开一页 —— 同一份接线，不另写三套。
@@ -1767,6 +1786,9 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // ---- 哨兵那一页：什么时候发、照片、短视频、忘了开哨兵的那几行
         // The Sentry page: when it fires, the picture, the clip, and the Forgot Sentry rows.
         boolean sentry = alertsOn;
+        // 哨兵这一页的第一行也是说明，规则同通知那一页：总开关关着也留着。
+        // The Sentry explainer, first row, kept with the master switch off.
+        show("pref_alerts_sentry_note", alertsOn);
         show("cat_alerts_when", sentry);
         show("pref_alerts_triggers", sentry);
         show("pref_alerts_arm_delay", sentry);
@@ -1796,6 +1818,12 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // Notifications: the two exits are exclusive, plus the rows inside "Checks" — which live on
         // this page only, because what they check is the exit itself.
         boolean notifications = alertsOn;
+        // 通知这一页的第一行是它的说明（三页都是这个形状），第二行才是「在家也发通知」。
+        // 说明不跟着下面那些行收起：一句话说的是这一页管什么，不是选项（ui-spec §十六）。
+        // The explainer is the page's first row and survives the page's switches; the at-home switch
+        // sits right under it.
+        show("pref_alerts_notifications_note", alertsOn);
+        show("pref_alerts_notify_at_home", notifications);
         show("cat_alerts_telegram", notifications && !ntfy);
         show("cat_alerts_ntfy", notifications && ntfy);
         show("cat_alerts_checks", notifications);
@@ -1832,7 +1860,7 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             show(key, climateRows);
         }
         // 那一行实话开关关着也留着：它说的是这一组只关不开（还有它靠哨兵叫得动车），
-        // 恰恰是开关关着的时候最该看到的。
+        // 恰恰是开关关着的时候最该看到的。它在最上面（三页统一），不在这一组开着/关着的规则里。
         // The note stays even with the switch off: it is exactly what someone reading that page needs.
         show("pref_alerts_climate_note", alertsOn);
         // 探针也留着：车不听指挥的时候，这一行才是唯一能得到答案的地方。

@@ -11,6 +11,21 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.17.0-fab-beta] - 2026-11-21
+
+- Alerts: `ac 22` now sets **both front zones**, and the receipt says "target 22" — the number you
+  sent, not the configured default. A probe line now reads "configured target" and adds "your last ac
+  target", so the two can no longer be confused.
+- Alerts: after the receipt the bot **asks about the seats** — Driver heat / Passenger heat / Driver
+  vent / Passenger vent / Seats off — one tap each, with the level from settings. The seats setting
+  gained **both front seats**; the receipt only names the seats the car accepted.
+- Alerts: a **home exclusion zone for notifications**. One switch on the Notifications page,
+  "Notify me at home too", off by default. At home the sentry triggers and the hot/cold alerts stay
+  quiet; the safety alert still fires; an unknown position counts as away. It uses the same home point
+  as the forgotten-sentry guard, whose own "at home" switch still means "arm Sentry at home".
+- Alerts: each of the three pages (Notifications, Sentry, Climate) opens with one explainer line, so
+  the pages read the same way. The climate explainer moved from the bottom to the top.
+
 ## [4.16.2-fab-beta] - 2026-11-21
 
 - Alerts: `ac 22` said "the car refused the command" although the car accepts it. The probe showed why:

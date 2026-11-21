@@ -42,6 +42,20 @@ public final class AlertButton {
     /** 关空调（回执下面那颗「关掉」）。Switch the climate off: the undo under the receipt. */
     public static final String ACTION_CLIMATE_OFF = "acoff";
 
+    /** 座椅：主驾加热 / 副驾加热 / 主驾通风 / 副驾通风 / 前排两个都关。
+     *
+     * <p>回执下面那排座椅按钮（{@code SentryAlerts}），动作放在 {@link #ACTION_CLIMATE} 那一套之外：
+     * 两颗座椅按钮说自己的事，不和「几百度」混在一个前缀里。
+     *
+     * The seat row under a receipt: driver heat, passenger heat, driver vent, passenger vent, both off.
+     * They are their own actions rather than another climate number — a seat button is not a temperature.</p> */
+    public static final String ACTION_SEAT_HEAT_LEFT = "shl";
+    public static final String ACTION_SEAT_HEAT_RIGHT = "shr";
+    public static final String ACTION_SEAT_VENT_LEFT = "svl";
+    public static final String ACTION_SEAT_VENT_RIGHT = "svr";
+    /** 前排两个座椅都关掉（档位 0，加热和通风都写 0）。 */
+    public static final String ACTION_SEAT_OFF = "soff";
+
     /** 空调按钮的动作前缀，后面跟两整度：{@code ac22}；半度用下划线：{@code ac22_5}。
      *
      * Climate buttons: the prefix plus two digits, with an underscore for a half degree. */
@@ -142,6 +156,31 @@ public final class AlertButton {
         return climateTarget(action) >= 10f ? action : null;
     }
 
+    /** 这串 callback_data 里的座椅动作，<b>不看号码</b>（陈的按钮也要能回一句话）。
+     *
+     * <p>The seat action inside a payload, <b>without checking the token</b>, so a stale press can be
+     * answered instead of ignored. Nothing is acted on from this.</p>
+     *
+     * @return 五个座椅动作之一；不是座椅动作是 {@code null}
+     */
+    public static String seatActionOf(String data) {
+        if (data == null) {
+            return null;
+        }
+        String[] parts = data.trim().split(":");
+        if (parts.length != 3 || !PREFIX.equals(parts[0])) {
+            return null;
+        }
+        return isSeatAction(parts[1]) ? parts[1] : null;
+    }
+
+    /** 是不是那五个座椅动作之一。 Whether this is one of the five seat actions. */
+    public static boolean isSeatAction(String action) {
+        return ACTION_SEAT_HEAT_LEFT.equals(action) || ACTION_SEAT_HEAT_RIGHT.equals(action)
+                || ACTION_SEAT_VENT_LEFT.equals(action) || ACTION_SEAT_VENT_RIGHT.equals(action)
+                || ACTION_SEAT_OFF.equals(action);
+    }
+
     private static final String PREFIX = "a";
 
     private AlertButton() {
@@ -191,6 +230,9 @@ public final class AlertButton {
             return action;
         }
         if (ACTION_CLIMATE_OFF.equals(action) || climateTarget(action) >= 10f) {
+            return action;
+        }
+        if (isSeatAction(action)) {
             return action;
         }
         return laneOf(action) == TelegramCommand.ANY_LANE ? null : action;

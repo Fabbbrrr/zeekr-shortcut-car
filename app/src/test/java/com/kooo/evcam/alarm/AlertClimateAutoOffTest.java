@@ -351,7 +351,7 @@ public class AlertClimateAutoOffTest {
         assertTrue(awaitSend());
         String receipt = ShadowNtfySender.sent.get(0);
         assertFalse("座椅没写进去，回执就不许说它: " + receipt,
-                receipt.contains(context.getString(R.string.alert_climate_seat_heat)));
+                receipt.contains(context.getString(R.string.alert_climate_seat_heat_left)));
         assertTrue("温度还要写: " + receipt, receipt.contains("22.0"));
     }
 
@@ -363,7 +363,61 @@ public class AlertClimateAutoOffTest {
         assertTrue(awaitSend());
         assertTrue("座椅写了就该写进回执: " + ShadowNtfySender.sent.get(0),
                 ShadowNtfySender.sent.get(0)
-                        .contains(context.getString(R.string.alert_climate_seat_heat)));
+                        .contains(context.getString(R.string.alert_climate_seat_heat_left)));
+    }
+
+    /**
+     * 只写主驾时回执不许提副驾：多写一个没动过的座椅，车主会去找一个不存在的加热。
+     *
+     * With the driver seat alone accepted, the receipt must not mention the passenger side: naming a seat
+     * nobody switched on sends the owner looking for heat that is not there.
+     */
+    @Test
+    public void aDriverSeatWriteDoesNotClaimThePassengerSeat() throws Exception {
+        onClimateReport(report(ClimateSource.Outcome.DONE, 22f, true, true, true), 22, true, false, 0);
+
+        assertTrue(awaitSend());
+        String receipt = ShadowNtfySender.sent.get(0);
+        assertFalse("副驾没受理就不许说它: " + receipt,
+                receipt.contains(context.getString(R.string.alert_climate_seat_heat_right)));
+        assertFalse("也不许说两个都开了: " + receipt,
+                receipt.contains(context.getString(R.string.alert_climate_seat_heat_both)));
+    }
+
+    /** 两个座椅都受理了（设置里是 both）：回执说的是两个一起。 */
+    @Test
+    public void bothSeatsAcceptedIsSaidAsBoth() throws Exception {
+        onClimateReport(reportBothSeats(ClimateSource.Outcome.DONE, 22f, true, true),
+                22, true, false, 0);
+
+        assertTrue(awaitSend());
+        assertTrue("两个都写了就说两个: " + ShadowNtfySender.sent.get(0),
+                ShadowNtfySender.sent.get(0)
+                        .contains(context.getString(R.string.alert_climate_seat_heat_both)));
+    }
+
+    // ================================================================= 那个 20（回执印的是命令的度数）
+
+    /**
+     * {@code ac 22}，而设置里的默认值是 20：回执必须是 22.0，不是 20.0。
+     *
+     * <p>回执印的是车上的设定值（{@code Report.targetC}），不是设置里那个默认值。这两个数一混，车主看到
+     * 22 变成了 20，就会以为车自己改了温度 —— 他根本没要过 20。</p>
+     *
+     * The configured default is 20 and the owner sent {@code ac 22}: the receipt has to say 22.0. It prints
+     * the setpoint the write carried, never the configured default — mixing them is what made the owner read
+     * "target 20" and wonder who asked for it.
+     */
+    @Test
+    public void theReceiptPrintsTheCommandedTargetNotTheConfiguredDefault() throws Exception {
+        config.setAlertsClimateTargetC(20f);
+
+        onClimateReport(report(ClimateSource.Outcome.DONE, 22f, true, true, false), 22, false, false, 0);
+
+        assertTrue(awaitSend());
+        String receipt = ShadowNtfySender.sent.get(0);
+        assertTrue("回执要写命令要的度数: " + receipt, receipt.contains("22.0"));
+        assertFalse("回执不许写设置里那个默认值: " + receipt, receipt.contains("20.0"));
     }
 
     // ================================================================= 过期的空调按钮
@@ -428,11 +482,209 @@ public class AlertClimateAutoOffTest {
         assertNull("过期按钮不排任何事", pending());
     }
 
+    // ================================================================= 回执后面那句座椅问句
+
+    /**
+     * Telegram：回执之后问一句，五颗按钮，号码就是这个 climateToken。
+     *
+     * <p>五颗：主驾加热 / 副驾加热 / 主驾通风 / 副驾通风 / 关座椅，每颗的 callback_data 都是
+     * {@code a:<action>:<token>} 那个形状。</p>
+     *
+     * On Telegram the receipt is followed by one question with five buttons, all carrying this alert's
+     * climateToken in the existing {@code a:<action>:<token>} shape.
+     */
+    @Test
+    public void theSeatQuestionCarriesFiveButtonsOnTelegram() throws Exception {
+        config.setAlertsTransport(NtfyGate.TELEGRAM);
+        String token = GuardToken.mint(80L);
+        setClimateToken(token);
+
+        String[] ask = alerts.seatAsk();
+
+        assertNotNull("Telegram 有按钮：这一句就要发", ask);
+        assertEquals(context.getString(R.string.alert_climate_seat_ask), ask[0]);
+        String markup = ask[1];
+        for (String action : new String[] {AlertButton.ACTION_SEAT_HEAT_LEFT,
+                AlertButton.ACTION_SEAT_HEAT_RIGHT, AlertButton.ACTION_SEAT_VENT_LEFT,
+                AlertButton.ACTION_SEAT_VENT_RIGHT, AlertButton.ACTION_SEAT_OFF}) {
+            assertTrue(markup, markup.contains("\"callback_data\":\""
+                    + AlertButton.data(action, token) + "\""));
+        }
+        assertEquals("五颗按钮", 5, markup.split("callback_data", -1).length - 1);
+        assertTrue("按钮上要有字: " + markup,
+                markup.contains(context.getString(R.string.alert_climate_seat_btn_driver_heat)));
+    }
+
+    /**
+     * ntfy 没有按钮：静默跳过 —— 不发一句「座椅要不要也开」然后什么也按不到，也不多发一条消息。
+     *
+     * ntfy cannot show buttons, so the question is skipped silently: nothing to press, and no extra message.
+     */
+    @Test
+    public void theSeatQuestionIsSkippedSilentlyOnNtfy() throws Exception {
+        assertNull("ntfy 没有按钮：不许发一句没法按的话", alerts.seatAsk());
+
+        onClimateReport(report(ClimateSource.Outcome.DONE, 22f, true, true, false), 22, false, false, 0);
+
+        assertTrue(awaitSend());
+        assertEquals("只发回执那一条", 1, ShadowNtfySender.texts);
+    }
+
+    /** 直接发 {@code ac on} 来的回执没有温度警报的号：自己造一个，这排按钮才有主人。 */
+    @Test
+    public void theSeatRowMintsItsOwnTokenWhenTheReceiptCameFromAChatCommand() throws Exception {
+        config.setAlertsTransport(NtfyGate.TELEGRAM);
+        setClimateToken("");
+
+        assertNotNull(alerts.seatAsk());
+        assertFalse("空号发出去就是五颗不能按的按钮", ((String) field("climateToken")).isEmpty());
+    }
+
+    // ================================================================= 座椅按钮按下去
+
+    /** 号码对得上的座椅按钮走命令那条路（这里车没停着，所以回的是「车没停稳」）。 */
+    @Test
+    public void aFreshSeatButtonGoesThroughTheCommandPath() throws Exception {
+        setClimateToken(GuardToken.mint(81L));
+
+        alerts.onAlertButton(AlertButton.data(AlertButton.ACTION_SEAT_HEAT_LEFT, GuardToken.mint(81L)));
+
+        assertTrue("按了就得有回话", awaitSend());
+        assertEquals(context.getString(R.string.alert_climate_moving), ShadowNtfySender.sent.get(0));
+    }
+
+    /** 陈的座椅按钮：回现成的「那是上一条警报的按钮」那一句，而且一笔不写。 */
+    @Test
+    public void aStaleSeatButtonAnswersAndWritesNothing() throws Exception {
+        setClimateToken("");
+
+        alerts.onAlertButton(AlertButton.data(AlertButton.ACTION_SEAT_VENT_RIGHT, GuardToken.mint(82L)));
+
+        assertTrue(awaitSend());
+        assertEquals("只发一句", 1, ShadowNtfySender.texts);
+        assertEquals(context.getString(R.string.alert_climate_stale_button), ShadowNtfySender.sent.get(0));
+        assertNull("过期按钮不排任何事", pending());
+        assertFalse("也不许声称空调开着", believedOn());
+    }
+
+    /** 写完座椅那一句：说车受理了什么，几档。 */
+    @Test
+    public void theSeatReplyNamesWhatTheCarAccepted() throws Exception {
+        alerts.onSeatReport(seatReport(ClimateSource.Outcome.DONE, true, false),
+                AlertButton.ACTION_SEAT_HEAT_LEFT);
+
+        assertTrue(awaitSend());
+        assertEquals(context.getString(R.string.alert_climate_seat_done,
+                        context.getString(R.string.alert_climate_seat_btn_driver_heat),
+                        config.getAlertsClimateSeatLevel()),
+                ShadowNtfySender.sent.get(0));
+    }
+
+    /** 车机不受理：就说这一句，不报温度也不报档位。 */
+    @Test
+    public void aRefusedSeatButtonSaysTheCarRefused() throws Exception {
+        alerts.onSeatReport(seatReport(ClimateSource.Outcome.REFUSED, false, false),
+                AlertButton.ACTION_SEAT_HEAT_RIGHT);
+
+        assertTrue(awaitSend());
+        assertEquals(context.getString(R.string.alert_climate_seat_refused),
+                ShadowNtfySender.sent.get(0));
+    }
+
+    /** 关座椅：回的是「两个都关了」。 */
+    @Test
+    public void theSeatOffReplySaysBothSeatsAreOff() throws Exception {
+        alerts.onSeatReport(seatReport(ClimateSource.Outcome.DONE, true, true),
+                AlertButton.ACTION_SEAT_OFF);
+
+        assertTrue(awaitSend());
+        assertEquals(context.getString(R.string.alert_climate_seat_off_done),
+                ShadowNtfySender.sent.get(0));
+    }
+
+    /**
+     * 一颗座椅按钮要写什么：档位从设置来（不是按钮里写死的数），soff 是 0 档、前排两个都写。
+     *
+     * The level a seat button writes comes from the settings, not from a number baked into the button, and
+     * "seats off" is level 0 on both front seats.
+     */
+    @Test
+    public void theSeatPlanComesFromTheSettings() {
+        config.setAlertsClimateSeatLevel(3);
+
+        ClimateSource.Seats heat = alerts.seatPlan(AlertButton.ACTION_SEAT_HEAT_RIGHT);
+        assertFalse(heat.left);
+        assertTrue(heat.right);
+        assertTrue(heat.heat);
+        assertEquals(3, heat.level);
+
+        ClimateSource.Seats vent = alerts.seatPlan(AlertButton.ACTION_SEAT_VENT_LEFT);
+        assertTrue(vent.left);
+        assertFalse(vent.right);
+        assertFalse("通风不是加热", vent.heat);
+        assertEquals(3, vent.level);
+
+        ClimateSource.Seats off = alerts.seatPlan(AlertButton.ACTION_SEAT_OFF);
+        assertTrue(off.left);
+        assertTrue(off.right);
+        assertEquals("0 档就是关", 0, off.level);
+
+        assertNull(alerts.seatPlan(AlertButton.climateAction(22f)));
+    }
+
+    // ================================================================= 在家那一条门不碰聊天
+
+    /**
+     * 车在家、而且「在家也发通知」关着：车主在聊天里发的 {@code ac} 回执照发。
+     *
+     * <p>那一条门只管<b>警报</b>，不管车主自己问的话。把门写宽一点，车在家就叫不动空调、问一句
+     * 也没人答 —— 那不是静音，那是关机。</p>
+     *
+     * At home with at-home notifications off, a chat receipt still goes out: the gate covers alerts, never the
+     * answer to the owner's own command.
+     */
+    @Test
+    public void theAtHomeGateDoesNotSilenceAChatReceipt() throws Exception {
+        atHome();
+
+        onClimateReport(report(ClimateSource.Outcome.DONE, 22f, true, true, false), 22, false, false, 0);
+
+        assertTrue("车主自己问的那一句要有人答", awaitSend());
+        assertEquals("回执照发一条", 1, ShadowNtfySender.texts);
+    }
+
+    /** 把车摆在「在家」那一格：家和定位都摆好，而且真的读出 HOME（不然这条测试是空过）。 */
+    private void atHome() throws Exception {
+        config.setAlertsGuardHome(51.500000, -0.120000);
+        config.setAlertsNotifyAtHome(false);
+        set("guardFixLat", 51.500000);
+        set("guardFixLon", -0.120000);
+        set("guardFixAtMs", android.os.SystemClock.elapsedRealtime());
+        java.lang.reflect.Method m = SentryAlerts.class.getDeclaredMethod("guardWhere");
+        m.setAccessible(true);
+        assertEquals("车该读成在家", com.kooo.evcam.alarm.guard.GuardHome.Where.HOME,
+                m.invoke(alerts));
+    }
+
     // ================================================================= 小工具
 
+    /** 座椅那一笔的报告（没碰空调）。 */
+    private static ClimateSource.Report seatReport(ClimateSource.Outcome outcome, boolean left,
+                                                   boolean right) {
+        return new ClimateSource.Report(outcome, 0f, false, false, false, left, right, "test");
+    }
+
     private static ClimateSource.Report report(ClimateSource.Outcome outcome, float targetC,
-                                               boolean powerOn, boolean powerWrote, boolean seatWrote) {
-        return new ClimateSource.Report(outcome, targetC, powerOn, powerWrote, seatWrote, "test");
+                                               boolean powerOn, boolean powerWrote, boolean seatLeft) {
+        return new ClimateSource.Report(outcome, targetC, powerOn, powerWrote, powerWrote,
+                seatLeft, false, "test");
+    }
+
+    /** 两个前排座椅都受理了的报告（设置里是 {@code both} 时回执就是这么来的）。 */
+    private static ClimateSource.Report reportBothSeats(ClimateSource.Outcome outcome, float targetC,
+                                                         boolean powerOn, boolean powerWrote) {
+        return new ClimateSource.Report(outcome, targetC, powerOn, powerWrote, powerWrote, true, true,
+                "test");
     }
 
     private static boolean awaitSend() throws InterruptedException {

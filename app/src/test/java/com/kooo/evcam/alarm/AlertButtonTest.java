@@ -67,6 +67,12 @@ public class AlertButtonTest {
             String data = AlertButton.data(AlertButton.climateAction(target), TOKEN);
             assertTrue(data, data.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 64);
         }
+        for (String seat : new String[] {AlertButton.ACTION_SEAT_HEAT_LEFT,
+                AlertButton.ACTION_SEAT_HEAT_RIGHT, AlertButton.ACTION_SEAT_VENT_LEFT,
+                AlertButton.ACTION_SEAT_VENT_RIGHT, AlertButton.ACTION_SEAT_OFF}) {
+            String data = AlertButton.data(seat, TOKEN);
+            assertTrue(data, data.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 64);
+        }
     }
 
     /**
@@ -93,6 +99,51 @@ public class AlertButtonTest {
         String payload = AlertButton.data(AlertButton.climateAction(22.5f), TOKEN);
         assertEquals(22.5f, AlertButton.climateTarget(AlertButton.actionFor(payload, TOKEN)), 0f);
         assertEquals("ac22_5", AlertButton.climateActionOf(payload));
+    }
+
+    /**
+     * 回执下面那五颗座椅按钮：五个动作、五个 callback_data，编出去再解回来都是一个东西，而且都在 64 字节以内。
+     *
+     * <p>一颗按钮是一个动作，不是「几百度」：把它们塞进 {@code ac} 那个前缀里，{@code climateTarget} 就会拿一个
+     * 座椅动作去解温度。</p>
+     *
+     * The five seat buttons under a receipt: five actions, five payloads, round-tripped and inside Telegram's
+     * 64-byte limit. A seat button is an action, not a temperature — folding it into the {@code ac} prefix
+     * would have the temperature parser read a seat as degrees.
+     */
+    @Test
+    public void theSeatButtonsRoundTrip() {
+        for (String action : new String[] {AlertButton.ACTION_SEAT_HEAT_LEFT,
+                AlertButton.ACTION_SEAT_HEAT_RIGHT, AlertButton.ACTION_SEAT_VENT_LEFT,
+                AlertButton.ACTION_SEAT_VENT_RIGHT, AlertButton.ACTION_SEAT_OFF}) {
+            String payload = AlertButton.data(action, TOKEN);
+            assertTrue(action, AlertButton.isSeatAction(action));
+            assertEquals(action, AlertButton.actionFor(payload, TOKEN));
+            assertEquals("不看号码也能认出是座椅按钮", action, AlertButton.seatActionOf(payload));
+            assertTrue("长度上限 64 字节: " + payload,
+                    payload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 64);
+            assertEquals("座椅动作没有温度：解温度必须是否", -1f, AlertButton.climateTarget(action), 0f);
+            assertNull("不是空调按钮", AlertButton.climateActionOf(payload));
+        }
+        assertEquals("shl", AlertButton.ACTION_SEAT_HEAT_LEFT);
+        assertEquals("shr", AlertButton.ACTION_SEAT_HEAT_RIGHT);
+        assertEquals("svl", AlertButton.ACTION_SEAT_VENT_LEFT);
+        assertEquals("svr", AlertButton.ACTION_SEAT_VENT_RIGHT);
+        assertEquals("soff", AlertButton.ACTION_SEAT_OFF);
+    }
+
+    /** 陈的座椅按钮：号码对不上就不办（但能认出来，好在聊天里回一句话）。 */
+    @Test
+    public void anOlderAlertsSeatButtonDoesNothing() {
+        String older = GuardToken.mint(1_600_000_000_000L);
+        String payload = AlertButton.data(AlertButton.ACTION_SEAT_HEAT_LEFT, older);
+
+        assertNull(AlertButton.actionFor(payload, TOKEN));
+        assertEquals(AlertButton.ACTION_SEAT_HEAT_LEFT, AlertButton.seatActionOf(payload));
+        assertNull("座椅动作不能被当成照片那一排的", AlertButton.actionFor(payload, ""));
+        assertNull(AlertButton.seatActionOf("a:ac22:" + TOKEN));
+        assertNull(AlertButton.seatActionOf("a:hq:" + TOKEN));
+        assertNull(AlertButton.seatActionOf(null));
     }
 
     /** 陈的、认不出来的动作还是 -1：不猜温度。 A stale or unknown action is still -1: nothing is guessed. */

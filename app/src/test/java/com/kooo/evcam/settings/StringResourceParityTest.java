@@ -125,10 +125,24 @@ public class StringResourceParityTest {
      * {@code _failed}（那一行探针、它的行尾、对话框标题、跑不起来那一句），都是停车警报的文案，阿语照旧留到单独一轮。
      * 397 + 4 = 401。</p>
      *
-     * <p>The probe added four: the row title, its summary, the dialog title, and the "could not run"
-     * sentence — all Alerts copy, so Arabic stays in the documented separate pass: 397 + 4 = 401.</p>
+     * <p>座椅那一轮改了十五条、删了两条，净 +14：删的是 {@code alert_climate_seat_heat} / {@code _vent}
+     * （只说「主驾」，而现在回执要说清楚哪几个座椅受理了）；加的是六个回执短语（加热、通风 × 主驾、副驾、两个）、
+     * 回执后面那句问句、它那五颗按钮、三句回话（受理了、关了、不受理），以及设置里的第三项
+     * {@code opt_alerts_climate_seats_both}。都是停车警报的文案，阿语照旧留到单独一轮。401 + 14 = 415。</p>
+     *
+     * <p>The seat pass replaced two receipt clauses (driver only, when the receipt now has to say which seats
+     * took the write) with six, and added the seat question, its five button labels, three replies, and the
+     * third seat setting. All Alerts copy, so Arabic stays in the documented separate pass: 401 + 14 = 415.</p>
+     * <p>At-home 那一轮又加了六条：三页各一行说明的标题与正文（{@code set_alerts_notifications_note_title/_summary}、
+     * {@code set_alerts_sentry_note_title/_summary}），以及通知页那个开关的标题与行尾
+     * （{@code set_alerts_notify_at_home_title/_summary}）。都是停车警报的文案，阿语照旧留到单独一轮：
+     * 415 + 6 = 421。</p>
+     *
+     * <p>The at-home pass added six: a title and a body for the Sentry and Notifications explainers, and the
+     * title and summary of the notify-at-home switch. All Alerts copy, so Arabic stays in the documented
+     * separate pass: 415 + 6 = 421.</p>
      */
-    private static final int PENDING_ARABIC_COUNT = 401;
+    private static final int PENDING_ARABIC_COUNT = 421;
 
     /**
      * 温度那一批占位符必须收「已经写好的数字」（{@code %1$s}），不能是 {@code %d}。

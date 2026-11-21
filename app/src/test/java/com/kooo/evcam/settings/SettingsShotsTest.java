@@ -657,6 +657,11 @@ public class SettingsShotsTest {
                 notifications.findPreference("cat_alerts_when"));
         assertNull("通知这一页没有车厢温度那一组",
                 notifications.findPreference("cat_alerts_climate"));
+        // 三页都在最上面有一行说明（不可点、上面没有组名），通知那页的「在家也发通知」紧排在它后面。
+        // Every page opens with its explainer; the at-home switch sits right under the notifications one.
+        assertFirstRowIsTheNote(notifications, "pref_alerts_notifications_note");
+        assertEquals("说明后面就是「在家也发通知」", "pref_alerts_notify_at_home",
+                notifications.getPreferenceScreen().getPreference(1).getKey());
         File notificationShot = Shots.save(shotActivity, "settings-alerts-notifications-" + tag);
         assertTrue(notificationShot + " 是空的", notificationShot.length() > 10_000);
 
@@ -671,10 +676,11 @@ public class SettingsShotsTest {
         }
         assertNull("检查不在哨兵这一页", sentry.findPreference("cat_alerts_checks"));
         assertNull("检查那几行也不在", sentry.findPreference("pref_alerts_probe"));
+        assertFirstRowIsTheNote(sentry, "pref_alerts_sentry_note");
         File sentryShot = Shots.save(shotActivity, "settings-alerts-sentry-" + tag);
         assertTrue(sentryShot + " 是空的", sentryShot.length() > 10_000);
 
-        // 车厢温度：开关第一行，四个数值是拖动条，其余几项还是下拉框；检查不在这一页。
+        // 车厢温度：第一行是这一页的说明（三页一样），第二行才是开关；四个数值是拖动条，其余几项还是下拉框；检查不在这一页。
         SettingsPreferenceFragment climate = alertsChildPage(qualifiers, true,
                 com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_climate_page",
                 CHILD_CLIMATE, R.string.set_alerts_page_climate,
@@ -682,8 +688,10 @@ public class SettingsShotsTest {
         androidx.preference.PreferenceGroup screen = climate.getPreferenceScreen();
         assertNull("页名已经说了这一页是什么，组名不再重复一遍",
                 climate.findPreference("cat_alerts_climate"));
-        assertEquals("第一行是这一组自己的开关", "pref_alerts_climate",
+        assertEquals("第一行是这一页的说明（三页同一个位置）", "pref_alerts_climate_note",
                 screen.getPreference(0).getKey());
+        assertEquals("第二行才是这一组自己的开关", "pref_alerts_climate",
+                screen.getPreference(1).getKey());
         sliderShows(climate, "pref_alerts_climate_hot", 25, 40, 30, "30 °C");
         sliderShows(climate, "pref_alerts_climate_cold", -10, 15, 5, "5 °C");
         // 目标温度那根是半度一格的：一格半度，所以 22.0 是第 44 格，行尾写一位小数。
@@ -762,6 +770,26 @@ public class SettingsShotsTest {
         return String.format(java.util.Locale.US, "%.1f", celsius);
     }
 
+    /**
+     * 这一页的第一行是那一页的说明：不可点，而且上面没有组名。
+     *
+     * <p>三页都是这个形状（ui-spec §十六），所以三个调用处说的是同一句话 —— 哪一页的说明被挤到下面、
+     * 或者被包进一个组里，这里就红。</p>
+     *
+     * The page opens with its explainer: not selectable, and no category above it. All three pages share the
+     * shape, so the same check says the same thing three times.
+     */
+    private static void assertFirstRowIsTheNote(SettingsPreferenceFragment page, String key) {
+        androidx.preference.PreferenceGroup screen = page.getPreferenceScreen();
+        assertEquals("第一行该是说明 " + key, key, screen.getPreference(0).getKey());
+        Preference note = page.findPreference(key);
+        assertNotNull("少了说明那一行 " + key, note);
+        assertFalse(key + " 只是说明，点不动", note.isSelectable());
+        assertTrue(key + " 该看得见", note.isVisible());
+        assertFalse(key + " 上面不该有组名",
+                screen.getPreference(0) instanceof androidx.preference.PreferenceCategory);
+    }
+
     /** 一根拖动条：最小、最大、现在的值、行尾。 */
     private static void sliderShows(SettingsPreferenceFragment page, String key, int min, int max,
                                     int value, String summary) {
@@ -828,6 +856,7 @@ public class SettingsShotsTest {
                     config.setAlertsClimateMinutes(10);
                 });
         assertTrue("开关本身要在", shown(climate, "pref_alerts_climate"));
+        assertFirstRowIsTheNote(climate, "pref_alerts_climate_note");
         for (String key : CLIMATE_ROWS) {
             assertTrue("这一组开着时该有 " + key, shown(climate, key));
         }
@@ -974,6 +1003,44 @@ public class SettingsShotsTest {
         } finally {
             DeveloperMode.lock(context);
         }
+    }
+
+    /**
+     * 「在家也发通知」只在通知那一页上，而且开关跟着存着的值。
+     *
+     * <p>它管的是消息；「在家要不要把哨兵模式打开」是哨兵那一页上的另一行（{@code pref_alerts_guard_everywhere}）。
+     * 两行一个开关两个意思，所以两个都在的位置不能串。</p>
+     *
+     * The at-home switch lives on the notifications page only and follows the stored value; the row about
+     * switching Sentry Mode on at home is a different row on a different page.
+     */
+    @Test
+    public void theAtHomeSwitchLivesOnTheNotificationsPage() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        SettingsPreferenceFragment on = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_notifications",
+                CHILD_NOTIFICATIONS, R.string.set_alerts_page_notifications,
+                config -> config.setAlertsNotifyAtHome(true));
+        Preference row = on.findPreference("pref_alerts_notify_at_home");
+        assertNotNull("少了「在家也发通知」那一行", row);
+        assertTrue("这一行该看得见", row.isVisible());
+        assertTrue("开关跟着存着的值",
+                ((androidx.preference.SwitchPreferenceCompat) row).isChecked());
+        assertNotNull("得接上线", row.getOnPreferenceChangeListener());
+        assertTrue("行尾要说清楚后果: " + row.getSummary(),
+                String.valueOf(row.getSummary()).length() > 10);
+
+        SettingsPreferenceFragment sentry = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
+                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
+                });
+        assertNull("哨兵那一页没有这一行：它管消息，不管哨兵模式",
+                sentry.findPreference("pref_alerts_notify_at_home"));
+        assertNotNull("「在家也开哨兵」还在哨兵那一页",
+                sentry.findPreference("pref_alerts_guard_everywhere"));
+
+        // 收尾：这些都在同一份设置里，别把后面的测试带跑。
+        new AppConfig(RuntimeEnvironment.getApplication()).setAlertsNotifyAtHome(false);
     }
 
     /** 走 ntfy 出口的通知那一页。The notifications page with the ntfy exit. */
