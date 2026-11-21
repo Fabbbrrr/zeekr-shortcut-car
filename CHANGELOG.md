@@ -11,6 +11,14 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.16.2-fab-beta] - 2026-11-21
+
+- Alerts: `ac 22` said "the car refused the command" although the car accepts it. The probe showed why:
+  the temperature-range ids answer `255` (their "unknown" placeholder) on the integer channel, and that
+  was read as "the range is 255..255", so every target looked out of range. Placeholders and impossible
+  values are no longer treated as a range; the target is written and verified by readback, which on this
+  car answers in 250 ms.
+
 ## [4.16.1-fab-beta] - 2026-11-21
 
 - Alerts: **a climate probe**, under Settings → Alerts → Climate. When `ac` answers "the car refused the

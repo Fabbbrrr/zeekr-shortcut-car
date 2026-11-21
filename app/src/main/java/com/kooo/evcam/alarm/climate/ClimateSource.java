@@ -300,7 +300,7 @@ public final class ClimateSource {
                 Float minInt = readFloatOrInt(minId, driver, "min(int)");
                 Float maxInt = readFloatOrInt(maxId, driver, "max(int)");
                 Float stepInt = readFloatOrInt(stepId, driver, "step(int)");
-                if (minInt != null && maxInt != null && minInt <= maxInt) {
+                if (minInt != null && maxInt != null && minInt <= maxInt && maxInt - minInt >= 1f) {
                     min = minInt;
                     max = maxInt;
                     // 整型通道没有 0.5：读到 0 或者读不到就按 1 度算，读回那一关会用半度容差兜住。
@@ -451,7 +451,14 @@ public final class ClimateSource {
                 return null;
             }
             Integer v = read(id, zone, label);
-            return v == null ? null : (float) v;
+            // 占位值不是读数：车上实测范围那几个号整型通道回 255（= 未知），
+            // 4.16.1 把它当成「范围就是 255..255」，于是每一条 ac 22 都被判成超出范围拒掉。
+            // A placeholder is not a reading: on the car these ids answer 255 on the integer channel,
+            // and 4.16.1 read that as "the range is 255..255", so every ac 22 was refused as out of range.
+            if (v == null || !plausible(v)) {
+                return null;
+            }
+            return (float) v;
         }
 
         /** 读一个浮点通道的号、记一笔（范围、步长走它：温度类只有这个通道带着小数）。 */
@@ -505,6 +512,18 @@ public final class ClimateSource {
      * when the setpoint cannot be read. Nobody sets a cabin to 45 °C — the top stop is 31–32 — so above
      * 45 must be Fahrenheit.
      */
+    /**
+     * 一个整型读数像不像温度范围：-20..60 之外、或者本来就是占位值的，都不是。
+     *
+     * <p>分界照这台车：最低 16、最高 31；-20..60 给别的车型留出余量，又挡住 255、-1、-65535。</p>
+     *
+     * Whether an integer reading could be a temperature range: outside -20..60, or a placeholder, it
+     * cannot be. The car sits at 16..31; -20..60 leaves room for other models and blocks 255/-1/-65535.
+     */
+    static boolean plausible(int value) {
+        return value >= -20 && value <= 60;
+    }
+
     static boolean speaksFahrenheit(Float setpointBefore, Integer unit, Integer unitF) {
         if (setpointBefore != null) {
             return setpointBefore > 45f;

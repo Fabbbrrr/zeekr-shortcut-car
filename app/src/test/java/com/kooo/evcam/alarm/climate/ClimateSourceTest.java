@@ -224,6 +224,32 @@ public class ClimateSourceTest {
         assertTrue(report.detail, report.detail.contains("range 16.0..31.0"));
     }
 
+    /**
+     * 车上实测（2026-11-21，探针）：范围那几个号整型通道回 255，浮点通道回 ?；设定值 19.5 写得进去。
+     *
+     * <p>4.16.1 把 255 当成范围（255..255），于是每条 {@code ac 22} 都回「车机不受理」。</p>
+     *
+     * Measured on the car: the range ids answer 255 on the integer channel and nothing on the float one,
+     * while the setpoint writes fine at 19.5. 4.16.1 took 255 as the range, so every ac 22 was refused.
+     */
+    @Test
+    public void aPlaceholderRangeIsNotARange() {
+        FakeCar car = car();
+        car.floats.remove(TEMP_MIN + "@" + DRIVER);
+        car.floats.remove(TEMP_MAX + "@" + DRIVER);
+        car.floats.remove(TEMP_STEP + "@" + DRIVER);
+        car.putInt(TEMP_MIN, DRIVER, 255);
+        car.putInt(TEMP_MAX, DRIVER, 255);
+        car.putInt(TEMP_STEP, DRIVER, 255);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22f, true, true));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22f, report.targetC, 1e-3f);
+        assertTrue(car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.0"));
+        assertTrue(report.detail, report.detail.contains("range unknown"));
+    }
+
     @Test
     public void aMissingStepNameDoesNotBlockTheWrite() {
         FakeCar car = car();
