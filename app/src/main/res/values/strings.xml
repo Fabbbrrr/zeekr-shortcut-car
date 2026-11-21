@@ -153,7 +153,7 @@
     <string name="alert_climate_receipt_off">空调关了。</string>
     <string name="alert_climate_seat_heat">，主驾座椅加热</string>
     <string name="alert_climate_seat_vent">，主驾座椅通风</string>
-    <string name="alert_climate_btn">空调 %1$d°</string>
+    <string name="alert_climate_btn">空调 %1$s°</string>
     <string name="alert_climate_btn_off">关</string>
     <string name="alert_climate_refused">车机不受理这次写入（%1$s）。</string>
     <string name="alert_climate_refused_plain">车机不受理这条命令，什么都没改。</string>
@@ -1663,7 +1663,7 @@
     <string name="set_alerts_hub_sentry_delay">锁车后 %1$s布防</string>
     <string name="set_alerts_hub_watched">看着 %1$d 项</string>
     <string name="set_alerts_hub_climate_hot">高于 %1$d °C 提醒</string>
-    <string name="set_alerts_hub_climate_target">目标 %1$d °C</string>
+    <string name="set_alerts_hub_climate_target">目标 %1$s °C</string>
     <string name="set_alerts_climate_title">车厢温度警报</string>
     <string name="set_alerts_climate_summary">只在停着、哨兵模式开着时能用 —— 那时候车机才醒着</string>
     <string name="set_alerts_climate_hot_title">太热</string>
@@ -1686,7 +1686,7 @@
     <string name="set_alerts_climate_note_summary">叫一次开 %1$d 分钟，到点它自己关，关不掉我会告诉你；不会有任何东西自己开起来；要哨兵模式开着，车才听得见</string>
     <string name="opt_alerts_climate_seats_off">不动座椅</string>
     <string name="opt_alerts_climate_seats_driver">只主驾</string>
-    <string name="opt_alerts_climate_degrees">%d °C</string>
+    <string name="opt_alerts_climate_degrees">%1$s °C</string>
     <string name="opt_alerts_climate_minutes">%d 分钟</string>
     <string name="opt_alerts_climate_soc">%d%%</string>
     <string name="opt_alerts_climate_level">%d 档</string>

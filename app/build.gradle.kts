@@ -40,10 +40,10 @@ android {
         // 标错等于把一个没验证过的版本推给一台正在用的车机。
         // fork 构建：版本号永远排在上游之上，后缀带 -fab 标记（update.VersionName 认这个标记，
         // 打开「更新从自己的 fork 取」时只认带标记的版本，上游的版本号再大也不会被当成更新）。
-        versionCode = 403
+        versionCode = 404
         // 版本号从 0.1.0 重新起算；代码基座为 EVCam 1.6.6 (0876b97)
         // 每次同步上游后把第二段抬到上游之上：上游 4.12.1 → fork 4.13.0-fab-beta
-        versionName = "4.15.1-fab-beta"
+        versionName = "4.16.0-fab-beta"
     }
 
     buildTypes {
@@ -63,6 +63,51 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+}
+
+// ---- Robolectric 的 android-all 包：构建期解析，测试期不联网 ----
+// 所有 Robolectric 测试都写着 @Config(sdk = 34)。默认情况下 Robolectric 在跑测试的时候
+// 才去 Maven Central 下载对应的 android-all 包，下载失败就让整个类报错
+// （CI 上见过：org.robolectric.internal.dependency.MavenArtifactFetcher.java:129，
+// 同一个 commit 上 tag 构建绿、main 推送红）。所以把这个包改成普通的构建期依赖：
+// Gradle 负责下载、缓存、重试，然后复制到 build/robolectric-deps，测试只从那里取。
+//
+// 版本号是量出来的，不是猜的：本机 ~/.m2 里 Robolectric 4.16 为 sdk 34 实际下载的就是
+// org.robolectric:android-all-instrumented:14-robolectric-10818077-i7；
+// 与 robolectric-4.16.jar 内 DefaultSdkProvider 的映射一致
+// （Android 14 = API 34 = org.robolectric.versioning.AndroidVersions$U，内部版本 10818077；
+// -i7 后缀表示预插桩包，Robolectric 4.16 默认用它）。
+// 若测试换了 sdk，这里不会静默放过：下面 doLast 的 check 会直接报错。
+val robolectricAndroidAllVersion = "14-robolectric-10818077-i7"
+val robolectricAndroidAllJar = "android-all-instrumented-$robolectricAndroidAllVersion.jar"
+
+// 独立的可解析配置：只用来拿这一个 jar，不进测试 classpath
+val robolectricDeps by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+}
+
+val robolectricDepsDir = layout.buildDirectory.dir("robolectric-deps")
+
+val prepareRobolectricDeps = tasks.register<Sync>("prepareRobolectricDeps") {
+    group = "verification"
+    description = "把 Robolectric 的 android-all 包复制到 build/robolectric-deps，供离线测试使用"
+    from(robolectricDeps)
+    into(robolectricDepsDir)
+    doLast {
+        val jar = robolectricDepsDir.get().asFile.resolve(robolectricAndroidAllJar)
+        check(jar.isFile) {
+            "离线测试用的 android-all 包不存在: $jar —— 这是构建问题，不是测试失败，不要跳过"
+        }
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    dependsOn(prepareRobolectricDeps)
+    // robolectric.offline + robolectric.dependency.dir 是 Robolectric 4.16 的
+    // LegacyDependencyResolver 认的两个系统属性：离线时只从目录里取 <artifactId>-<version>[-分类].jar
+    systemProperty("robolectric.offline", "true")
+    systemProperty("robolectric.dependency.dir", robolectricDepsDir.get().asFile.absolutePath)
 }
 
 dependencies {
@@ -100,4 +145,9 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+
+    robolectricDeps("org.robolectric:android-all-instrumented:$robolectricAndroidAllVersion") {
+        // 只需要那一个 jar，不拉传递依赖
+        isTransitive = false
+    }
 }

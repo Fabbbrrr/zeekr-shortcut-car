@@ -11,6 +11,15 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.16.0-fab-beta] - 2026-11-20
+
+- Alerts: **half degrees**. Your car holds 19.5 °C, so `ac 22.5` now works — `ac 22` and `ac 22.5`
+  both parse, the target slider moves in half-degree steps from 16.0 to 30.0, and the receipt and the
+  `ac` report print one decimal. Values like `22.25` or `22.` are still refused rather than rounded.
+- Build: the unit-test job no longer downloads Robolectric's android-all jar during the test run. It is
+  pinned as a normal Gradle dependency and handed to the test JVM in offline mode, so a network hiccup
+  can no longer redden the release gate with a class-level `MavenArtifactFetcher` failure.
+
 ## [4.15.1-fab-beta] - 2026-11-20
 
 - Alerts: `ac 22` answered "The car reports Fahrenheit; this build only sets Celsius" on the 7X, because the

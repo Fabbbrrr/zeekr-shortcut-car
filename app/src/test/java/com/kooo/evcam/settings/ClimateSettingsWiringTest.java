@@ -114,6 +114,31 @@ public class ClimateSettingsWiringTest {
     }
 
     /**
+     * 目标温度那根是半度一格的：拖到第 45 格存的是 22.5，行尾写一位小数，而且一样要叫 refresh()。
+     *
+     * <p>这一根和别的不一样（格子是度数的两倍），所以单独钉一条：把它接回整度、或者把 refresh() 删了，
+     * 这里都红。</p>
+     *
+     * The target slider is half a degree per tick: tick 45 stores 22.5, the summary carries one decimal, and
+     * it tells the running alerts just like the others. It is the one slider whose tick count is twice the
+     * Celsius value, so it gets its own check.
+     */
+    @Test
+    public void theTargetSliderStoresHalfDegreesAndTellsTheRunningAlerts() throws Exception {
+        SeekBarPreference target = climatePage().findPreference("pref_alerts_climate_target");
+        assertNotNull("少了目标温度那根拖动条", target);
+        assertNull("开始时没有策略", policy());
+        assertEquals("一格半度：最小值是 32 格", 32, target.getMin());
+        assertEquals("最大值是 60 格", 60, target.getMax());
+
+        assertEquals(Boolean.TRUE, target.callChangeListener(45));
+
+        assertEquals("第 45 格就是 22.5 °C", 22.5f, config.getAlertsClimateTargetC(), 0f);
+        assertEquals("行尾写一位小数", "22.5 °C", String.valueOf(target.getSummary()));
+        assertNotNull("目标温度拖完也要叫 refresh()", policy());
+    }
+
+    /**
      * 只填了 ntfy 的车：这一组开着就该真的开始读车信号，不只是换一份策略。
      *
      * <p>{@code watching} 是「登记了车辆信号」那一个字段：换成 Telegram 没填好的出口时它是 false，

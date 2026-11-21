@@ -444,7 +444,7 @@ public class AlertClimateAutoOffTest {
     private void onClimateReport(ClimateSource.Report report, int targetC, boolean heat, boolean vent,
                                  int session) throws Exception {
         java.lang.reflect.Method m = SentryAlerts.class.getDeclaredMethod("onClimateReport",
-                ClimateSource.Report.class, int.class, boolean.class, boolean.class, int.class);
+                ClimateSource.Report.class, float.class, boolean.class, boolean.class, int.class);
         m.setAccessible(true);
         m.invoke(alerts, report, targetC, heat, vent, session);
     }

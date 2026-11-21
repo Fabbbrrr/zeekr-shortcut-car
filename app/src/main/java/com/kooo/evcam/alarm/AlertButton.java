@@ -42,43 +42,77 @@ public final class AlertButton {
     /** 关空调（回执下面那颗「关掉」）。Switch the climate off: the undo under the receipt. */
     public static final String ACTION_CLIMATE_OFF = "acoff";
 
-    /** 空调按钮的动作前缀，后面跟两整度：{@code ac22}。Climate buttons: the prefix plus whole degrees. */
+    /** 空调按钮的动作前缀，后面跟两整度：{@code ac22}；半度用下划线：{@code ac22_5}。
+     *
+     * Climate buttons: the prefix plus two digits, with an underscore for a half degree. */
     public static final String ACTION_CLIMATE = "ac";
 
     /**
      * 一条温度警报下面那颗按钮要多少度。
      *
      * <p>按钮在聊天记录里躺着，号码（{@link GuardToken} 那一套）只对这一次警报有效；度数写在动作里，
-     * 因为它不是秘密、也不占字节（{@code callback_data} 上限 64 字节）。</p>
+     * 因为它不是秘密、也不占字节（{@code callback_data} 上限 64 字节）。整度写 {@code ac22}，
+     * 半度写 {@code ac22_5}：４个字节就把 0.5 度说清楚了，没有小数点在 callback_data 里。</p>
      *
      * The degrees one button under a temperature alert asks for.
      *
      * <p>The token names the one alert it belongs to; the degrees ride in the action because they are
-     * neither secret nor large (callback_data is capped at 64 bytes).</p>
+     * neither secret nor large (callback_data is capped at 64 bytes). A whole degree is {@code ac22} and
+     * a half is {@code ac22_5}: four bytes say the 0.5 without a decimal point in callback_data.</p>
      */
-    public static String climateAction(int targetC) {
-        return ACTION_CLIMATE + targetC;
+    public static String climateAction(float targetC) {
+        int doubled = Math.round(targetC * 2f);
+        int whole = Math.floorDiv(doubled, 2);
+        if (doubled == whole * 2 || doubled < 0) {
+            return ACTION_CLIMATE + whole;
+        }
+        return ACTION_CLIMATE + whole + "_5";
     }
 
     /**
      * 这颗按钮要多少度。
      *
-     * @return 10..35 之内的度数；不是空调按钮是 -1；是「关掉」那颗是 0
+     * <p>两整度（{@code ac22}）和半度（{@code ac22_5}）都认；不认识的写法一律 -1，不去猜 ——
+     * 一条陈的按钮宁可回一句「那是上一条警报的按钮」，也不能改一个车主没要的温度。</p>
+     *
+     * Both shapes are accepted, {@code ac22} and {@code ac22_5}; anything else is -1, never guessed:
+     * a stale button deserves one sentence back, not a setpoint the owner never asked for.
+     *
+     * @return 10..35 之内的度数（可带半度）；不是空调按钮是 -1；是「关掉」那颗是 0
      */
-    public static int climateTarget(String action) {
+    public static float climateTarget(String action) {
         if (ACTION_CLIMATE_OFF.equals(action)) {
-            return 0;
+            return 0f;
         }
-        if (action == null || action.length() != ACTION_CLIMATE.length() + 2
-                || !action.startsWith(ACTION_CLIMATE)) {
-            return -1;
+        if (action == null || !action.startsWith(ACTION_CLIMATE)) {
+            return -1f;
         }
-        try {
-            int target = Integer.parseInt(action.substring(ACTION_CLIMATE.length()));
-            return target >= 10 && target <= 35 ? target : -1;
-        } catch (NumberFormatException e) {
-            return -1;
+        String digits = action.substring(ACTION_CLIMATE.length());
+        float target;
+        int underscore = digits.indexOf('_');
+        if (underscore < 0) {
+            target = wholeDegrees(digits);
+        } else if (underscore == digits.length() - 2 && digits.charAt(digits.length() - 1) == '5') {
+            float whole = wholeDegrees(digits.substring(0, underscore));
+            target = whole < 0f ? -1f : whole + 0.5f;
+        } else {
+            return -1f;
         }
+        return target >= 10f && target <= 35f ? target : -1f;
+    }
+
+    /** 一两位数；别的都是 -1。 One or two digits; anything else is -1. */
+    private static float wholeDegrees(String text) {
+        if (text.isEmpty() || text.length() > 2) {
+            return -1f;
+        }
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c < '0' || c > '9') {
+                return -1f;
+            }
+        }
+        return Integer.parseInt(text);
     }
 
     /**
@@ -91,7 +125,7 @@ public final class AlertButton {
      * only — "is this an AC button" — so a stale press can be answered instead of ignored. Nothing is
      * ever acted on from this: {@link #actionFor} still holds the strict check.</p>
      *
-     * @return {@link #ACTION_CLIMATE_OFF} / {@code ac10..ac35}；不是空调动作是 {@code null}
+     * @return {@link #ACTION_CLIMATE_OFF} / {@code ac10..ac35}（半度是 {@code ac22_5}）；不是空调动作是 {@code null}
      */
     public static String climateActionOf(String data) {
         if (data == null) {
@@ -105,7 +139,7 @@ public final class AlertButton {
         if (ACTION_CLIMATE_OFF.equals(action)) {
             return action;
         }
-        return climateTarget(action) >= 10 ? action : null;
+        return climateTarget(action) >= 10f ? action : null;
     }
 
     private static final String PREFIX = "a";
@@ -156,7 +190,7 @@ public final class AlertButton {
         if (ACTION_HIGH.equals(action) || ACTION_CLIP_SURROUND.equals(action)) {
             return action;
         }
-        if (ACTION_CLIMATE_OFF.equals(action) || climateTarget(action) >= 10) {
+        if (ACTION_CLIMATE_OFF.equals(action) || climateTarget(action) >= 10f) {
             return action;
         }
         return laneOf(action) == TelegramCommand.ANY_LANE ? null : action;

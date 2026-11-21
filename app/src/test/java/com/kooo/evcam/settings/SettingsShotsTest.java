@@ -532,8 +532,8 @@ public class SettingsShotsTest {
         AppConfig now = new AppConfig(RuntimeEnvironment.getApplication());
         assertTrue("车厢温度那一行该写现在的太热那一档: " + climate,
                 climate.contains(String.valueOf(now.getAlertsClimateHotC())));
-        assertTrue("车厢温度那一行该写现在的目标温度: " + climate,
-                climate.contains(String.valueOf(now.getAlertsClimateTargetC())));
+        assertTrue("车厢温度那一行该写现在的目标温度，一位小数: " + climate,
+                climate.contains(tenths(now.getAlertsClimateTargetC())));
         String sentry = String.valueOf(hub.findPreference("pref_alerts_sentry").getSummary());
         AppConfig sentryNow = new AppConfig(RuntimeEnvironment.getApplication());
         com.kooo.evcam.alarm.policy.TriggerSet watching =
@@ -638,7 +638,7 @@ public class SettingsShotsTest {
         AppConfig fresh = new AppConfig(RuntimeEnvironment.getApplication());
         assertEquals("太热的默认值", 30, fresh.getAlertsClimateHotC());
         assertEquals("太冷的默认值", 5, fresh.getAlertsClimateColdC());
-        assertEquals("目标温度的默认值", 22, fresh.getAlertsClimateTargetC());
+        assertEquals("目标温度的默认值", 22f, fresh.getAlertsClimateTargetC(), 0f);
         assertEquals("电量下限的默认值", 20, fresh.getAlertsClimateSocFloor());
 
         // 通知：两条出口的块、命令那几行、「检查」那一组，都在这一页
@@ -686,7 +686,9 @@ public class SettingsShotsTest {
                 screen.getPreference(0).getKey());
         sliderShows(climate, "pref_alerts_climate_hot", 25, 40, 30, "30 °C");
         sliderShows(climate, "pref_alerts_climate_cold", -10, 15, 5, "5 °C");
-        sliderShows(climate, "pref_alerts_climate_target", 16, 30, 22, "22 °C");
+        // 目标温度那根是半度一格的：一格半度，所以 22.0 是第 44 格，行尾写一位小数。
+        // The target slider is half a degree per tick: 22.0 is tick 44, and the summary carries one decimal.
+        sliderShows(climate, "pref_alerts_climate_target", 32, 60, 44, "22.0 °C");
         sliderShows(climate, "pref_alerts_climate_soc_floor", 20, 99, 20, "20%");
         for (String key : CLIMATE_ROWS) {
             assertTrue("开关开着时该有 " + key, shown(climate, key));
@@ -708,14 +710,37 @@ public class SettingsShotsTest {
                 new AppConfig(RuntimeEnvironment.getApplication()).getAlertsClimateHotC());
         assertEquals("行尾跟着变", "34 °C", String.valueOf(hot.getSummary()));
 
+        // 目标温度那根：拖到第 45 格就是 22.5 度（一格半度），行尾写成一位小数。
+        // The target slider: tick 45 is 22.5 °C (one tick is half a degree), and the summary says one decimal.
+        androidx.preference.SeekBarPreference target = climate.findPreference("pref_alerts_climate_target");
+        target.setValue(45);
+        assertEquals(Boolean.TRUE, target.callChangeListener(45));
+        assertEquals("拖到第 45 格就存下 22.5", 22.5f,
+                new AppConfig(RuntimeEnvironment.getApplication()).getAlertsClimateTargetC(), 0f);
+        assertEquals("行尾写一位小数", "22.5 °C", String.valueOf(target.getSummary()));
+        target.setValue(44);
+        assertEquals(Boolean.TRUE, target.callChangeListener(44));
+        assertEquals("第 44 格就是 22.0", 22f,
+                new AppConfig(RuntimeEnvironment.getApplication()).getAlertsClimateTargetC(), 0f);
+        assertEquals("22.0 也写一位小数，和车上的设定值一样", "22.0 °C",
+                String.valueOf(target.getSummary()));
+
         // 范围外的一律夹到最近的一头（不再是「不在单子上就回默认值」）
         AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
         config.setAlertsClimateHotC(99);
         assertEquals("太热夹到 40", 40, config.getAlertsClimateHotC());
         config.setAlertsClimateColdC(-40);
         assertEquals("太冷夹到 -10", -10, config.getAlertsClimateColdC());
-        config.setAlertsClimateTargetC(5);
-        assertEquals("目标温度夹到 16", 16, config.getAlertsClimateTargetC());
+        config.setAlertsClimateTargetC(5f);
+        assertEquals("目标温度夹到 16", 16f, config.getAlertsClimateTargetC(), 0f);
+        config.setAlertsClimateTargetC(15.9f);
+        assertEquals("15.9 夹到 16.0", 16f, config.getAlertsClimateTargetC(), 0f);
+        config.setAlertsClimateTargetC(30.4f);
+        assertEquals("30.4 夹到 30.0", 30f, config.getAlertsClimateTargetC(), 0f);
+        config.setAlertsClimateTargetC(22.3f);
+        assertEquals("22.3 存进去读出来是 22.5", 22.5f, config.getAlertsClimateTargetC(), 0f);
+        config.setAlertsClimateTargetC(19.5f);
+        assertEquals("半度存得下", 19.5f, config.getAlertsClimateTargetC(), 0f);
         config.setAlertsClimateSocFloor(5);
         assertEquals("电量下限夹到 20", 20, config.getAlertsClimateSocFloor());
         config.setAlertsClimateSocFloor(150);
@@ -725,9 +750,16 @@ public class SettingsShotsTest {
         config.setAlertsClimateEnabled(false);
         config.setAlertsClimateHotC(30);
         config.setAlertsClimateColdC(5);
-        config.setAlertsClimateTargetC(22);
+        config.setAlertsClimateTargetC(22f);
         config.setAlertsClimateSocFloor(20);
         config.setAlertsClipSeconds(0);
+    }
+
+    /** 温度写成一位小数（和界面上一模一样：{@code Locale.US}，小数点不跟着系统语言变）。
+     *
+     * A temperature with one decimal, exactly as the settings row writes it. */
+    private static String tenths(float celsius) {
+        return String.format(java.util.Locale.US, "%.1f", celsius);
     }
 
     /** 一根拖动条：最小、最大、现在的值、行尾。 */

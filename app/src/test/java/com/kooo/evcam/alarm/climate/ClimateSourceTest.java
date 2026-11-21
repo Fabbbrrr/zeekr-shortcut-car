@@ -124,6 +124,89 @@ public class ClimateSourceTest {
         assertTrue(report.detail, report.detail.contains("range unknown"));
     }
 
+    /**
+     * 范围读不到时，车主说的半度原样写下去 —— 这台车的设定值就停在 19.5，四舍五入成 20 就是改他的温度。
+     *
+     * <p>与「范围已知、步长 0.5」那条的区别就在这：车没说自己的格子时，0.5 是底线，不是整度。</p>
+     *
+     * With no range from the car, the owner's half degree is written unchanged: this car holds 19.5, and
+     * rounding that to 20 rewrites their setpoint. Unlike the "step 0.5 known" case, when the car says
+     * nothing about its grid, 0.5 is the floor — not a whole degree.
+     */
+    @Test
+    public void anUnknownRangeWritesAHalfDegreeUnchanged() {
+        FakeCar car = car();
+        car.floats.remove(TEMP_MIN + "@" + DRIVER);
+        car.floats.remove(TEMP_MAX + "@" + DRIVER);
+        car.floats.remove(TEMP_STEP + "@" + DRIVER);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.5f, false, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals("半度不能被平成 22 或 23", 22.5f, report.targetC, 1e-3f);
+        assertTrue(car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.5"));
+        assertTrue(report.detail, report.detail.contains("range unknown"));
+    }
+
+    /** 范围读不到、车主说的是 22.3（只可能是设置里存的旧值）：照 0.5 对齐到 22.5，不是四舍五入成 22。 */
+    @Test
+    public void anUnknownRangeSnapsAnOffGridTargetToHalfADegree() {
+        FakeCar car = car();
+        car.floats.remove(TEMP_MIN + "@" + DRIVER);
+        car.floats.remove(TEMP_MAX + "@" + DRIVER);
+        car.floats.remove(TEMP_STEP + "@" + DRIVER);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.3f, false, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22.5f, report.targetC, 1e-3f);
+        assertTrue(car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.5"));
+    }
+
+    /** 一档 0.5 度的车：22.3 落在 22.5 那一格，而不是四舍五入回 22。 */
+    @Test
+    public void aKnownHalfStepSnapsAQuarterToTheUpperHalf() {
+        FakeCar car = car();
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.3f, false, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals(22.5f, report.targetC, 1e-3f);
+        assertTrue(car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=22.5"));
+    }
+
+    /**
+     * 车机不说范围时的纯函数：半度原样、别的照 0.5 对齐，10–35 之外不写。
+     *
+     * The pure rule for "the car states no range": a half is kept, anything else snaps to 0.5, and
+     * outside 10–35 nothing is written.
+     */
+    @Test
+    public void atLeastPlausibleSnapsToHalfDegrees() {
+        assertEquals(Float.valueOf(22.5f), ClimateSource.atLeastPlausible(22.5f));
+        assertEquals("存了 22.3 读回来是 22.5", Float.valueOf(22.5f), ClimateSource.atLeastPlausible(22.3f));
+        assertEquals(Float.valueOf(23f), ClimateSource.atLeastPlausible(22.9f));
+        assertEquals(Float.valueOf(19.5f), ClimateSource.atLeastPlausible(19.5f));
+        assertEquals(null, ClimateSource.atLeastPlausible(9.5f));
+        assertEquals(null, ClimateSource.atLeastPlausible(35.5f));
+        assertEquals(null, ClimateSource.atLeastPlausible(Float.NaN));
+    }
+
+    /**
+     * 回执和黑匣子那一行都写一位小数：22.5 不能印成 22 或者 23。
+     *
+     * The receipt line and the black-box line both print one decimal: 22.5 never comes out as 22 or 23.
+     */
+    @Test
+    public void reportPrintsOneDecimal() {
+        ClimateSource.Report half = new ClimateSource.Report(
+                ClimateSource.Outcome.DONE, 22.5f, true, true, false, "x");
+        assertTrue(half.toString(), half.toString().contains("target=22.5"));
+        ClimateSource.Report whole = new ClimateSource.Report(
+                ClimateSource.Outcome.DONE, 22f, true, true, false, "x");
+        assertTrue(whole.toString(), whole.toString().contains("target=22.0"));
+    }
+
     @Test
     public void aRangeThatOnlyTheIntegerChannelAnswersIsUsed() {
         FakeCar car = car();
@@ -216,6 +299,27 @@ public class ClimateSourceTest {
         assertEquals(ClimateSource.Outcome.DONE, report.outcome);
         assertEquals("回执说的是摄氏度", 22f, report.targetC, 1e-3f);
         assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=71.6"));
+        assertTrue(report.detail, report.detail.contains("setpoint before 68.0, fahrenheit"));
+    }
+
+    /**
+     * 半度也要换算：华氏车写 22.5 °C 就是 72.5 °F，不是 71 也不是 73；回执还是 22.5 °C。
+     *
+     * <p>换算式本身没改，但半度是新的 —— 以前只有整度走这条，所以单独钉一条。</p>
+     *
+     * Halves convert too: 22.5 °C on a Fahrenheit car is 72.5 °F, not 71 or 73, and the receipt still says
+     * 22.5 °C. The formula is unchanged, but halves are new on this path, so they get their own check.
+     */
+    @Test
+    public void aFahrenheitSetpointConvertsAHalfDegreeTarget() {
+        FakeCar car = car();
+        car.putFloat(TEMP, DRIVER, 68f);
+
+        ClimateSource.Report report = ClimateSource.apply(car, names(), new FakeClock(), on(22.5f, true, false));
+
+        assertEquals(ClimateSource.Outcome.DONE, report.outcome);
+        assertEquals("回执说的是摄氏度", 22.5f, report.targetC, 1e-3f);
+        assertTrue(car.calls.toString(), car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=72.5"));
         assertTrue(report.detail, report.detail.contains("setpoint before 68.0, fahrenheit"));
     }
 

@@ -324,7 +324,7 @@ triggers present. It answers "what does it send" once configured; the three setu
 |---|---|
 | `ac` | 一句话：车厢、车外、目标温度、空调开着没有 |
 | `ac on` | 按设置里的目标温度开（默认 22 °C，可选 20–24），座椅按下面那张表 |
-| `ac on 23` / `ac 23` | 同上，目标 23 °C |
+| `ac on 22.5` / `ac 23` | 同上，目标 23 °C |
 | `ac off` | 关掉，座椅也关 |
 
 警报那条消息下面还有四颗按钮（目标上下各两度，加一颗关掉），带的是这一次警报的号，旧消息上的按钮不做事。
@@ -390,7 +390,7 @@ While the car is parked it already reports cabin and outside temperature, and tw
 enough for three rules: too hot, too cold, and dangerous with somebody seated. Hot and cold need ten
 minutes of fresh samples before speaking, so a sleeping car reports nothing; the danger rule needs 35 °C
 with a front seat occupied or 40 °C regardless, at most three times per park. In the chat, `ac` reads the
-state, `ac on` starts the climate at the configured target, `ac on 23` names one, `ac off` stops it, and
+state, `ac on` starts the climate at the configured target, `ac on 22.5` names one, `ac off` stops it, and
 only whole degrees 10–35 parse. The setpoint goes through the float channel (`CarAccess.writeCustom`),
 because the integer channel is refused by the vendor; the range is read from the car and a missing range
 means no write, and the receipt reports what the car read back rather than what was asked for. The

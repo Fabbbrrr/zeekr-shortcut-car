@@ -27,7 +27,7 @@ import com.kooo.evcam.alarm.media.MotionSensitivity;
  *   <li>{@code guard} 及后面一个词（{@code on} / {@code off} / {@code home} / {@code home clear} /
  *       {@code auto off|ask|then|on} / {@code then}）：忘了开哨兵那一块的事，见 {@link GuardAction}；</li>
  *   <li>{@code ac} / {@code climate} / {@code aircon}，可空，或跟 {@code on} / {@code off} /
- *       一个 10–35 的整数：车主自己开空调，见 {@link ClimateAction}。</li>
+ *       一个 10–35 的整度或半度（{@code 22.5}）：车主自己开空调，见 {@link ClimateAction}。</li>
  * </ul>
  *
  * <p>命令前面的 {@code /}、命令后面的 {@code @BotName}（群里会带）、大小写、前后空白都不计较。
@@ -54,7 +54,7 @@ import com.kooo.evcam.alarm.media.MotionSensitivity;
  *       {@code auto off|ask|then|on} / {@code then}): the forgotten-sentry block, see
  *       {@link GuardAction};</li>
  *   <li>{@code ac} / {@code climate} / {@code aircon}, alone or followed by {@code on} / {@code off} /
- *       a whole number 10–35: the owner switching the climate themselves, see
+ *       a whole or half degree 10–35: the owner switching the climate themselves, see
  *       {@link ClimateAction}.</li>
  * </ul>
  *
@@ -203,14 +203,16 @@ public final class TelegramCommand {
      * {@code /ac} 后面跟的那一个词或者一个温度。
      *
      * <p>光写 {@code ac} 是 {@link #REPORT}；{@link #ON} 可以带一个温度，也可以不带（不带就用设置里
-     * 那个默认温度）。只收整度 10–35：{@code 22.5}、{@code 9}、{@code 36} 都不猜，整句
-     * {@link Verb#UNKNOWN} —— 半度不是「最近的整度」的意思。</p>
+     * 那个默认温度）。只收 10–35 里的整度和半度：{@code 22}、{@code 22.5} 都要，{@code 22.25}、
+     * {@code 22.}、{@code 22,5}、{@code 9.5}、{@code 35.5} 都不猜，整句 {@link Verb#UNKNOWN} ——
+     * 半度是车主真会设的温度（这台车就停在 19.5），但「半个半度」不是。</p>
      *
      * The one word or temperature after {@code /ac}. A bare {@code ac} is {@link #REPORT};
      * {@link #ON} may carry a temperature or leave it out (then the configured default applies).
-     * Only whole degrees 10–35 are accepted: {@code 22.5}, {@code 9} and {@code 36} are not guessed
-     * at, and the whole message becomes {@link Verb#UNKNOWN} — a half degree is not shorthand for the
-     * nearest whole one.
+     * Whole and half degrees 10–35 are accepted: {@code 22} and {@code 22.5} are, and {@code 22.25},
+     * {@code 22.}, {@code 22,5}, {@code 9.5} and {@code 35.5} are not — the whole message becomes
+     * {@link Verb#UNKNOWN}. A half is a temperature a person really sets (this car sits at 19.5); a
+     * quarter is not.
      */
     public enum ClimateAction {
         /** 光写一个 {@code ac}：报一句现在车内什么温度。 Bare {@code ac}: say what the cabin is at. */
@@ -224,21 +226,21 @@ public final class TelegramCommand {
     /**
      * 一条空调命令：做什么，以及要不要指定温度。
      *
-     * <p>{@link #targetC} 为 0 表示车主没有说温度，用设置里的那个默认值；说了就一定在 10–35 之内
-     * （解析时已经卡住）。</p>
+     * <p>{@link #targetC} 为 0 表示车主没有说温度，用设置里的那个默认值；说了就一定在 10–35 之内、
+     * 而且是 0.5 的整数倍（解析时已经卡住）。</p>
      *
      * One climate command: what to do, and whether a temperature was named.
      *
      * <p>{@link #targetC} of 0 means the owner named no temperature and the configured default is
-     * used; a named one is always inside 10–35 (checked while parsing).</p>
+     * used; a named one is always inside 10–35 and a multiple of 0.5 (checked while parsing).</p>
      */
     public static final class Climate {
         /** 问、开、还是关。 Report, turn on, or turn off. */
         public final ClimateAction action;
-        /** 要几度；0 表示车主没说，用设置里的默认值。 The temperature, or 0 when none was named. */
-        public final int targetC;
+        /** 要几度（可以是半度）；0 表示车主没说，用设置里的默认值。 */
+        public final float targetC;
 
-        public Climate(ClimateAction action, int targetC) {
+        public Climate(ClimateAction action, float targetC) {
             this.action = action;
             this.targetC = targetC;
         }
@@ -246,19 +248,25 @@ public final class TelegramCommand {
         @Override
         public String toString() {
             if (action == ClimateAction.ON) {
-                return targetC == 0 ? "ON" : "ON@" + targetC;
+                // 整度照旧写 23，半度写 22.5：日志和测试里读起来一样。
+                // A whole degree prints 23 and a half prints 22.5, so logs and tests read the same.
+                return targetC == 0f ? "ON" : "ON@" + degreesText(targetC);
             }
             return action == null ? "" : action.toString();
         }
     }
 
-    /**
-     * 整度 10–35 的边界，含两端。
+    /** 温度的边界，含两端；半度也在这条线上。
      *
-     * The whole-degree bounds 10–35, both ends included.
-     */
-    static final int CLIMATE_MIN_C = 10;
-    static final int CLIMATE_MAX_C = 35;
+     * The temperature bounds, both ends included; halves are inside them too. */
+    static final float CLIMATE_MIN_C = 10f;
+    static final float CLIMATE_MAX_C = 35f;
+
+    /** 打印温度：整度不带小数点，半度带一位。 Prints a temperature: no point on a whole degree. */
+    static String degreesText(float celsius) {
+        int whole = Math.round(celsius);
+        return celsius == whole ? String.valueOf(whole) : String.valueOf(celsius);
+    }
 
     /**
      * 不指定某一路。
@@ -473,12 +481,12 @@ public final class TelegramCommand {
     /**
      * {@code ac} 及后面的词：不写、{@code on}、{@code off}、{@code on 23}，或者光一个 {@code 23}。
      *
-     * <p>只收整度 10–35，最多一个额外词 —— 和 {@code guard} / {@code alerts} 同一条规矩。
-     * {@code ac 22.5} 不是半度，是听不懂；{@code ac on 22 extra} 也是。</p>
+     * <p>只收 10–35 里的整度和半度（{@code 22}、{@code 22.5}），最多一个额外词 —— 和 {@code guard} /
+     * {@code alerts} 同一条规矩。{@code ac 22.25} 是听不懂；{@code ac on 22 extra} 也是。</p>
      *
      * {@code ac} and the words after it: nothing, {@code on}, {@code off}, {@code on 23}, or a bare
-     * {@code 23}. Only whole degrees 10–35, and at most one extra word — the same rule {@code guard}
-     * and {@code alerts} follow. {@code ac 22.5} is not a half degree, it is unintelligible; so is
+     * {@code 23}. Whole and half degrees 10–35, and at most one extra word — the same rule
+     * {@code guard} and {@code alerts} follow. {@code ac 22.25} is unintelligible; so is
      * {@code ac on 22 extra}.
      */
     private static TelegramCommand parseClimate(String[] words) {
@@ -496,16 +504,16 @@ public final class TelegramCommand {
                 return new TelegramCommand(Verb.CLIMATE, ANY_LANE, null, "", null, 0, null,
                         new Climate(ClimateAction.OFF, 0));
             }
-            int target = thermalTarget(word);
-            if (target >= 0) {
+            float target = thermalTarget(word);
+            if (target >= 0f) {
                 return new TelegramCommand(Verb.CLIMATE, ANY_LANE, null, "", null, 0, null,
                         new Climate(ClimateAction.ON, target));
             }
             return new TelegramCommand(Verb.UNKNOWN, ANY_LANE);
         }
         if (words.length == 3 && "on".equals(words[1].toLowerCase(java.util.Locale.US))) {
-            int target = thermalTarget(words[2].toLowerCase(java.util.Locale.US));
-            if (target >= 0) {
+            float target = thermalTarget(words[2].toLowerCase(java.util.Locale.US));
+            if (target >= 0f) {
                 return new TelegramCommand(Verb.CLIMATE, ANY_LANE, null, "", null, 0, null,
                         new Climate(ClimateAction.ON, target));
             }
@@ -513,10 +521,49 @@ public final class TelegramCommand {
         return new TelegramCommand(Verb.UNKNOWN, ANY_LANE);
     }
 
-    /** 整度 10–35 才算；返回 -1 表示不是。 Only a whole degree inside 10–35 counts; -1 means no. */
-    private static int thermalTarget(String word) {
-        int value = numberOf(word);
-        return value < CLIMATE_MIN_C || value > CLIMATE_MAX_C ? -1 : value;
+    /** 10–35 的整度或半度才算；返回 -1 表示不是。
+     *
+     * A whole or half degree inside 10–35 counts; -1 means no. */
+    static float thermalTarget(String word) {
+        float value = halfDegree(word);
+        return value < CLIMATE_MIN_C || value > CLIMATE_MAX_C ? -1f : value;
+    }
+
+    /**
+     * 半度的写法，只有两种：{@code 22} 和 {@code 22.5}。
+     *
+     * <p>小数点后必须正好一位，而且只能是 0 或 5：{@code 22.25}、{@code 22.}、{@code 22,5}、
+     * {@code .5} 都不认，整句落到 {@link Verb#UNKNOWN}。这里不四舍五入 —— 车主写 22.25 的时候
+     * 想的不是 22 也不是 22.5，猜一个等于替他改了温度。</p>
+     *
+     * The only two shapes a half degree is written in: {@code 22} and {@code 22.5}. Exactly one
+     * decimal digit, and only 0 or 5: {@code 22.25}, {@code 22.}, {@code 22,5} and {@code .5} are all
+     * refused and the whole message becomes {@link Verb#UNKNOWN}. Nothing is rounded here — an owner
+     * typing 22.25 did not mean 22 or 22.5, and choosing one would be rewriting their setpoint.
+     *
+     * @return 度数；-1 表示不是这么写的
+     */
+    static float halfDegree(String word) {
+        if (word == null || word.isEmpty()) {
+            return -1f;
+        }
+        int dot = word.indexOf('.');
+        if (dot < 0) {
+            int whole = numberOf(word);
+            return whole < 0 ? -1f : whole;
+        }
+        if (dot == 0 || dot != word.length() - 2 || word.indexOf('.', dot + 1) >= 0) {
+            return -1f;
+        }
+        char tenth = word.charAt(dot + 1);
+        if (tenth != '0' && tenth != '5') {
+            return -1f;
+        }
+        int whole = numberOf(word.substring(0, dot));
+        if (whole < 0) {
+            return -1f;
+        }
+        return tenth == '5' ? whole + 0.5f : (float) whole;
     }
 
     /**

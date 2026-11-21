@@ -3276,16 +3276,19 @@ public final class SentryAlerts implements Telemetry.Listener {
         guardSend(text, climateMarkup());
     }
 
-    /** 温度警报下面那排按钮：默认目标上下各两度，加一个关掉。 */
+    /** 温度警报下面那排按钮：默认目标上下各两度，加一个关掉。半度的目标还是上下两度。
+     *
+     * The row under a temperature alert: two degrees either side of the configured target, plus off.
+     * A half-degree target still gets two degrees either side. */
     private String climateMarkup() {
-        int target = config.getAlertsClimateTargetC();
-        int low = Math.max(10, target - 2);
-        int high = Math.min(35, target + 2);
-        int[] targets = new int[] {low, target, high};
+        float target = config.getAlertsClimateTargetC();
+        float low = Math.max(10f, target - 2f);
+        float high = Math.min(35f, target + 2f);
+        float[] targets = new float[] {low, target, high};
         String[] labels = new String[4];
         String[] datas = new String[4];
         for (int i = 0; i < targets.length; i++) {
-            labels[i] = app.getString(R.string.alert_climate_btn, targets[i]);
+            labels[i] = app.getString(R.string.alert_climate_btn, degrees(targets[i]));
             datas[i] = AlertButton.data(AlertButton.climateAction(targets[i]), climateToken);
         }
         labels[3] = app.getString(R.string.alert_climate_btn_off);
@@ -3321,7 +3324,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         Readings readings = Telemetry.get().readings();
         Float cabin = readings.number(Signal.TEMP_INSIDE);
         Float outside = readings.number(Signal.TEMP_OUTSIDE);
-        String target = String.valueOf(config.getAlertsClimateTargetC());
+        String target = degrees(config.getAlertsClimateTargetC());
         String state = !climateKnown
                 ? app.getString(R.string.alert_climate_state_unknown)
                 : app.getString(climateBelievedOn
@@ -3338,8 +3341,8 @@ public final class SentryAlerts implements Telemetry.Listener {
         // 再对一次就等于拿动作去比号码，永远对不上 —— 4.14.0 的空调按钮按下去没反应就是这么来的。
         // The token was already checked in onAlertButton, which holds the whole callback_data; re-checking
         // here compares an action against a token, never matches, and 4.14.0's AC buttons did nothing.
-        int target = AlertButton.climateTarget(action);
-        if (target < 0) {
+        float target = AlertButton.climateTarget(action);
+        if (target < 0f) {
             return;
         }
         startClimate(target);
@@ -3355,7 +3358,7 @@ public final class SentryAlerts implements Telemetry.Listener {
      * then queue the write. The main thread never touches the vehicle interface — one write reads back for
      * up to three seconds — so only the snapshot and the settings are read here.</p>
      */
-    private void startClimate(final int targetC) {
+    private void startClimate(final float targetC) {
         AlertChannel channel = channel();
         if (!channel.ready()) {
             blockedChannel(channel);
@@ -3384,7 +3387,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         if (targetC > 0 && cabin != null && climateBelievedOn
                 && Math.abs(cabin - targetC) <= TARGET_BAND_C) {
             deliverText(channel, app.getString(R.string.alert_climate_already,
-                    degrees(cabin), String.valueOf((int) TARGET_BAND_C), String.valueOf(targetC)));
+                    degrees(cabin), String.format(Locale.US, "%.1f", TARGET_BAND_C), degrees(targetC)));
             return;
         }
         boolean seats = targetC > 0 && !"off".equals(config.getAlertsClimateSeats());
@@ -3400,7 +3403,7 @@ public final class SentryAlerts implements Telemetry.Listener {
         final boolean planHeat = heat;
         final boolean planVent = vent;
         final int level = config.getAlertsClimateSeatLevel();
-        final ClimateSource.Plan plan = new ClimateSource.Plan(targetC > 0, Math.max(0, targetC),
+        final ClimateSource.Plan plan = new ClimateSource.Plan(targetC > 0, Math.max(0f, targetC),
                 planSeats, planHeat, planVent, level);
         BlackBox.note("alerts: climate command " + (targetC > 0 ? "on " + targetC : "off"));
         final int session = climateSession;
@@ -3430,7 +3433,7 @@ public final class SentryAlerts implements Telemetry.Listener {
      * <p>"Accepted" and "changed" are two different things, so every outcome is reported. On success the
      * auto-off is scheduled; on failure the reason goes back plainly.</p>
      */
-    private void onClimateReport(ClimateSource.Report report, int targetC, boolean heat, boolean vent,
+    private void onClimateReport(ClimateSource.Report report, float targetC, boolean heat, boolean vent,
                                  int session) {
         if (session != climateSession) {
             // 写的时候车还在停着，读完的时候已经开走了：这一趟不算了，也不要去动自动关。

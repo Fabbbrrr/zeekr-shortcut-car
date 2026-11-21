@@ -477,20 +477,25 @@ public final class ClimateSource {
     // ================================================================= 纯函数
 
     /**
-     * 照车上的范围、步长算要写的温度：超出最小、最大一步以上是不写（返回 null），一步以内算量测的零头，
-     * 夹进范围再照步长对齐（对齐的起点是最小值）。
-     */
-    /**
-     * 车机不说范围时用：只接受一个人类真会设的温度，整度原样返回，别的返回 null。
+     * 车机不说范围时用：只接受一个人类真会设的温度，照 0.5 对齐后返回，越界返回 null。
      *
-     * <p>这不是在猜车上的范围 —— 猜范围指的是写一个谁都没读到的号码；这里是「车主说了 22，就写 22」，
-     * 越界的话车机自己会拒，读回那一关也能看出来。</p>
+     * <p>这不是在猜车上的范围 —— 猜范围指的是写一个谁都没读到的号码；这里是「车主说了 22.5，就写 22.5」，
+     * 越界的话车机自己会拒，读回那一关也能看出来。对齐到半度而不是整度，因为这台车的设定值真的停在 19.5：
+     * 把 19.5 四舍五入成 20 就是替车主改温度，而 0.5 是这种车都肯接受的格子。</p>
      *
-     * When the car states no range: accept a temperature a person would actually set, in whole degrees,
-     * and return it unchanged. This is not guessing at the car's range — a guess would be an unread
-     * number; here the owner asked for 22 and 22 is written, and the car's own refusal shows up in the
-     * readback.
+     * When the car states no range: accept a temperature a person would actually set, snap it to 0.5 and
+     * return it. This is not guessing at the car's range — a guess would be an unread number; here the
+     * owner asked for 22.5 and 22.5 is written, and the car's own refusal shows up in the readback. It
+     * snaps to half a degree rather than a whole one because this car really holds 19.5: rounding that to
+     * 20 rewrites the owner's setpoint, while 0.5 is a grid every such unit accepts.
      */
+    static Float atLeastPlausible(float targetC) {
+        if (Float.isNaN(targetC) || targetC < 10f || targetC > 35f) {
+            return null;
+        }
+        return Math.round(targetC * 2f) / 2f;
+    }
+
     /**
      * 车说哪种单位：设定值 10–45 是摄氏度，超过 45 是华氏；设定值读不到时才看单位号。
      *
@@ -509,13 +514,6 @@ public final class ClimateSource {
 
     static float celsiusToFahrenheit(float celsius) {
         return celsius * 9f / 5f + 32f;
-    }
-
-    static Float atLeastPlausible(float targetC) {
-        if (Float.isNaN(targetC) || targetC < 10f || targetC > 35f) {
-            return null;
-        }
-        return (float) Math.round(targetC);
     }
 
     /**

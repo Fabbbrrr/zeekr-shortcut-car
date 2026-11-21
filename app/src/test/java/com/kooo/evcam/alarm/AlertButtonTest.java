@@ -63,5 +63,50 @@ public class AlertButtonTest {
             String data = AlertButton.data(AlertButton.clipAction(lane), TOKEN);
             assertTrue(data, data.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 64);
         }
+        for (float target : new float[] {10f, 22.5f, 35f}) {
+            String data = AlertButton.data(AlertButton.climateAction(target), TOKEN);
+            assertTrue(data, data.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 64);
+        }
+    }
+
+    /**
+     * 半度写进 callback_data：整度是 {@code ac22}，半度是 {@code ac22_5}，两条都能读回来。
+     *
+     * <p>不用小数点：那不是这串字里该出现的东西，而且 64 字节的上限是拿来给号码的。</p>
+     *
+     * A half degree inside callback_data: {@code ac22} for a whole, {@code ac22_5} for a half, and both
+     * read back. No decimal point — it does not belong in that string, and the 64 bytes are for the token.
+     */
+    @Test
+    public void aHalfDegreeButtonRoundTrips() {
+        assertEquals("ac22", AlertButton.climateAction(22f));
+        assertEquals("ac22_5", AlertButton.climateAction(22.5f));
+        assertEquals("ac10", AlertButton.climateAction(10f));
+        assertEquals("ac34_5", AlertButton.climateAction(34.5f));
+
+        assertEquals(22f, AlertButton.climateTarget("ac22"), 0f);
+        assertEquals(22.5f, AlertButton.climateTarget("ac22_5"), 0f);
+        assertEquals(10.5f, AlertButton.climateTarget("ac10_5"), 0f);
+        assertEquals("关掉那颗是 0", 0f, AlertButton.climateTarget(AlertButton.ACTION_CLIMATE_OFF), 0f);
+
+        // 整条路：编出去、解回来，数字不变
+        String payload = AlertButton.data(AlertButton.climateAction(22.5f), TOKEN);
+        assertEquals(22.5f, AlertButton.climateTarget(AlertButton.actionFor(payload, TOKEN)), 0f);
+        assertEquals("ac22_5", AlertButton.climateActionOf(payload));
+    }
+
+    /** 陈的、认不出来的动作还是 -1：不猜温度。 A stale or unknown action is still -1: nothing is guessed. */
+    @Test
+    public void anUnknownClimateActionIsMinusOne() {
+        assertEquals(-1f, AlertButton.climateTarget(null), 0f);
+        assertEquals(-1f, AlertButton.climateTarget("ac"), 0f);
+        assertEquals(-1f, AlertButton.climateTarget("ac9_5"), 0f);
+        assertEquals(-1f, AlertButton.climateTarget("ac35_5"), 0f);
+        assertEquals(-1f, AlertButton.climateTarget("ac22_0"), 0f);
+        assertEquals(-1f, AlertButton.climateTarget("ac22_25"), 0f);
+        assertEquals(-1f, AlertButton.climateTarget("ac22.5"), 0f);
+        assertEquals(-1f, AlertButton.climateTarget("acabc"), 0f);
+        assertEquals(-1f, AlertButton.climateTarget("hq"), 0f);
+        assertNull(AlertButton.climateActionOf(AlertButton.data("ac22_0", TOKEN)));
     }
 }

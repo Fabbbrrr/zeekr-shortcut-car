@@ -260,46 +260,92 @@ public class TelegramCommandTest {
     @Test
     public void climateReportsTurnsOnAndTurnsOff() {
         assertEquals(TelegramCommand.ClimateAction.REPORT, climate("ac").action);
-        assertEquals("没说温度就是 0", 0, climate("ac").targetC);
+        assertEquals("没说温度就是 0", 0f, climate("ac").targetC, 0f);
         assertEquals(TelegramCommand.ClimateAction.REPORT, climate("climate").action);
         assertEquals(TelegramCommand.ClimateAction.REPORT, climate("/aircon").action);
         assertEquals(TelegramCommand.ClimateAction.ON, climate("ac on").action);
-        assertEquals("ac on 不带度数", 0, climate("ac on").targetC);
+        assertEquals("ac on 不带度数", 0f, climate("ac on").targetC, 0f);
         assertEquals(TelegramCommand.ClimateAction.OFF, climate("ac off").action);
     }
 
     @Test
     public void aClimateOnCanTakeATemperature() {
-        assertEquals(23, climate("ac on 23").targetC);
+        assertEquals(23f, climate("ac on 23").targetC, 0f);
         assertEquals(TelegramCommand.ClimateAction.ON, climate("ac on 23").action);
-        assertEquals(23, climate("ac 23").targetC);
+        assertEquals(23f, climate("ac 23").targetC, 0f);
         assertEquals(TelegramCommand.ClimateAction.ON, climate("ac 23").action);
-        assertEquals("下端", 10, climate("ac 10").targetC);
-        assertEquals("上端", 35, climate("ac 35").targetC);
-        assertEquals("上端带 on", 35, climate("ac on 35").targetC);
-        assertEquals("下端带 on", 10, climate("climate on 10").targetC);
-        assertEquals(22, climate("aircon 22").targetC);
+        assertEquals("下端", 10f, climate("ac 10").targetC, 0f);
+        assertEquals("上端", 35f, climate("ac 35").targetC, 0f);
+        assertEquals("上端带 on", 35f, climate("ac on 35").targetC, 0f);
+        assertEquals("下端带 on", 10f, climate("climate on 10").targetC, 0f);
+        assertEquals(22f, climate("aircon 22").targetC, 0f);
+        assertEquals(20f, climate("climate 20").targetC, 0f);
+    }
+
+    /**
+     * 半度收下来，而且原封不动：这台车的设定值停在 19.5，车主打的 19.5 不是「大概是整 20」。
+     *
+     * <p>四种写法都要：{@code ac 22.5}、{@code ac on 22.5}、{@code ac 22}、{@code ac 23}。</p>
+     *
+     * A half degree is accepted and kept exactly: this car holds 19.5, and 19.5 is not "about 20". All
+     * four shapes work: {@code ac 22.5}, {@code ac on 22.5}, {@code ac 22} and {@code ac 23}.
+     */
+    @Test
+    public void aClimateTargetMayBeAHalfDegree() {
+        assertEquals(22.5f, climate("ac 22.5").targetC, 0f);
+        assertEquals(TelegramCommand.ClimateAction.ON, climate("ac 22.5").action);
+        assertEquals(22.5f, climate("ac on 22.5").targetC, 0f);
+        assertEquals("上下两端的半度", 10.5f, climate("climate on 10.5").targetC, 0f);
+        assertEquals(34.5f, climate("/AC@ZeekrSentry_bot 34.5").targetC, 0f);
+        assertEquals("写 22.0 就是 22", 22f, climate("ac 22.0").targetC, 0f);
+        assertEquals("大写、前后空白都一样", 19.5f, climate("  /Climate   ON   19.5  ").targetC, 0f);
+    }
+
+    /**
+     * 半个半度、缺小数位、逗号小数点：一律听不懂，整句 {@link TelegramCommand.Verb#UNKNOWN}。
+     *
+     * <p>这里不四舍五入：车主写 22.25 时想的不是 22 也不是 22.5，猜一个就是替他改了温度。</p>
+     *
+     * A quarter degree, a missing decimal digit, a comma: all unintelligible, and the whole message is
+     * UNKNOWN. Nothing is rounded — 22.25 meant neither 22 nor 22.5.
+     */
+    @Test
+    public void aQuarterOrABrokenDecimalIsUnknown() {
+        notAClimate("ac 22.25");
+        notAClimate("ac on 22.25");
+        notAClimate("ac 22.");
+        notAClimate("ac 22,5");
+        notAClimate("ac .5");
+        notAClimate("ac 22.55");
+        notAClimate("ac 22.2");
+        notAClimate("ac 22.50");
+        notAClimate("ac 9.5");
+        notAClimate("ac 35.5");
+        notAClimate("ac on 9.5");
+        notAClimate("ac on 35.5");
+        notAClimate("ac 22.5 extra");
     }
 
     @Test
     public void aSlashABotMentionAndCaseDoNotMatterForClimate() {
         assertEquals("群里会写成 /ac@BotName on",
                 TelegramCommand.ClimateAction.ON, climate("/ac@ZeekrSentry_bot on").action);
-        assertEquals(24, climate("/ac@ZeekrSentry_bot 24").targetC);
+        assertEquals(24f, climate("/ac@ZeekrSentry_bot 24").targetC, 0f);
         assertEquals(TelegramCommand.ClimateAction.REPORT, climate("  /AC  ").action);
         assertEquals(TelegramCommand.ClimateAction.OFF, climate("AirCon OFF").action);
-        assertEquals(23, climate("  /CLIMATE   ON   23  ").targetC);
+        assertEquals(23f, climate("  /CLIMATE   ON   23  ").targetC, 0f);
+        assertEquals(TelegramCommand.ClimateAction.REPORT, climate("ac").action);
+        assertEquals("光写 ac 没有温度", 0f, climate("ac").targetC, 0f);
+        assertEquals("ac on 不带度数", 0f, climate("ac on").targetC, 0f);
     }
 
     @Test
     public void aClimateWordOrNumberThatMeansNothingIsUnknown() {
-        // 不猜：半度不是「最近的整度」，边界外的数也不是端点；多一个词整句不认。
-        // No guessing: a half degree is not the nearest whole one and an out-of-range number is not
-        // the end of it; one extra word makes the whole message unknown.
+        // 不猜：边界外的数不是端点，多一个词整句不认（半度那几条在 aQuarterOrABrokenDecimalIsUnknown）。
+        // No guessing: an out-of-range number is not the end of it, and one extra word makes the whole
+        // message unknown. The half-degree shapes have their own test.
         notAClimate("ac 9");
         notAClimate("ac 36");
-        notAClimate("ac 22.5");
-        notAClimate("ac on 22.5");
         notAClimate("ac on 9");
         notAClimate("ac on 36");
         notAClimate("ac on 22 extra");
@@ -326,6 +372,9 @@ public class TelegramCommandTest {
         assertEquals("CLIMATE:OFF", TelegramCommand.parseText("ac off").toString());
         assertEquals("CLIMATE:ON@10", TelegramCommand.parseText("ac 10").toString());
         assertEquals("CLIMATE:ON@35", TelegramCommand.parseText("ac on 35").toString());
+        // 半度打在后面，整度不补 「.0」：日志和旧断言读起来一样。
+        assertEquals("CLIMATE:ON@22.5", TelegramCommand.parseText("ac 22.5").toString());
+        assertEquals("CLIMATE:ON@19.5", TelegramCommand.parseText("ac on 19.5").toString());
     }
 
     @Test
@@ -338,6 +387,7 @@ public class TelegramCommandTest {
         assertEquals(null, TelegramCommand.parseText("hello").climate);
         assertEquals(null, TelegramCommand.parseText("ac maybe").climate);
         assertEquals(TelegramCommand.ANY_LANE, TelegramCommand.parseText("ac 23").lane);
+        assertEquals(TelegramCommand.ANY_LANE, TelegramCommand.parseText("ac 22.5").lane);
     }
 
     private static TelegramCommand.Climate climate(String text) {

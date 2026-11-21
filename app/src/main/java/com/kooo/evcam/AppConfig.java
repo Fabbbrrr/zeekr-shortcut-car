@@ -883,6 +883,32 @@ public class AppConfig {
         return readsAsUnset(key) ? defaultValue : prefs.getInt(key, defaultValue);
     }
 
+    /**
+     * 读一个存成小数的设置项；老版本存的是整型、同一把钥匙的，读回来接着用。
+     *
+     * <p>{@link android.content.SharedPreferences#getFloat} 遇到 {@code putInt} 存进去的值会抛
+     * {@link ClassCastException}：目标温度从小数改成半度之前，同一把钥匙存的是 {@code 22}（int）。
+     * 读不回来的话，升上来的车就回到默认值了 —— 车主拖过的 24 度白白丢掉。</p>
+     *
+     * Reads a decimal preference, and a whole number left by an older version under the same key still
+     * reads: getFloat throws ClassCastException on a value put with putInt, and the target key used to
+     * hold an int, so without this an upgrade would silently reset the owner's setpoint.
+     */
+    private float readFloatC(String key, float defaultValue) {
+        if (readsAsUnset(key)) {
+            return defaultValue;
+        }
+        try {
+            return prefs.getFloat(key, defaultValue);
+        } catch (ClassCastException storedAsWhole) {
+            try {
+                return prefs.getInt(key, Math.round(defaultValue));
+            } catch (ClassCastException unreadable) {
+                return defaultValue;
+            }
+        }
+    }
+
     private String readString(String key, String defaultValue) {
         return readsAsUnset(key) ? defaultValue : prefs.getString(key, defaultValue);
     }
@@ -2801,9 +2827,16 @@ public class AppConfig {
     public static final int ALERTS_CLIMATE_COLD_MIN_C = -10;
     public static final int ALERTS_CLIMATE_COLD_MAX_C = 15;
     public static final int ALERTS_CLIMATE_COLD_DEFAULT_C = 5;
-    public static final int ALERTS_CLIMATE_TARGET_MIN_C = 16;
-    public static final int ALERTS_CLIMATE_TARGET_MAX_C = 30;
-    public static final int ALERTS_CLIMATE_TARGET_DEFAULT_C = 22;
+    public static final float ALERTS_CLIMATE_TARGET_MIN_C = 16f;
+    public static final float ALERTS_CLIMATE_TARGET_MAX_C = 30f;
+    public static final float ALERTS_CLIMATE_TARGET_DEFAULT_C = 22f;
+    /**
+     * 目标温度那根拖动条的一格：一度两格，所以格子是度数的两倍（16.0 → 32，30.0 → 60）。
+     *
+     * One slider tick is half a degree, so a tick value is twice the Celsius value.
+     */
+    public static final int ALERTS_CLIMATE_TARGET_MIN_TICKS = (int) (ALERTS_CLIMATE_TARGET_MIN_C * 2);
+    public static final int ALERTS_CLIMATE_TARGET_MAX_TICKS = (int) (ALERTS_CLIMATE_TARGET_MAX_C * 2);
     public static final int ALERTS_CLIMATE_SOC_MIN = 20;
     public static final int ALERTS_CLIMATE_SOC_MAX = 99;
     public static final int ALERTS_CLIMATE_SOC_DEFAULT = 20;
@@ -2867,15 +2900,40 @@ public class AppConfig {
         AppLog.i(TAG, "车厢高温安全提醒设为 " + (enabled ? "开" : "关"));
     }
 
-    /** 叫车开空调时设成多少度（°C）：16–30，默认 22。 */
-    public int getAlertsClimateTargetC() {
-        return clampTo(readInt(KEY_ALERTS_CLIMATE_TARGET_C, ALERTS_CLIMATE_TARGET_DEFAULT_C),
-                ALERTS_CLIMATE_TARGET_MIN_C, ALERTS_CLIMATE_TARGET_MAX_C);
+    /** 叫车开空调时设成多少度（°C）：16.0–30.0，半度一档，默认 22.0。 */
+    public float getAlertsClimateTargetC() {
+        return snapHalfDegree(readFloatC(KEY_ALERTS_CLIMATE_TARGET_C, ALERTS_CLIMATE_TARGET_DEFAULT_C));
     }
 
-    public void setAlertsClimateTargetC(int celsius) {
-        prefs.edit().putInt(KEY_ALERTS_CLIMATE_TARGET_C,
-                clampTo(celsius, ALERTS_CLIMATE_TARGET_MIN_C, ALERTS_CLIMATE_TARGET_MAX_C)).apply();
+    public void setAlertsClimateTargetC(float celsius) {
+        prefs.edit().putFloat(KEY_ALERTS_CLIMATE_TARGET_C, snapHalfDegree(celsius)).apply();
+    }
+
+    /** 拖动条那一格写成度数：一格半度。 A slider tick as Celsius: one tick is half a degree. */
+    public static float climateTargetOfTicks(int ticks) {
+        return ticks / 2f;
+    }
+
+    /** 度数写成拖动条那一格；夹到范围里再对齐到最近的半格。 A Celsius value as the nearest slider tick. */
+    public static int climateTargetTicks(float celsius) {
+        return Math.round(snapHalfDegree(celsius) * 2f);
+    }
+
+    /**
+     * 夹到 16–30 再照 0.5 对齐：存了 22.3 读出来是 22.5，15.9 是 16.0，30.4 是 30.0。
+     *
+     * <p>夹取和半度就在这一处：读和写都过它，所以存不进一个车主设不了的值。</p>
+     *
+     * Clamp to 16–30 and snap to 0.5: 22.3 reads back as 22.5, 15.9 as 16.0, 30.4 as 30.0. Both the
+     * read and the write go through here, so a value the car cannot be set to can never be stored.
+     */
+    public static float snapHalfDegree(float celsius) {
+        if (Float.isNaN(celsius) || Float.isInfinite(celsius)) {
+            return ALERTS_CLIMATE_TARGET_DEFAULT_C;
+        }
+        float clamped = Math.max(ALERTS_CLIMATE_TARGET_MIN_C,
+                Math.min(ALERTS_CLIMATE_TARGET_MAX_C, celsius));
+        return Math.round(clamped * 2f) / 2f;
     }
 
     /** 开空调时动不动座椅：{@code off} / {@code driver} / {@code front}，默认主驾。 */

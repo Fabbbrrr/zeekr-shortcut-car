@@ -1228,14 +1228,15 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
                 AppConfig.ALERTS_CLIMATE_COLD_MIN_C, AppConfig.ALERTS_CLIMATE_COLD_MAX_C,
                 appConfig.getAlertsClimateColdC(), R.string.opt_alerts_climate_degrees,
                 appConfig::setAlertsClimateColdC);
-        bindAlertsClimateSlider("pref_alerts_climate_target",
-                AppConfig.ALERTS_CLIMATE_TARGET_MIN_C, AppConfig.ALERTS_CLIMATE_TARGET_MAX_C,
-                appConfig.getAlertsClimateTargetC(), R.string.opt_alerts_climate_degrees,
-                appConfig::setAlertsClimateTargetC);
         bindAlertsClimateSlider("pref_alerts_climate_soc_floor",
                 AppConfig.ALERTS_CLIMATE_SOC_MIN, AppConfig.ALERTS_CLIMATE_SOC_MAX,
                 appConfig.getAlertsClimateSocFloor(), R.string.opt_alerts_climate_soc,
                 appConfig::setAlertsClimateSocFloor);
+        // 目标温度是全组唯一一根半度一根格的拖动条：格子是度数的两倍（32..60 就是 16.0..30.0），
+        // 行尾写一位小数（「22.5 °C」），因为这台车的设定值真的停在 19.5。
+        // The target is the only slider with half-degree steps: the tick count is twice the Celsius value
+        // (32..60 is 16.0..30.0), and the summary carries one decimal, because this car sits at 19.5.
+        bindAlertsClimateTargetSlider("pref_alerts_climate_target");
 
         // 高温安全提醒：35 °C 且座椅上有人、或 40 °C，安静时段也发。默认开。
         bindSwitch("pref_alerts_climate_safety", appConfig.isAlertsClimateSafety(),
@@ -1518,6 +1519,64 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     }
 
     /**
+     * 目标温度那根拖动条：一格半度，存的是度数（float），行尾写一位小数。
+     *
+     * <p>格子数是度数的两倍（16.0 = 32 格、30.0 = 60 格），因为 SeekBar 只有整数：
+     * 车主拖到的 22.5 就是第 45 格。其余三根拖动条还是整度一根一格，没变。</p>
+     *
+     * <p>和别的拖动条同一套：自己不存值（{@code setPersistent(false)}）、值从 {@link AppConfig} 读、
+     * 监听器写回 AppConfig 再叫 {@code SentryAlerts.refresh()}。</p>
+     *
+     * The target slider: half a degree per tick, stored as a float, summary with one decimal. The tick
+     * count is twice the Celsius value because a SeekBar only holds integers — the owner's 22.5 is tick 45.
+     * Everything else matches the other sliders: not persisted itself, value from AppConfig, the listener
+     * writes AppConfig and asks SentryAlerts to refresh.
+     */
+    private void bindAlertsClimateTargetSlider(String key) {
+        androidx.preference.SeekBarPreference pref = findPreference(key);
+        if (pref == null) {
+            return;
+        }
+        final int min = AppConfig.ALERTS_CLIMATE_TARGET_MIN_TICKS;
+        final int max = AppConfig.ALERTS_CLIMATE_TARGET_MAX_TICKS;
+        pref.setPersistent(false);
+        pref.setMin(min);
+        pref.setMax(max);
+        pref.setSeekBarIncrement(1);
+        pref.setShowSeekBarValue(false);
+        pref.setUpdatesContinuously(false);
+        int ticks = Math.max(min, Math.min(max, AppConfig.climateTargetTicks(appConfig.getAlertsClimateTargetC())));
+        pref.setValue(ticks);
+        pref.setSummary(targetSummary(ticks));
+        pref.setOnPreferenceChangeListener((preference, newValue) -> {
+            int value = newValue instanceof Integer ? (Integer) newValue : ticks;
+            appConfig.setAlertsClimateTargetC(AppConfig.climateTargetOfTicks(value));
+            com.kooo.evcam.blackbox.BlackBox.noteImportant("设置变更: " + key + " → " + value);
+            // 行尾写刚拖到的那一格，不是上一格（androidx 在监听器返回之后才提交值）。
+            // The summary shows the tick just chosen, not the previous one.
+            pref.setSummary(targetSummary(value));
+            refreshAlerts();
+            return true;
+        });
+    }
+
+    /** 目标温度的格数写成行尾：“22.5 °C”（一位小数，和车上的设定值一样）。
+     *
+     * A tick count as the summary text: "22.5 °C", one decimal, like the setpoint on the car. */
+    private String targetSummary(int ticks) {
+        return getString(R.string.opt_alerts_climate_degrees,
+                degreesText(AppConfig.climateTargetOfTicks(ticks)));
+    }
+
+    /** 温度写成一句，一位小数；{@code String.format} 锁 Locale.US，小数点不跟着系统语言变。
+     *
+     * A temperature with one decimal; String.format is pinned to Locale.US so the decimal point does
+     * not follow the phone's language. */
+    private static String degreesText(float celsius) {
+        return String.format(java.util.Locale.US, "%.1f", celsius);
+    }
+
+    /**
      * 车厢温度那一行的行尾：说明里带上当前选中的那一档（说明句子本身是资源，三种语言都有）。
      *
      * <p>用 {@code SummaryProvider} 而不是 {@code setSummary}：{@code ListPreference.getSummary()} 会把
@@ -1583,7 +1642,8 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
                     getString(appConfig.isAlertsClimateEnabled()
                             ? R.string.header_alerts_on : R.string.header_alerts_off),
                     getString(R.string.set_alerts_hub_climate_hot, appConfig.getAlertsClimateHotC()),
-                    getString(R.string.set_alerts_hub_climate_target, appConfig.getAlertsClimateTargetC())));
+                    getString(R.string.set_alerts_hub_climate_target,
+                            degreesText(appConfig.getAlertsClimateTargetC()))));
         }
     }
 

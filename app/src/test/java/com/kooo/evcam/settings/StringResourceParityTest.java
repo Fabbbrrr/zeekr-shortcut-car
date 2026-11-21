@@ -7,6 +7,8 @@
 
 package com.kooo.evcam.settings;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
@@ -120,6 +122,63 @@ public class StringResourceParityTest {
      * 这句话不会再有，{@code Outcome.WRONG_UNIT} 也一起没了。398 − 1 = 397。</p>
      */
     private static final int PENDING_ARABIC_COUNT = 397;
+
+    /**
+     * 温度那一批占位符必须收「已经写好的数字」（{@code %1$s}），不能是 {@code %d}。
+     *
+     * <p>目标温度现在是半度：{@code %d} 收下 22.5 要么报异常，要么被截成 22 —— 两条都不行。
+     * 回执和 {@code ac} 报告也一样：它们拿的是 {@code String.format(Locale.US, "%.1f", …)} 的结果。
+     * 所以这里钉三件事：占位符是 {@code %1$s}、22.5 真的能渲染成「22.5 °C」、而且不是「22.50」。</p>
+     *
+     * The temperature strings take an already-written number ({@code %1$s}), never {@code %d}: the target
+     * is a half degree now, and {@code %d} on 22.5 either throws or truncates to 22. The receipt and the
+     * {@code ac} report are in the same batch, and both are handed {@code String.format(Locale.US, "%.1f")}
+     * output. Three things are pinned: the placeholder is {@code %1$s}, 22.5 really renders as "22.5 °C",
+     * and not as "22.50".
+     */
+    @Test
+    public void climateTemperatureStringsCarryOneDecimal() throws IOException {
+        File module = findModuleRoot();
+        assumeTrue("定位不到模块根目录，跳过", module != null);
+
+        Map<String, String> zh = parse(new File(module, "src/main/res/values/strings.xml"));
+        assumeTrue("读不到中文 strings.xml，跳过", !zh.isEmpty());
+
+        // 收「写好的数字」的那几条：不能是 %d，否则 22.5 装不进去。
+        // These take a formatted number; %d cannot carry 22.5.
+        for (String name : new String[] {"alert_climate_btn", "opt_alerts_climate_degrees",
+                "set_alerts_hub_climate_target"}) {
+            String text = zh.get(name);
+            assertTrue("中文里少了 " + name, text != null);
+            assertTrue(name + " 该收一个已经写好的数字（%1$s）: " + text, text.contains("%1$s"));
+            assertFalse(name + " 不能再是 %d，半度装不进去: " + text,
+                    text.contains("%d") || text.contains("%1$d"));
+        }
+
+        // 回执和报告本身写 %1$s：温度那一位是外部格式好的。
+        for (String name : new String[] {"alert_climate_receipt", "alert_climate_report"}) {
+            String text = zh.get(name);
+            assertTrue("中文里少了 " + name, text != null);
+            assertTrue(name + " 的温度位该是 %1$s: " + text, text.contains("%1$s"));
+        }
+
+        // 22.5 真的能渲染出来，而且是一位小数。
+        String half = String.format(java.util.Locale.US, "%.1f", 22.5f);
+        assertEquals("半个度写出来是一位小数", "22.5", half);
+        assertEquals("目标 %1$s °C 渲染成 22.5 °C", "目标 22.5 °C",
+                String.format(java.util.Locale.US,
+                        zh.get("set_alerts_hub_climate_target"), half));
+        assertEquals("按钮上也是半度", "空调 22.5°",
+                String.format(java.util.Locale.US, zh.get("alert_climate_btn"), half));
+        assertEquals("行尾也是半度", "22.5 °C",
+                String.format(java.util.Locale.US, zh.get("opt_alerts_climate_degrees"), half));
+        assertTrue("回执里的目标温度写一位小数",
+                String.format(java.util.Locale.US, zh.get("alert_climate_receipt"), half, "", "10:30")
+                        .contains("目标 22.5 °C"));
+        assertTrue("ac 报告里的目标温度写一位小数",
+                String.format(java.util.Locale.US, zh.get("alert_climate_report"),
+                        "21.0", "25.0", half, "开着").contains("目标 22.5 °C"));
+    }
 
     @Test
     public void everyChineseStringHasATranslationWithMatchingPlaceholders() throws IOException {
