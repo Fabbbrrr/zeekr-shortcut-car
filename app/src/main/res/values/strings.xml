@@ -1684,6 +1684,12 @@
     <string name="set_alerts_climate_soc_floor_summary">电量低于 %1$s 就不开</string>
     <string name="set_alerts_climate_note_title">这一组做什么</string>
     <string name="set_alerts_climate_note_summary">叫一次开 %1$d 分钟，到点它自己关，关不掉我会告诉你；不会有任何东西自己开起来；要哨兵模式开着，车才听得见</string>
+    <!-- 探针：车上回「车机拒绝了这条命令」时，点这一行把原因问出来。它会写一笔设定温度、写一笔开关，
+         然后把两样都放回去（开关一定回到原样）；结果是一个能拍照的对话框。 -->
+    <string name="set_alerts_climate_probe_title">车厢温度探针</string>
+    <string name="set_alerts_climate_probe_summary">跑几项只读的检查，再写一笔很短的，然后把它恢复原样</string>
+    <string name="set_alerts_climate_probe_dialog">探针结果</string>
+    <string name="set_alerts_climate_probe_failed">探针没跑起来：现在拿不到车辆接口。开一下哨兵模式再试</string>
     <string name="opt_alerts_climate_seats_off">不动座椅</string>
     <string name="opt_alerts_climate_seats_driver">只主驾</string>
     <string name="opt_alerts_climate_degrees">%1$s °C</string>

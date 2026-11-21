@@ -1669,6 +1669,10 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_climate_soc_floor_summary">Tiada apa-apa dihidupkan di bawah %1$s</string>
     <string name="set_alerts_climate_note_title">Apa kumpulan ini buat</string>
     <string name="set_alerts_climate_note_summary">Satu arahan menjalankan penghawa dingin selama %1$d minit dan ia berhenti sendiri, atau saya beritahu kalau tidak dapat; tiada apa-apa dihidupkan sendiri; Mod Sentri mesti hidup supaya kereta mendengar</string>
+    <string name="set_alerts_climate_probe_title">Probe iklim kabin</string>
+    <string name="set_alerts_climate_probe_summary">Menjalankan beberapa pemeriksaan baca sahaja dan satu tulisan pendek, kemudian memulihkannya</string>
+    <string name="set_alerts_climate_probe_dialog">Keputusan probe</string>
+    <string name="set_alerts_climate_probe_failed">Probe tidak dapat dijalankan: antara muka kereta tidak dapat dicapai sekarang. Hidupkan Mod Sentri dan cuba lagi</string>
     <string name="opt_alerts_climate_seats_off">Jangan sentuh</string>
     <string name="opt_alerts_climate_seats_driver">Pemandu sahaja</string>
     <string name="opt_alerts_climate_degrees">%1$s °C</string>

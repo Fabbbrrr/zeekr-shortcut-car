@@ -384,6 +384,17 @@ triggers present. It answers "what does it send" once configured; the three setu
 一次二十分钟测试能给答案（`CASE.md` §9 第 2 项）。在那之前，能承诺的是「车告诉你它多热」，
 写不写得下去要看车。
 
+### 探针：为什么被拒
+
+车上回「车机拒绝了这条命令，什么都没改」的时候，黑匣子只记了哪一笔被拒，没记为什么。子页最后一行
+「车厢温度探针」（`pref_alerts_climate_probe`）就是为这一问：它读功能号（开关、设定温度、范围、单位、
+座椅）、问 ECARX 的 `isFunctionSupported`（`CarAccess.status`）在主驾 `0x01`、副驾 `0x04`、前排 `0x08`
+上分别答什么、把整型通道读一遍，然后写一笔设定温度（主驾被拒就试副驾）和一笔开关（前排 → 主驾 → 不带区域），
+每笔都读回三秒。**它会把车放回去**：设定温度写之前记下车上原来那个值，不一样就写回去；开关最后一定写回开始时的值
+—— 开始读到 0（或者读不到）就写回 0，只有开始就是 1 才留着并写明「本来开着」。结果是一个能拍照的对话框，
+开头几行先说车在不在停着、挡位、哨兵模式开着没有（睡着的车本来就什么都拒），每一行同时进黑匣子（前缀
+`climate probe: `）。
+
 ###### English
 
 While the car is parked it already reports cabin and outside temperature, and two confirmed signals are
@@ -400,6 +411,18 @@ cabin-to-target delta with an
 outside ≥ 20 °C veto. Quiet hours silence the comfort tiers without latching them (so daylight still gets one) and
 never the danger tier, and the danger tier can be switched off on its own. The one thing still
 unmeasured is whether a locked, parked 7X accepts the write at all.
+
+The last row on that page is the cabin climate probe (`pref_alerts_climate_probe`), for the moment the
+car answers "it refused the command, nothing was changed" — the black box records which write was
+refused, never why. It reports the resolved function ids, asks ECARX's `isFunctionSupported`
+(`CarAccess.status`) on the driver `0x01`, passenger `0x04` and front `0x08` zones, reads the integer
+channel, then writes one setpoint (driver, then passenger if refused) and one power switch (front →
+driver → unzoned), each read back for up to three seconds. **It puts the car back**: the setpoint held
+before the write is written back when the write changed it, and power always ends at the value read at
+the start — 0, or unreadable, is switched off again and only a start value of 1 is left on and said so.
+The result is one dialog worth photographing, whose opening lines say whether the car is parked, the gear,
+and whether Sentry Mode is on (a sleeping car refuses everything), and every line also goes to the black
+box behind the prefix `climate probe:`.
 
 ## 2. 不做什么（车上看不到的信号）
 

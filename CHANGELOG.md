@@ -11,6 +11,15 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.16.1-fab-beta] - 2026-11-21
+
+- Alerts: **a climate probe**, under Settings → Alerts → Climate. When `ac` answers "the car refused the
+  command", this runs a read-only check of the climate ids, the per-zone support flags and both channels,
+  then one short setpoint write per zone and one power write, and puts the setpoint and the power back.
+  The result is a short ASCII list you can photograph, and the same lines go to the alerts log. The
+  header says whether the car is parked and whether Sentry Mode is on, because a sleeping car refuses
+  writes.
+
 ## [4.16.0-fab-beta] - 2026-11-20
 
 - Alerts: **half degrees**. Your car holds 19.5 °C, so `ac 22.5` now works — `ac 22` and `ac 22.5`

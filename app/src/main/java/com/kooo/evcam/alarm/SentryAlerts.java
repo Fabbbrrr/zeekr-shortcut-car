@@ -23,6 +23,7 @@ import com.kooo.evcam.AppLog;
 import com.kooo.evcam.MainActivity;
 import com.kooo.evcam.R;
 import com.kooo.evcam.alarm.climate.ClimateOffGuard;
+import com.kooo.evcam.alarm.climate.ClimateProbe;
 import com.kooo.evcam.alarm.climate.ClimateSource;
 import com.kooo.evcam.alarm.guard.AlertAnchor;
 import com.kooo.evcam.alarm.guard.AlertMoment;
@@ -1116,6 +1117,70 @@ public final class SentryAlerts implements Telemetry.Listener {
                 app.getMainExecutor().execute(() -> callback.onResult(watchingNow, line));
             });
         }
+    }
+
+    /**
+     * 车厢温度探针：车上回「车机拒绝了这条命令，什么都没改」的时候，用它把原因问出来。
+     *
+     * <p>跑在写车的那条线程上（{@code alert-climate}）—— 探针里有一次写和几段读回，最长几秒，
+     * 放在主线程上会把界面定住。结果回在主线程，一行一条：开头几行先说车在不在停着、挡位、哨兵模式开着没有
+     * （睡着的车本来就什么都拒），然后是 {@link ClimateProbe} 的每一行。每一行同时进黑匣子，前缀
+     * {@code climate probe: }，这样车主拍的照片和黑匣子里的是同一份东西。</p>
+     *
+     * <p>探针一次跑不动（拿不到车辆接口）时 {@code ok} 是 false，给的是「跑不起来」那一句；
+     * 车机上跑出的问题不会走到这里 —— 那些都是探针自己的一行 {@code ERROR}。</p>
+     *
+     * The climate probe: the owner-facing entry point for "the car refused the command".
+     *
+     * <p>It runs on the climate write thread — one write and several bounded readbacks, seconds at worst,
+     * which must not sit on the main thread — and answers on the main thread, one fact per line. The opening
+     * lines say whether the car is parked, the gear, and whether Sentry Mode is on (a sleeping car refuses
+     * everything), then every line from {@link ClimateProbe}. Each line also goes to the black box with the
+     * prefix {@code climate probe: }, so the photograph and the log are the same document.</p>
+     */
+    public void probeClimate(Callback callback) {
+        final VehicleState state = Telemetry.get().latest();
+        final boolean parked = parkedNow(state);
+        final String gear = state == null || state.gear == null ? "?" : String.valueOf(state.gear);
+        final boolean sentry = sentryOn();
+        final float target = config.getAlertsClimateTargetC();
+        climateWork.execute(() -> {
+            final java.util.List<String> lines = new java.util.ArrayList<>();
+            lines.add("parked: " + (parked ? "yes" : "NO"));
+            lines.add("gear: " + gear);
+            lines.add("sentry mode: " + (sentry ? "on" : "off")
+                    + (sentry ? "" : " (a parked car whose Sentry Mode is off is asleep and refuses writes)"));
+            CarAccess access = null;
+            try {
+                access = Telemetry.get().carAccess();
+            } catch (RuntimeException e) {
+                BlackBox.note("climate probe: no car access (" + e + ")");
+            }
+            if (access == null) {
+                BlackBox.note("climate probe: could not run, no car access");
+                final String text = app.getString(R.string.set_alerts_climate_probe_failed);
+                app.getMainExecutor().execute(() -> callback.onResult(false, text));
+                return;
+            }
+            try {
+                lines.addAll(ClimateProbe.run(access, CLIMATE_NAMES, SystemClock::sleep, target).lines);
+            } catch (RuntimeException e) {
+                BlackBox.note("climate probe: could not run (" + e + ")");
+                final String text = app.getString(R.string.set_alerts_climate_probe_failed);
+                app.getMainExecutor().execute(() -> callback.onResult(false, text));
+                return;
+            }
+            StringBuilder out = new StringBuilder();
+            for (String line : lines) {
+                BlackBox.note("climate probe: " + line);
+                if (out.length() > 0) {
+                    out.append('\n');
+                }
+                out.append(line);
+            }
+            final String text = out.toString();
+            app.getMainExecutor().execute(() -> callback.onResult(true, text));
+        });
     }
 
     /**

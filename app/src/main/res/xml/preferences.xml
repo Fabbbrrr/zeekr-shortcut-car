@@ -462,6 +462,16 @@
                 android:selectable="false"
                 android:title="@string/set_alerts_climate_note_title"
                 android:summary="@string/set_alerts_climate_note_summary" />
+
+            <!-- 探针：车上回「车机拒绝了这条命令」时点这里。它读功能号、问 isFunctionSupported、读回整型，
+                 然后写一笔设定温度和一笔开关，最后把车恢复原样；结果是一个能拍照的对话框。
+                 放在实话后面：先看到这一组做什么，再看到「不行就点这里」。
+                 The probe: for "the car refused the command". A tap reports what it can read, writes one
+                 setpoint and one switch, puts the car back, and shows a dialog worth photographing. -->
+            <Preference
+                android:key="pref_alerts_climate_probe"
+                android:title="@string/set_alerts_climate_probe_title"
+                android:summary="@string/set_alerts_climate_probe_summary" />
         </PreferenceScreen>
     </PreferenceScreen>
 

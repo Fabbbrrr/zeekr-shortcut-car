@@ -750,6 +750,26 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     }
 
     /**
+     * 探针的结果：一个能拍照的框（标题、正文、一颗「知道了」）。
+     *
+     * <p>正文是一行一件事的 ASCII：几十行，框里可以滚。同一份东西已经进了黑匣子，所以车主拍下来的是
+     * 完整的一份，不是一句话的摘要。</p>
+     *
+     * The probe's answer in a dialog worth photographing: title, body, one button. The body is one fact per
+     * ASCII line, the same lines the black box got, so the photograph is the whole document.
+     */
+    private void showClimateProbe(String text) {
+        if (getContext() == null) {
+            return;
+        }
+        com.kooo.evcam.ui.CamDialogs.show(new MaterialAlertDialogBuilder(requireContext(),
+                R.style.Theme_Cam_MaterialAlertDialog)
+                .setTitle(R.string.set_alerts_climate_probe_dialog)
+                .setMessage(text)
+                .setPositiveButton(R.string.action_got_it, null));
+    }
+
+    /**
      * 存储上限（2026-10-23 合成一行）：行尾写录像、照片两个上限，点开一个框里填两项（GB），清理的规则写在框里。
      * 上限用 GB 存；留空或 0 表示不限制。
      */
@@ -1258,6 +1278,24 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         bindAlertsClimateList("pref_alerts_climate_minutes", AppConfig.ALERTS_CLIMATE_MINUTES_CHOICES,
                 R.string.opt_alerts_climate_minutes, appConfig.getAlertsClimateMinutes(),
                 appConfig::setAlertsClimateMinutes);
+
+        // 车厢温度探针：车上回「车机拒绝了这条命令」时点这一行。跑在写车那条线程上（探针里有一笔写车和几段
+        // 读回，主线程上不许等车），结果是一个能拍照的框；每一行同时进黑匣子。
+        // The climate probe row: one tap runs it on the climate thread and answers in a dialog worth
+        // photographing; every line also goes to the black box.
+        Preference climateProbe = findPreference("pref_alerts_climate_probe");
+        if (climateProbe != null) {
+            climateProbe.setPersistent(false);
+            climateProbe.setOnPreferenceClickListener(preference -> {
+                com.kooo.evcam.alarm.SentryAlerts.get(requireContext()).probeClimate((ok, text) -> {
+                    if (!isAdded()) {
+                        return;
+                    }
+                    showClimateProbe(text);
+                });
+                return true;
+            });
+        }
 
         // 这一栏的显示规则全写在 showAlertsRows 一处（ui-spec §三：可见性只在一处）：总开关、
         // 下面每一行自己的开关。这里只管接线，不管显示。
@@ -1797,6 +1835,9 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // 恰恰是开关关着的时候最该看到的。
         // The note stays even with the switch off: it is exactly what someone reading that page needs.
         show("pref_alerts_climate_note", alertsOn);
+        // 探针也留着：车不听指挥的时候，这一行才是唯一能得到答案的地方。
+        // The probe stays too: when the car will not obey, that row is the only place an answer comes from.
+        show("pref_alerts_climate_probe", alertsOn);
         showAlertsClimateRow("pref_alerts_climate_seats", R.string.set_alerts_climate_seats_summary);
         showAlertsClimateRow("pref_alerts_climate_seat_level",
                 R.string.set_alerts_climate_seat_level_summary);
