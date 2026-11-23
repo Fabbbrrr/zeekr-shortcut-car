@@ -11,6 +11,14 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.19.1-fab-beta] - 2026-11-21
+
+The same code as 4.19.0, published under an old-style name on purpose. Cars on 4.18.0 read the channel
+from the suffix and only accept a suffix that starts with `beta`; `4.19.0-fab-alerts-beta` reads as
+"alerts-beta" and is filtered out, which is why the in-app update did not offer it. This name reads as
+`beta` to both the old and the new parser, so those cars can update once, after which `alerts`-only
+names work.
+
 ## [4.19.0-fab-alerts-beta] - 2026-11-21
 
 The first release carrying the **alerts** marker (the name also keeps `fab` for one release so cars on
