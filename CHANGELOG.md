@@ -11,6 +11,12 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.19.2-alerts-beta] - 2026-11-21
+
+- Same code, first release with the plain `alerts` marker and no `fab` anywhere in the name. It is the
+  check that a car already running `4.19.0-fab-alerts-beta` parses the new marker, reads the channel as
+  `beta` and offers this as an update. Nothing else changed.
+
 ## [4.19.1-fab-beta] - 2026-11-21
 
 The same code as 4.19.0, published under an old-style name on purpose. Cars on 4.18.0 read the channel
