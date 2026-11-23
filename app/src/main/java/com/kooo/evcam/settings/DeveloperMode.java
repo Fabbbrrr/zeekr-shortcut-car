@@ -59,6 +59,20 @@ public final class DeveloperMode {
      * 不需密码地打开 —— <b>仅限 fork 的测试构建</b>，由 {@code ZeekrShortcutApp} 在进程起来时调。
      */
     public static void unlockForTestBuild(Context context) {
+        enableFromWarning(context);
+    }
+
+    /**
+     * 从「关于与致谢」那个警告框里打开：不要密码，但用户先看过警告（{@code zeekr.AboutActivity}）。
+     *
+     * <p>为什么可以不要密码：这一条路不在别处 —— 它只有「关于」页上那一行按钮调用，而按下去
+     * 先弹一个红色的确认框，写明开发者选项是试验性的、不受支持的、风险自负。看过那句话再点确认，
+     * 就是知情选择；密码那道门（{@link #unlock}）继续留着，两条路都通。</p>
+     *
+     * <p>The no-password path, reachable only through the warning dialog on the About screen. The
+     * password path stays working.</p>
+     */
+    public static void enableFromWarning(Context context) {
         set(context, true);
     }
 

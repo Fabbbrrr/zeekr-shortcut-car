@@ -22,6 +22,8 @@ import com.kooo.evcam.R;
 import com.kooo.evcam.screens.ShotActivity;
 import com.kooo.evcam.screens.Shots;
 
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -42,6 +44,23 @@ public class SettingsShotsTest {
             "screen_recording", "screen_alerts", "screen_storage", "screen_rearview",
             "screen_side_view", "screen_floating", "screen_general", "screen_update",
     };
+
+    /**
+     * 截图测试不联网：这一套要的是排布和文字，不是 GitHub 此刻发到哪一版。
+     *
+     * <p>「更新与关于」那一页打开就会在后台查两个仓库（{@code LatestVersions}）。真去问的话，
+     * 没网时每个仓库各等一个 10 秒的连接超时，把整套测试拖成几分钟。关掉之后那一行只显示存着
+     * 的数字（测试自己先存好），与「查不到」那一句。</p>
+     */
+    @BeforeClass
+    public static void noNetwork() {
+        com.kooo.evcam.update.LatestVersions.setNetworkAllowed(false);
+    }
+
+    @AfterClass
+    public static void restoreNetwork() {
+        com.kooo.evcam.update.LatestVersions.setNetworkAllowed(true);
+    }
 
     @Test
     public void everySectionByDay() {
@@ -151,7 +170,7 @@ public class SettingsShotsTest {
         config.addAccessory(com.kooo.evcam.button.Accessory.KNOB, knob);
 
         RuntimeEnvironment.setQualifiers(qualifiers);
-        ShotActivity activity = Robolectric.buildActivity(ShotActivity.class).setup().get();
+        ShotActivity activity = newShotActivity();
         Shots.stillFrames(activity);
         SettingsShellFragment shell = new SettingsShellFragment();
         activity.getSupportFragmentManager().beginTransaction().replace(activity.container, shell).commitNow();
@@ -270,7 +289,7 @@ public class SettingsShotsTest {
                 .putString("smart_button_name." + second, "<b>%s</b>\n\n\u202E" + "很长的名字".repeat(30)).commit();
 
         RuntimeEnvironment.setQualifiers(qualifiers);
-        ShotActivity activity = Robolectric.buildActivity(ShotActivity.class).setup().get();
+        ShotActivity activity = newShotActivity();
         Shots.stillFrames(activity);
         SettingsShellFragment shell = new SettingsShellFragment();
         activity.getSupportFragmentManager().beginTransaction().replace(activity.container, shell).commitNow();
@@ -324,7 +343,7 @@ public class SettingsShotsTest {
         assertFalse("这一条看的是开发者选项关着时", DeveloperMode.isUnlocked());
         new AppConfig(RuntimeEnvironment.getApplication()).setDriveSoundEnabled(true);
         RuntimeEnvironment.setQualifiers(qualifiers);
-        ShotActivity activity = Robolectric.buildActivity(ShotActivity.class).setup().get();
+        ShotActivity activity = newShotActivity();
         Shots.stillFrames(activity);
         SettingsShellFragment shell = new SettingsShellFragment();
         activity.getSupportFragmentManager().beginTransaction().replace(activity.container, shell).commitNow();
@@ -365,7 +384,7 @@ public class SettingsShotsTest {
         try {
             assertFalse("默认关", new AppConfig(RuntimeEnvironment.getApplication()).isPlaybackReadDurations());
             RuntimeEnvironment.setQualifiers(Shots.DAY);
-            ShotActivity activity = Robolectric.buildActivity(ShotActivity.class).setup().get();
+            ShotActivity activity = newShotActivity();
             Shots.stillFrames(activity);
             SettingsShellFragment shell = new SettingsShellFragment();
             activity.getSupportFragmentManager().beginTransaction().replace(activity.container, shell).commitNow();
@@ -779,13 +798,15 @@ public class SettingsShotsTest {
             {"pref_alerts_notifications", "pref_alerts_sentry", "pref_alerts_climate_page"};
 
     /**
-     * 总开关那一页：开关、出口、状态行，然后三行入口，别的什么都没有（4.6，ui-spec §十六）。
+     * 总开关那一页：开关、出口、三行入口，别的什么都没有（4.6，ui-spec §十六）。
      *
      * <p>三块内容各在下一层的一页上：那三页本身在这一屏上是收着的，所以一屏里不会同时摆三套互不相干的东西。
      * 行尾写的是现在的情形，不是固定的一句话。</p>
      *
-     * The hub: master switch, exit, status row, then three entry rows and nothing else. The three child
-     * pages are collapsed here, and each summary says what is true right now.
+     * <p>4.18 起没有那行单独的状态行（{@code pref_alerts_channel_status}）：出口的选择就写在出口那一行的行尾上。</p>
+     *
+     * The hub: master switch, exit, then three entry rows and nothing else. The separate status row is
+     * gone since 4.18: the exit states itself on its own row.
      */
     @Test
     public void theHubListsThreePagesAndNothingElse() {
@@ -793,8 +814,9 @@ public class SettingsShotsTest {
         SettingsPreferenceFragment hub = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
         androidx.preference.PreferenceGroup screen = hub.getPreferenceScreen();
         String[] rows = {"pref_alerts_notifications", "pref_alerts_sentry", "pref_alerts_climate_page"};
-        int last = indexIn(screen, "pref_alerts_channel_status");
-        assertTrue("出口和状态行该在这一页上", last >= 0);
+        int last = indexIn(screen, "pref_alerts_transport");
+        assertTrue("出口该在这一页上", last >= 0);
+        assertNull("4.18 起没有那行单独的状态行", hub.findPreference("pref_alerts_channel_status"));
         for (String key : rows) {
             Preference row = hub.findPreference(key);
             assertNotNull("少了入口那一行 " + key, row);
@@ -847,18 +869,202 @@ public class SettingsShotsTest {
             assertFalse(key + " 不该在这一屏上列成一行", page.isVisible());
         }
 
-        // 总开关关着：只剩开关、出口、状态行和暂停那一行，三行入口一起收起来。
+        // 总开关关着：只剩开关、那行要求、出口和暂停那一行，三行入口一起收起来。
         // Master off: only the first rows are left; the three entry rows fold away.
         SettingsPreferenceFragment off = alertsPage(false,
                 com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, config -> config.setAlertsPaused(true));
-        for (String key : new String[]{"pref_alerts", "pref_alerts_transport",
-                "pref_alerts_channel_status"}) {
+        for (String key : new String[]{"pref_alerts", "pref_alerts_required_note",
+                "pref_alerts_transport"}) {
             assertTrue("总开关关着时 " + key + " 还该在", shown(off, key));
         }
         assertFalse("总开关关着时不摆暂停那一行（老规矩）", shown(off, "pref_alerts_paused"));
         for (String key : rows) {
             assertFalse("总开关关着时 " + key + " 该收起来", shown(off, key));
         }
+    }
+
+    /**
+     * 「警报发到哪儿」的行尾写现在真的发到哪儿：Telegram / ntfy 公开话题 / ntfy 付费档。
+     *
+     * <p>4.18 拿掉了那行单独的状态行，选择就写在这一行上；和 hub 上那道行尾、发送那一头是同一份判断
+     * （{@code AppConfig.isAlertsNtfy / isAlertsNtfyPaid}），所以行尾不能还是一个固定句子。</p>
+     *
+     * The transport row's summary states the exit in use: Telegram, ntfy free, or ntfy paid. The separate
+     * status row is gone, so this row has to carry it — and it must read the same source the sender does.
+     */
+    @Test
+    public void theTransportRowSaysWhereAlertsGo() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        SettingsPreferenceFragment page = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        Preference transport = page.findPreference("pref_alerts_transport");
+        assertNotNull("少了出口那一行", transport);
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+
+        assertEquals("选的是 Telegram 就写 Telegram",
+                page.getString(R.string.set_alerts_transport_now_telegram),
+                String.valueOf(transport.getSummary()));
+
+        // 行尾是当场读设置的（SummaryProvider），所以换一下存着的值就能看到另两句。
+        // The summary is read live, so changing the stored value shows the other two sentences.
+        config.setAlertsTransport(com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY);
+        config.setAlertsNtfyPaid(false);
+        assertEquals("ntfy 免费档写公开话题",
+                page.getString(R.string.set_alerts_transport_now_ntfy_public),
+                String.valueOf(transport.getSummary()));
+
+        config.setAlertsNtfyPaid(true);
+        assertEquals("ntfy 付费档要写付费档",
+                page.getString(R.string.set_alerts_transport_now_ntfy_paid),
+                String.valueOf(transport.getSummary()));
+
+        // 收尾：档位存在同一份设置里，别把后面的测试带跑。
+        config.setAlertsNtfyPaid(false);
+    }
+
+    /**
+     * 三页的末行「回到警报」真的退回去：返回栈空了、总开关那一页回来了、标题区也跟着退。
+     *
+     * <p>它点的是外壳的返回栈（{@code getParentFragmentManager().popBackStack()}），和标题区那颗返回键
+     * 走同一条路，所以两者不会各退一层。行尾写的是从哪一页回去，所以三页共用一行也不会说错话。</p>
+     *
+     * The back row on each page pops the shell's back stack: the stack empties, the hub comes back, and the
+     * shell's title follows (it already listens for back-stack changes).
+     */
+    @Test
+    public void theBackRowPopsTheChildPageBackToTheHub() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        SettingsPreferenceFragment hub = alertsPage(true, com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM);
+        SettingsShellFragment shell = (SettingsShellFragment) hub.getParentFragment();
+        assertNotNull("那一页该在外壳里", shell);
+        String[] rows = {"pref_alerts_notifications", "pref_alerts_sentry", "pref_alerts_climate_page"};
+        int[] from = {R.string.set_alerts_back_from_notifications,
+                R.string.set_alerts_back_from_sentry, R.string.set_alerts_back_from_climate};
+        for (int i = 0; i < rows.length; i++) {
+            Preference entry = hub.findPreference(rows[i]);
+            assertNotNull("少了入口那一行 " + rows[i], entry);
+            entry.getOnPreferenceClickListener().onPreferenceClick(entry);
+            Shots.settle();
+            assertEquals(rows[i] + " 该进返回栈", 1,
+                    shell.getChildFragmentManager().getBackStackEntryCount());
+            SettingsPreferenceFragment child = (SettingsPreferenceFragment) shell.getChildFragmentManager()
+                    .findFragmentById(R.id.settings_detail);
+            assertNotNull(child);
+            Preference back = child.findPreference("pref_alerts_back");
+            assertNotNull(rows[i] + " 少了末行「回到警报」", back);
+            assertEquals("行尾要写从哪一页回去", child.getString(from[i]),
+                    String.valueOf(back.getSummary()));
+
+            assertEquals(Boolean.TRUE, back.getOnPreferenceClickListener().onPreferenceClick(back));
+            Shots.settle();
+
+            assertEquals("点了「回到警报」就该退回总开关那一页", 0,
+                    shell.getChildFragmentManager().getBackStackEntryCount());
+            SettingsPreferenceFragment now = (SettingsPreferenceFragment) shell.getChildFragmentManager()
+                    .findFragmentById(R.id.settings_detail);
+            assertNotNull("该回到总开关那一页", now);
+            assertNotNull("总开关那一页的行都在", now.findPreference("pref_alerts_notifications"));
+            android.widget.TextView title = shotActivity.findViewById(R.id.settings_title);
+            assertNotNull("外壳的标题区该在", title);
+            assertEquals("标题区跟着退回分区名",
+                    now.getString(R.string.set_section_alerts), String.valueOf(title.getText()));
+        }
+    }
+
+    /**
+     * 通知那一页上关于命令的都在一组里（4.18）：排在两条出口后面、「检查」前面。
+     *
+     * <p>组里三样：「回应命令」（Telegram 那一份）、「警报里的按钮」（两条路都有，默认开）、
+     * 以及 ntfy 的命令那两行（开发者选项 + 付费档才在）。</p>
+     *
+     * One commands group after both exits: the Telegram command switch, the buttons switch (default on,
+     * both exits), and the ntfy rows where those apply.
+     */
+    @Test
+    public void theCommandsGroupHoldsEveryCommandRow() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        android.content.Context context = RuntimeEnvironment.getApplication();
+        try {
+            DeveloperMode.unlock(context, "6651");
+            SettingsPreferenceFragment page = ntfyPage(config -> {
+                config.setAlertsNtfyPaid(true);
+                config.setAlertsNtfyCommands(true);
+            });
+            androidx.preference.PreferenceGroup screen = page.getPreferenceScreen();
+            assertTrue("命令那一组该看得见", shown(page, "cat_alerts_commands"));
+            assertTrue("命令那一组排在两条出口后面",
+                    indexIn(screen, "cat_alerts_commands") > indexIn(screen, "cat_alerts_ntfy"));
+            assertTrue("命令那一组排在「检查」前面",
+                    indexIn(screen, "cat_alerts_commands") < indexIn(screen, "cat_alerts_checks"));
+            androidx.preference.PreferenceGroup group = page.findPreference("cat_alerts_commands");
+            assertNotNull("少了命令那一组", group);
+            assertTrue("ntfy 的命令那一行该在这一组里",
+                    indexIn(group, "pref_alerts_ntfy_commands") >= 0);
+            assertTrue("那条解释也在这一组里",
+                    indexIn(group, "pref_alerts_ntfy_commands_note") >= 0);
+            androidx.preference.SwitchPreferenceCompat buttons = page.findPreference("pref_alerts_buttons");
+            assertNotNull("少了「警报里的按钮」那一行", buttons);
+            assertTrue("它在命令这一组里", indexIn(group, "pref_alerts_buttons") >= 0);
+            assertTrue("它该看得见", shown(page, "pref_alerts_buttons"));
+            assertTrue("默认开", buttons.isChecked());
+            assertFalse("走 ntfy 时 Telegram 那一份命令开关不出现",
+                    shown(page, "pref_alerts_commands"));
+        } finally {
+            DeveloperMode.lock(context);
+        }
+
+        // Telegram：组里是「回应命令」+「警报里的按钮」，ntfy 那两行不在。
+        // Telegram: the group holds the command switch and the buttons switch; the ntfy rows are gone.
+        SettingsPreferenceFragment telegram = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_notifications",
+                CHILD_NOTIFICATIONS, R.string.set_alerts_page_notifications, config -> {
+                });
+        androidx.preference.PreferenceGroup telegramGroup =
+                telegram.findPreference("cat_alerts_commands");
+        assertNotNull("走 Telegram 时命令那一组也得在", telegramGroup);
+        assertTrue("Telegram 的命令开关该在这一组里",
+                indexIn(telegramGroup, "pref_alerts_commands") >= 0);
+        assertTrue("按钮那一行两条路都在", indexIn(telegramGroup, "pref_alerts_buttons") >= 0);
+        assertFalse("走 Telegram 时 ntfy 的命令行不该出现",
+                shown(telegram, "pref_alerts_ntfy_commands"));
+
+        // 收尾：这几项存在同一份设置里。
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        config.setAlertsNtfyPaid(false);
+        config.setAlertsNtfyCommands(false);
+    }
+
+    /**
+     * 数据量说明在哨兵页的最上面，而且不跟着「发不发短片」收起（4.18 从短视频那一组提到页首）。
+     *
+     * <p>它说的是这一页发出去的所有东西一共多贵，不只是那段短片 —— 短片关着、图也关着的时候，它照样在。</p>
+     *
+     * The data note sits at the top of the Sentry page and survives the clip and picture switches: it prices
+     * everything that page sends, not just the clip.
+     */
+    @Test
+    public void theDataNoteStaysAtTheTopOfTheSentryPage() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        SettingsPreferenceFragment sentry = alertsChildPage(Shots.DAY_EN, true,
+                com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM, "pref_alerts_sentry",
+                CHILD_SENTRY, R.string.set_alerts_page_sentry, config -> {
+                    config.setAlertsClipSeconds(0);
+                    config.setAlertsPictureEnabled(false);
+                });
+        Preference note = sentry.findPreference("pref_alerts_clip_data");
+        assertNotNull("少了数据量说明那一行", note);
+        assertTrue("短片关着、图也关着，它也照样在", note.isVisible());
+        assertFalse("它只是说明，点不动", note.isSelectable());
+        androidx.preference.PreferenceGroup screen = sentry.getPreferenceScreen();
+        assertEquals("它在页首那条说明后面", 1, indexIn(screen, "pref_alerts_clip_data"));
+        assertTrue("它在「什么时候发」那一组前面",
+                indexIn(screen, "pref_alerts_clip_data") < indexIn(screen, "cat_alerts_when"));
+        assertTrue("它不在短视频那一组里了",
+                indexIn(sentry.findPreference("cat_alerts_clip"), "pref_alerts_clip_data") < 0);
+
+        // 收尾：这几项存在同一份设置里。
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        config.setAlertsPictureEnabled(true);
+        config.setAlertsClipSeconds(0);
     }
 
     /**
@@ -947,6 +1153,7 @@ public class SettingsShotsTest {
         assertFirstRowIsTheNote(notifications, "pref_alerts_notifications_note");
         assertEquals("说明后面就是「在家也发通知」", "pref_alerts_notify_at_home",
                 notifications.getPreferenceScreen().getPreference(1).getKey());
+        assertLastRowIsTheBackRow(notifications);
         File notificationShot = Shots.save(shotActivity, "settings-alerts-notifications-" + tag);
         assertTrue(notificationShot + " 是空的", notificationShot.length() > 10_000);
 
@@ -962,6 +1169,13 @@ public class SettingsShotsTest {
         assertNull("检查不在哨兵这一页", sentry.findPreference("cat_alerts_checks"));
         assertNull("检查那几行也不在", sentry.findPreference("pref_alerts_probe"));
         assertFirstRowIsTheNote(sentry, "pref_alerts_sentry_note");
+        // 数据量说明在页首（4.18）：紧跟在那条说明后面，在任何组名之前。
+        // The data note sits directly under the page's explainer, above every category.
+        assertEquals("数据量说明紧跟在页首那条说明后面", "pref_alerts_clip_data",
+                sentry.getPreferenceScreen().getPreference(1).getKey());
+        assertFalse("数据量说明只是说明，点不动",
+                sentry.findPreference("pref_alerts_clip_data").isSelectable());
+        assertLastRowIsTheBackRow(sentry);
         File sentryShot = Shots.save(shotActivity, "settings-alerts-sentry-" + tag);
         assertTrue(sentryShot + " 是空的", sentryShot.length() > 10_000);
 
@@ -977,8 +1191,10 @@ public class SettingsShotsTest {
                 screen.getPreference(0).getKey());
         assertEquals("第二行才是这一组自己的开关", "pref_alerts_climate",
                 screen.getPreference(1).getKey());
-        sliderShows(climate, "pref_alerts_climate_hot", 25, 40, 30, "30 °C");
-        sliderShows(climate, "pref_alerts_climate_cold", -10, 15, 5, "5 °C");
+        sliderShows(climate, "pref_alerts_climate_hot", 22, 40, 30,
+                climate.getString(R.string.opt_alerts_climate_above, 30));
+        sliderShows(climate, "pref_alerts_climate_cold", -10, 18, 5,
+                climate.getString(R.string.opt_alerts_climate_up_to, 5));
         // 目标温度那根是半度一格的：一格半度，所以 22.0 是第 44 格，行尾写一位小数。
         // The target slider is half a degree per tick: 22.0 is tick 44, and the summary carries one decimal.
         sliderShows(climate, "pref_alerts_climate_target", 32, 60, 44, "22.0 °C");
@@ -992,6 +1208,7 @@ public class SettingsShotsTest {
                     climate.findPreference(key) instanceof androidx.preference.SeekBarPreference);
         }
         assertNull("检查不在车厢温度这一页", climate.findPreference("cat_alerts_checks"));
+        assertLastRowIsTheBackRow(climate);
         File climateShot = Shots.save(shotActivity, "settings-alerts-climate-" + tag);
         assertTrue(climateShot + " 是空的", climateShot.length() > 10_000);
 
@@ -1001,7 +1218,8 @@ public class SettingsShotsTest {
         assertEquals(Boolean.TRUE, hot.callChangeListener(34));
         assertEquals("拖完就存下了", 34,
                 new AppConfig(RuntimeEnvironment.getApplication()).getAlertsClimateHotC());
-        assertEquals("行尾跟着变", "34 °C", String.valueOf(hot.getSummary()));
+        assertEquals("行尾跟着变", climate.getString(R.string.opt_alerts_climate_above, 34),
+                String.valueOf(hot.getSummary()));
 
         // 目标温度那根：拖到第 45 格就是 22.5 度（一格半度），行尾写成一位小数。
         // The target slider: tick 45 is 22.5 °C (one tick is half a degree), and the summary says one decimal.
@@ -1022,8 +1240,12 @@ public class SettingsShotsTest {
         AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
         config.setAlertsClimateHotC(99);
         assertEquals("太热夹到 40", 40, config.getAlertsClimateHotC());
+        config.setAlertsClimateHotC(5);
+        assertEquals("太热夹到 22", 22, config.getAlertsClimateHotC());
         config.setAlertsClimateColdC(-40);
         assertEquals("太冷夹到 -10", -10, config.getAlertsClimateColdC());
+        config.setAlertsClimateColdC(30);
+        assertEquals("太冷夹到 18", 18, config.getAlertsClimateColdC());
         config.setAlertsClimateTargetC(5f);
         assertEquals("目标温度夹到 16", 16f, config.getAlertsClimateTargetC(), 0f);
         config.setAlertsClimateTargetC(15.9f);
@@ -1073,6 +1295,32 @@ public class SettingsShotsTest {
         assertTrue(key + " 该看得见", note.isVisible());
         assertFalse(key + " 上面不该有组名",
                 screen.getPreference(0) instanceof androidx.preference.PreferenceCategory);
+    }
+
+    /**
+     * 三页的末行都是「回到警报」：普通一行、点得动，行尾写从哪一页回去。
+     *
+     * <p>三页共用同一个 key（它们从不同时读进来），行尾那一句跟着这一页读的是哪一棵子树。</p>
+     *
+     * Every child page ends with the back row: a plain Preference, wired, and its summary names the page.
+     */
+    private static void assertLastRowIsTheBackRow(SettingsPreferenceFragment page) {
+        androidx.preference.PreferenceGroup screen = page.getPreferenceScreen();
+        int last = screen.getPreferenceCount() - 1;
+        assertEquals("末行该是「回到警报」", "pref_alerts_back", screen.getPreference(last).getKey());
+        Preference back = page.findPreference("pref_alerts_back");
+        assertNotNull("少了「回到警报」那一行", back);
+        assertTrue("只是普通一行，不是什么专用控件",
+                back.getClass().equals(androidx.preference.Preference.class));
+        assertNotNull("这一行该点得动", back.getOnPreferenceClickListener());
+        String summary = String.valueOf(back.getSummary());
+        String title = page.getString(R.string.set_alerts_back_title);
+        assertFalse("行尾要写从哪一页回去", summary.isEmpty());
+        assertFalse("行尾不能只重复标题", summary.equals(title));
+        assertTrue("行尾该说这是从哪一页回去的: " + summary,
+                summary.equals(page.getString(R.string.set_alerts_back_from_notifications))
+                        || summary.equals(page.getString(R.string.set_alerts_back_from_sentry))
+                        || summary.equals(page.getString(R.string.set_alerts_back_from_climate)));
     }
 
     /** 一根拖动条：最小、最大、现在的值、行尾。 */
@@ -1342,6 +1590,224 @@ public class SettingsShotsTest {
     }
 
     private ShotActivity shotActivity;
+    /** 上一屏的控制器：下一屏建起来之前先把它拆掉，否则一屏一屏的视图全留在堆上。 */
+    private org.robolectric.android.controller.ActivityController<ShotActivity> shotController;
+    /**
+     * 开一屏新的设置界面，并把上一屏拆掉。
+     *
+     * <p>这一个类一整套会开几十屏（每一屏都是真的视图树和真的截图位图），全留在堆上就会在运行末尾
+     * 直接 OutOfMemory。上一屏的结论在前一个方法里已经用完，所以这里在开新的之前先 destroy 掉。</p>
+     *
+     * A fresh settings screen, with the previous one torn down: this class opens dozens of real view
+     * hierarchies, and keeping every one of them alive runs the test worker out of heap near the end.
+     */
+    // ------------------------------------------------------------------ 更新与关于（4.19）
+
+    /**
+     * 开一屏「更新与关于」。存着的两个最新版本号先摆好（截图测试不联网，见 {@link #noNetwork}）。
+     *
+     * <p>两个数字是先存进去的，不是查出来的：这一页的规矩是「先显示存着的，后台再问一次」，
+     * 所以这样测的正是车主离线打开时看到的那一屏。</p>
+     */
+    private SettingsPreferenceFragment updatePage(java.util.function.Consumer<AppConfig> tweak) {
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        config.setCachedLatestUpstream("4.12.1-alpha");
+        config.setCachedLatestFork("4.19.0-alerts-beta");
+        tweak.accept(config);
+        return updatePageNow();
+    }
+
+    /** 真的把那一屏建出来（设置已经摆好了）。Builds the page from whatever AppConfig now holds. */
+    private SettingsPreferenceFragment updatePageNow() {
+        RuntimeEnvironment.setQualifiers(Shots.DAY_EN);
+        shotActivity = newShotActivity();
+        Shots.stillFrames(shotActivity);
+        SettingsShellFragment shell = new SettingsShellFragment();
+        shotActivity.getSupportFragmentManager().beginTransaction()
+                .replace(shotActivity.container, shell).commitNow();
+        Shots.settle();
+        shell.showSection("screen_update");
+        Shots.settle();
+        SettingsPreferenceFragment section = (SettingsPreferenceFragment) shell.getChildFragmentManager()
+                .findFragmentById(R.id.settings_detail);
+        assertNotNull("「更新与关于」那一屏", section);
+        return section;
+    }
+
+    /**
+     * 一次都没查到过（新装的车、断网）：那一行写「没能查到」，不是一直转「正在查询」，也不弹框。
+     *
+     * <p>「查不到」和「最新就是这一版」是两件事，不能混成一句。</p>
+     */
+    @Test
+    public void updatePageWithoutNumbersSaysItCouldNotCheck() {
+        SettingsPreferenceFragment section = updatePageNow();
+        Preference row = section.findPreference("pref_update_versions");
+        assertNotNull(row);
+        String text = String.valueOf(row.getSummary());
+        String unknown = RuntimeEnvironment.getApplication().getString(
+                R.string.set_update_versions_unknown);
+        assertTrue("该写「没能查到」：" + text, text.contains(unknown));
+        assertFalse("不该还挂着「正在查询」：" + text,
+                text.contains(RuntimeEnvironment.getApplication().getString(
+                        R.string.set_update_versions_checking)));
+        // 两个来源都不认得：dts88 与 fork 各一句
+        assertEquals("两个来源各一句「没能查到」", 2, countOccurrences(text, unknown));
+        File file = Shots.save(shotActivity, "settings-update-day-no-numbers");
+        assertTrue(file + " 是空的", file.length() > 10_000);
+    }
+
+    private static int countOccurrences(String text, String needle) {
+        int count = 0;
+        int at = text.indexOf(needle);
+        while (at >= 0) {
+            count++;
+            at = text.indexOf(needle, at + needle.length());
+        }
+        return count;
+    }
+
+    /**
+     * 三个数字并排：本机（带 versionCode）、上游 dts88 最新、fork 最新。
+     *
+     * <p>「落后多少」就靠这一行看出来，所以三个都得在，而且本机那个要带 versionCode ——
+     * 能不能覆盖安装看的是那个数，不是版本名。</p>
+     */
+    @Test
+    public void updatePageShowsInstalledAndBothLatestVersions() {
+        SettingsPreferenceFragment section = updatePage(config -> {
+        });
+        Preference row = section.findPreference("pref_update_versions");
+        assertNotNull("少了三个版本号那一行", row);
+        String text = String.valueOf(row.getSummary());
+        String installed = com.kooo.evcam.update.UpdateFlow.currentVersion(
+                RuntimeEnvironment.getApplication());
+        int code = com.kooo.evcam.update.UpdateFlow.currentVersionCode(
+                RuntimeEnvironment.getApplication());
+        String installedLine = RuntimeEnvironment.getApplication().getString(
+                R.string.set_update_versions_installed, installed, code);
+        assertTrue("本机那一行要带版本名和 versionCode：" + text, text.contains(installedLine));
+        assertTrue("上游 dts88 最新的版本号该在：" + text,
+                text.contains(RuntimeEnvironment.getApplication().getString(
+                        R.string.set_update_versions_source, "dts88", "4.12.1-alpha")));
+        assertTrue("fork 最新的版本号该在：" + text,
+                text.contains(RuntimeEnvironment.getApplication().getString(
+                        R.string.set_update_versions_source, "Fabbbrrr", "4.19.0-alerts-beta")));
+        assertFalse("查到数字时不该还写着「查不到」：" + text,
+                text.contains(RuntimeEnvironment.getApplication().getString(
+                        R.string.set_update_versions_unknown)));
+
+        section.scrollToPreference("pref_update_versions");
+        File file = Shots.save(shotActivity, "settings-update-day-versions");
+        assertTrue(file + " 是空的", file.length() > 10_000);
+    }
+
+    /**
+     * 关掉「从 fork 取更新」得先过一道红色警告框：取消 → 还是 fork；确认 → 真的切到上游。
+     *
+     * <p>这一步不可逆（下一次更新就把 alerts 换掉），所以「点一下就切」和「没有警告」都是错的。</p>
+     */
+    @Test
+    public void turningTheSourceOffWarnsFirstAndCancelKeepsTheFork() {
+        SettingsPreferenceFragment section = updatePage(config -> {
+        });
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        assertTrue("默认就是从 fork 取（4.19）", config.isUpdateFromFork());
+
+        androidx.preference.SwitchPreferenceCompat fork = section.findPreference("pref_update_fork");
+        assertNotNull("少了「从哪儿取更新」那一行", fork);
+        assertEquals("开着时那一行写 fork",
+                R.string.dev_update_fork_title, titleRes(fork));
+
+        assertFalse("关掉不能直接就关了", fork.callChangeListener(false));
+        Shots.settle();
+        android.app.Dialog dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotNull("关掉之前该先弹一个警告框", dialog);
+        dialog.dismiss();
+        Shots.settle();
+        assertTrue("取消之后还是从 fork 取", config.isUpdateFromFork());
+
+        assertFalse(fork.callChangeListener(false));
+        Shots.settle();
+        androidx.appcompat.app.AlertDialog warn =
+                (androidx.appcompat.app.AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertNotNull(warn);
+        Shots.save(warn, "settings-update-day-switch-to-upstream");
+        warn.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick();
+        Shots.settle();
+        assertFalse("确认之后才切成上游", config.isUpdateFromFork());
+        assertEquals("关了之后那一行写上游", R.string.set_update_fork_off_title, titleRes(fork));
+        assertFalse("不从 fork 取时，fork 那两行收起来",
+                shown(section, "pref_update_fork_channel"));
+        assertFalse(shown(section, "pref_update_repo"));
+    }
+
+    /** 那一行现在用的是哪个标题（{@code Preference} 只给 CharSequence，这里对回资源 id）。 */
+    private static int titleRes(Preference row) {
+        String title = String.valueOf(row.getTitle());
+        for (int id : new int[] {R.string.dev_update_fork_title, R.string.set_update_fork_off_title}) {
+            if (title.contentEquals(RuntimeEnvironment.getApplication().getText(id))) {
+                return id;
+            }
+        }
+        throw new AssertionError("认不出这一行的标题：" + title);
+    }
+
+    /**
+     * fork 仓库只收 {@code owner/repo} 或 {@code https://github.com/owner/repo}，存下来的就是那一种写法；
+     * 换仓库把「fork 最新」那个数字清掉（它是上一个仓库的）。
+     */
+    @Test
+    public void theForkRepositoryIsNormalisedAndGarbageIsNotStored() {
+        SettingsPreferenceFragment section = updatePage(config -> {
+        });
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        assertEquals("默认仓库", "Fabbbrrr/zeekr-shortcut-car", config.getUpdateForkRepo());
+        assertTrue("fork 那行说明里写着现在的仓库：" + section.findPreference("pref_update_repo").getSummary(),
+                String.valueOf(section.findPreference("pref_update_repo").getSummary())
+                        .contains("Fabbbrrr/zeekr-shortcut-car"));
+
+        assertFalse("认不出来的仓库名不存", config.setUpdateForkRepo("not a repo at all"));
+        assertEquals("没存下来就还是默认那个", "Fabbbrrr/zeekr-shortcut-car", config.getUpdateForkRepo());
+        assertFalse(config.setUpdateForkRepo("http://github.com/someone/zeekr-shortcut-car"));
+        assertEquals("http 不认", "Fabbbrrr/zeekr-shortcut-car", config.getUpdateForkRepo());
+
+        assertTrue("一整条网址认得出来",
+                config.setUpdateForkRepo("https://github.com/someone/zeekr-shortcut-car"));
+        assertEquals("存的是 owner/repo", "someone/zeekr-shortcut-car", config.getUpdateForkRepo());
+        assertEquals("换了仓库就把上一个仓库的数字清掉", "", config.getCachedLatestFork());
+    }
+
+    /** fork 接收哪一档：四档都在（自动 / Alpha / Beta / 正式版），选了就存下来，并真的改成那两档。 */
+    @Test
+    public void theForkChannelOffersFourChoicesAndStoresOne() {
+        SettingsPreferenceFragment section = updatePage(config -> {
+        });
+        androidx.preference.ListPreference channel = section.findPreference("pref_update_fork_channel");
+        assertNotNull("少了「从 fork 接收哪一档」那一行", channel);
+        assertEquals("四档", 4, channel.getEntries().length);
+        assertEquals("默认是自动", "auto", channel.getValue());
+        assertTrue("自动那一档的名字在" + java.util.Arrays.toString(channel.getEntries()),
+                java.util.Arrays.toString(channel.getEntries()).contains("Auto"));
+
+        channel.callChangeListener("alpha");
+        Shots.settle();
+        AppConfig config = new AppConfig(RuntimeEnvironment.getApplication());
+        assertEquals("选了就存下来", "alpha", config.getUpdateChannel());
+        com.kooo.evcam.update.UpdateChannel.Gates gates = com.kooo.evcam.update.UpdateSource
+                .gates(config, com.kooo.evcam.update.UpdateFlow.currentVersion(
+                        RuntimeEnvironment.getApplication()));
+        assertTrue("alpha 那一档收 beta", gates.includeBeta);
+        assertTrue("alpha 那一档也收 alpha", gates.includeAlpha);
+    }
+
+    private ShotActivity newShotActivity() {
+        if (shotController != null) {
+            shotController.pause().stop().destroy();
+        }
+        shotController = Robolectric.buildActivity(ShotActivity.class).setup();
+        return shotController.get();
+    }
 
     /** 照着存好的状态开一屏新的「停车警报」。一条按存的这个状态绑出来的设置页。 */
     private SettingsPreferenceFragment alertsPage(boolean alertsOn, String transport) {
@@ -1369,7 +1835,7 @@ public class SettingsShotsTest {
         config.setAlertsQuietEnabled(true);
         tweak.accept(config);
         RuntimeEnvironment.setQualifiers(qualifiers);
-        shotActivity = Robolectric.buildActivity(ShotActivity.class).setup().get();
+        shotActivity = newShotActivity();
         Shots.stillFrames(shotActivity);
         SettingsShellFragment shell = new SettingsShellFragment();
         shotActivity.getSupportFragmentManager().beginTransaction()
@@ -1436,7 +1902,7 @@ public class SettingsShotsTest {
     @Test
     public void openingAtARowLandsOnItsSection() {
         RuntimeEnvironment.setQualifiers(Shots.DAY);
-        ShotActivity activity = Robolectric.buildActivity(ShotActivity.class).setup().get();
+        ShotActivity activity = newShotActivity();
         Shots.stillFrames(activity);
         SettingsShellFragment shell = SettingsShellFragment.at("screen_storage", "pref_storage_location", null);
         activity.getSupportFragmentManager().beginTransaction().replace(activity.container, shell).commitNow();
@@ -1450,7 +1916,7 @@ public class SettingsShotsTest {
 
     private ShotActivity shoot(String qualifiers, String tag) {
         RuntimeEnvironment.setQualifiers(qualifiers);
-        ShotActivity activity = Robolectric.buildActivity(ShotActivity.class).setup().get();
+        ShotActivity activity = newShotActivity();
         Shots.stillFrames(activity);
         SettingsShellFragment shell = new SettingsShellFragment();
         activity.getSupportFragmentManager().beginTransaction().replace(activity.container, shell).commitNow();

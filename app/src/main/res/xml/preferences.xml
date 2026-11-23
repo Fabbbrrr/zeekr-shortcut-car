@@ -145,19 +145,16 @@
 
         <!--
           警报发到哪儿（车主 2026-11-15 从开发者选项搬到这里）：先选路，
-          下面各组按选中的那条路出现。
-          Where alerts go: the exit is chosen before the details.
+          下面各组按选中的那条路出现。行尾写现在真的发到哪儿（Telegram / ntfy 付费档 / ntfy 公开话题），
+          和发送那边是同一个判断（AppConfig.isAlertsNtfy / isAlertsNtfyPaid，规则在 showAlertsRows），
+          所以这条路不再另开一行状态。
+          Where alerts go: the exit is chosen before the details. The summary reads the exit in use, from the
+          same source the sender uses, so the separate status row is gone.
         -->
         <ListPreference
             android:key="pref_alerts_transport"
             android:title="@string/set_alerts_transport_title"
             android:summary="@string/set_alerts_transport_summary" />
-
-        <!-- 真的发到哪儿（D11 的状态行）：读生效的出口，不是存着的值 -->
-        <Preference
-            android:key="pref_alerts_channel_status"
-            android:selectable="false"
-            android:title="@string/set_alerts_channel_status_title" />
 
         <!-- 聊天里 alerts off 之后那一行：总开关还开着，但车没在看。点一下恢复。
              一个看不见的静音是最糟的状态，所以它必须写在屏上（见 AppConfig.isAlertsPaused）。 -->
@@ -270,11 +267,6 @@
                     android:key="pref_alerts_find_chat"
                     android:title="@string/set_alerts_find_title"
                     android:summary="@string/set_alerts_find_summary" />
-
-                <SwitchPreferenceCompat
-                    android:key="pref_alerts_commands"
-                    android:title="@string/set_alerts_commands_title"
-                    android:summary="@string/set_alerts_commands_summary" />
             </PreferenceCategory>
 
             <!--
@@ -325,6 +317,32 @@
                     android:key="pref_alerts_ntfy_server"
                     android:title="@string/set_alerts_ntfy_server_title"
                     android:summary="@string/set_alerts_ntfy_server_summary" />
+            </PreferenceCategory>
+
+            <!--
+              命令那一组（业主 2026-11-19）：关于命令的都在这里，排在两条出口后面。
+              「回应命令」是 Telegram 那一份；ntfy 那两行只在开发者选项开着、选的是 ntfy 时出现
+              （免费档上那一行在、点不动，理由写在它下面那条）。「警报里的按钮」两条路都有 —— 它说的是
+              车发出去的东西带不带键盘，不是哪条路。
+              The commands group, after the two exits: the Telegram command switch, the ntfy command rows when
+              they exist, and the buttons switch, which speaks about what the car sends on either exit.
+            -->
+            <PreferenceCategory
+                android:key="cat_alerts_commands"
+                android:title="@string/set_group_alerts_commands">
+
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_commands"
+                    android:title="@string/set_alerts_commands_title"
+                    android:summary="@string/set_alerts_commands_summary" />
+
+                <!-- 警报下面带按钮（默认开）：HD、片段、座椅那一排都是 callback_query，只有 Telegram 有回程。
+                     Buttons under an alert (on by default): every one of them is a callback_query. -->
+                <SwitchPreferenceCompat
+                    android:key="pref_alerts_buttons"
+                    android:title="@string/set_alerts_buttons_title"
+                    android:summary="@string/set_alerts_buttons_summary"
+                    android:defaultValue="true" />
 
                 <!-- 命令：只给开发者选项里、付费档的人。免费档上这一行在、点不动，理由写在下面那条。
                      Commands: developer options plus a paid plan only. On the free tier the row is there,
@@ -371,6 +389,12 @@
                     android:title="@string/set_diagnostics_title"
                     android:summary="@string/set_diagnostics_summary" />
             </PreferenceCategory>
+
+            <!-- 这一页的末行：退回总开关那一页（三页都有）。
+                 The last row of every child page: back to the hub. -->
+            <Preference
+                android:key="pref_alerts_back"
+                android:title="@string/set_alerts_back_title" />
         </PreferenceScreen>
 
         <!--
@@ -389,6 +413,17 @@
                 android:selectable="false"
                 android:title="@string/set_alerts_sentry_note_title"
                 android:summary="@string/set_alerts_sentry_note_summary" />
+
+            <!--
+              数据量说明（业主 2026-11-19 从「短视频」那一组提到页首）：它说的是这一页发出去的东西一共多贵，
+              不只是那段短片，所以它坐在那条说明下面、上面没有任何组名，也不再跟「发不发短片」一起收起。
+              The data note moved from the clip group to the top of the page: it prices everything this page
+              sends, not just the clip, so it sits under the explainer, above every category, always visible.
+            -->
+            <Preference
+                android:key="pref_alerts_clip_data"
+                android:selectable="false"
+                android:summary="@string/set_alerts_clip_data_note" />
 
             <PreferenceCategory
                 android:key="cat_alerts_when"
@@ -470,12 +505,13 @@
                     android:key="pref_alerts_clip_audio"
                     android:title="@string/set_alerts_clip_audio_title"
                     android:summary="@string/set_alerts_clip_audio_summary" />
-
-                <Preference
-                    android:key="pref_alerts_clip_data"
-                    android:selectable="false"
-                    android:summary="@string/set_alerts_clip_data_note" />
             </PreferenceCategory>
+
+            <!-- 这一页的末行：退回总开关那一页（三页都有，行尾写从哪一页回去）。
+                 The last row of every child page: back to the hub, and its summary names the page. -->
+            <Preference
+                android:key="pref_alerts_back"
+                android:title="@string/set_alerts_back_title" />
         </PreferenceScreen>
 
         <!--
@@ -507,19 +543,21 @@
                 android:title="@string/set_alerts_climate_title"
                 android:summary="@string/set_alerts_climate_summary" />
 
-            <!-- 太热：25–40 °C，默认 30。行尾写「30 °C」，拖到哪一格就是哪一度。 -->
+            <!-- 太热：22–40 °C，默认 30。行尾写「高于 30 °C」，拖到哪一格就是哪一度。
+                 Too hot: 22–40 °C, default 30. -->
             <SeekBarPreference
                 android:key="pref_alerts_climate_hot"
                 android:title="@string/set_alerts_climate_hot_title"
-                app:min="25"
+                app:min="22"
                 android:max="40" />
 
-            <!-- 太冷：-10–15 °C，默认 5 -->
+            <!-- 太冷：-10–18 °C，默认 5。行尾写「最高 5 °C」。
+                 Too cold: -10–18 °C, default 5. -->
             <SeekBarPreference
                 android:key="pref_alerts_climate_cold"
                 android:title="@string/set_alerts_climate_cold_title"
                 app:min="-10"
-                android:max="15" />
+                android:max="18" />
 
             <SwitchPreferenceCompat
                 android:key="pref_alerts_climate_safety"
@@ -562,6 +600,12 @@
                 android:key="pref_alerts_climate_probe"
                 android:title="@string/set_alerts_climate_probe_title"
                 android:summary="@string/set_alerts_climate_probe_summary" />
+
+            <!-- 这一页的末行：退回总开关那一页（三页都有）。
+                 The last row of every child page: back to the hub. -->
+            <Preference
+                android:key="pref_alerts_back"
+                android:title="@string/set_alerts_back_title" />
         </PreferenceScreen>
     </PreferenceScreen>
 
@@ -876,7 +920,40 @@
             android:key="pref_check_update"
             android:title="@string/set_check_update_title" />
 
-        <!-- 接收的版本：正式版 / Beta 版 / Alpha 版。存的还是原来两个开关（AppConfig.isUpdateBetaEnabled / isUpdateAlphaEnabled） -->
+        <!--
+          三个数字并排（4.19）：本机装的是哪一版（带 versionCode）、上游 dts88 最新、fork 最新。
+          打开这一页就在后台查一次，查到的存进 AppConfig（运行状态，不进导出），回来改这一行的说明。
+          查不到就写「没能查到」，不弹框 —— 这一行只是让人看见「落后多少」，不是「装不装」。
+          Three numbers side by side: installed (with its versionCode), dss88 latest, fork latest.
+          Fetched in the background on open; never blocks the UI thread and never opens a dialog.
+        -->
+        <com.kooo.evcam.settings.ValueActionPreference
+            android:key="pref_update_versions"
+            android:title="@string/set_update_versions_title" />
+
+        <!--
+          更新从哪儿取（4.19 从开发者选项挪到这里）。默认「从 fork 取」：这个包只该装这个 fork 发的版本。
+          关掉是一个带红色警告的决定（AppConfig.isUpdateFromFork、SettingsPreferenceFragment.bindUpdate）。
+          Where updates come from. On by default; turning it off goes through a red warning dialog.
+        -->
+        <SwitchPreferenceCompat
+            android:key="pref_update_fork"
+            android:title="@string/dev_update_fork_title"
+            android:summary="@string/dev_update_fork_summary" />
+
+        <!-- fork 那一条路接收哪一档：自动 / Alpha / Beta / 正式版（AppConfig.update_channel） -->
+        <ListPreference
+            android:key="pref_update_fork_channel"
+            android:title="@string/set_update_fork_channel_title"
+            android:summary="%s" />
+
+        <!-- fork 的仓库：owner/repo 或 https://github.com/owner/repo（AppConfig.update_fork_repo） -->
+        <Preference
+            android:key="pref_update_repo"
+            android:title="@string/set_update_repo_title" />
+
+        <!-- 接收的版本（上游那一条路）：正式版 / Beta 版 / Alpha 版。存的还是原来两个开关
+             （AppConfig.isUpdateBetaEnabled / isUpdateAlphaEnabled） -->
         <com.kooo.evcam.settings.SegmentedPreference
             android:key="pref_update_channel"
             android:title="@string/set_update_channel_title" />
@@ -895,15 +972,6 @@
     <PreferenceScreen
         android:key="screen_developer"
         android:title="@string/set_section_developer">
-
-        <!--
-          测试自己的构建用：打开就从自己的 fork 取更新（UpdateSource）。默认关，锁上开发者选项后按关算。
-          这一行和 update/UpdateSource.java 一起，是唯一为“测试版”留的口子，不进上游。
-        -->
-        <SwitchPreferenceCompat
-            android:key="pref_update_fork"
-            android:title="@string/dev_update_fork_title"
-            android:summary="@string/dev_update_fork_summary" />
 
         <Preference
             android:key="pref_alerts_debug"

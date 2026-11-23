@@ -1386,8 +1386,8 @@
 
     <!-- 开发者选项分区 -->
     <string name="set_section_developer">开发者选项</string>
-    <string name="dev_update_fork_title">从自己的 fork 取更新</string>
-    <string name="dev_update_fork_summary">测试用：「检查更新」去问 Fabbbrrr/zeekr-shortcut-car 的 Release，而不是上游。默认关，关掉就回到上游</string>
+    <string name="dev_update_fork_title">从 Fabbbrrr 取更新（alerts fork）</string>
+    <string name="dev_update_fork_summary">「检查更新」问的是这个 fork 的 Release。只认带标记的版本，上游的版本号再大也不会被当成更新</string>
     <string name="dev_permissions_title">权限设置</string>
     <string name="dev_permissions_summary">管理应用所需的各项权限</string>
     <string name="dev_perm_group_basic">基础权限</string>
@@ -1527,7 +1527,7 @@
     <string name="dev_tool_recording_title">正在录制</string>
     <string name="dev_tool_progress">（%1$d/%2$d）%3$s</string>
     <string name="dev_tool_file_result">%1$s：%2$s</string>
-    <string name="dev_note">在「设置 → 更新与关于 → 关于与致谢」中点击「安全须知」可关闭开发者选项，关闭后此分区隐藏</string>
+    <string name="dev_note">在「设置 → 更新与关于 → 关于与致谢」里关掉开发者选项，关闭后此分区隐藏</string>
     <string name="set_rearview_camera_label_title">方向标签</string>
     <string name="set_rearview_camera_label_summary">在窗口左上角显示当前画面的方向</string>
 
@@ -1563,6 +1563,37 @@
     <string name="set_update_channel_stable">仅检查正式版</string>
     <string name="set_update_channel_beta">检查正式版和 Beta 版</string>
     <string name="action_check">检查</string>
+    <!-- 4.19 更新与关于：两个来源、两个最新版本、仓库与通道（公开之前那一批） -->
+    <string name="set_update_versions_title">已装版本与最新版本</string>
+    <string name="set_update_versions_installed">本机 %1$s（版本号 %2$d）</string>
+    <string name="set_update_versions_source">%1$s 最新 %2$s</string>
+    <string name="set_update_versions_checking">正在查询…</string>
+    <string name="set_update_versions_unknown">没能查到</string>
+    <string name="set_update_fork_off_title">从 dts88 取更新（上游）</string>
+    <string name="set_update_fork_off_summary">「检查更新」问的是上游 dts88 的 Release。下一次更新会去掉 alerts 那一套功能</string>
+    <string name="set_update_to_upstream_title">改成从上游取更新</string>
+    <string name="set_update_to_upstream_msg">更新将来自 dts88/zeekr-shortcut-car。下一次更新会去掉 alerts 的功能，要装回来的话得从 fork 手动装一次。</string>
+    <string name="set_update_to_upstream_confirm">改成上游</string>
+    <string name="set_update_fork_channel_title">从 fork 接收哪一档</string>
+    <string name="opt_update_channel_auto">自动（跟着当前这一版）</string>
+    <string name="opt_update_channel_alpha">Alpha 版</string>
+    <string name="opt_update_channel_beta">Beta 版</string>
+    <string name="opt_update_channel_stable">正式版</string>
+    <string name="set_update_repo_title">fork 仓库</string>
+    <string name="set_update_repo_summary">%1$s。换过之后只认这个仓库发的版本，不再要求带标记；sha256 校验照旧</string>
+    <string name="set_update_repo_hint">owner/repo，或者 https://github.com/owner/repo</string>
+    <string name="set_update_repo_invalid">认不出这个仓库名。写成 owner/repo，或者 https://github.com/owner/repo</string>
+    <string name="set_update_repo_saved">fork 仓库改为 %1$s</string>
+
+    <!-- 4.19 「关于与致谢」里的开发者选项入口（不要密码，但要先看那句警告） -->
+    <string name="dev_enable_title">开发者选项</string>
+    <string name="dev_enable_body">里面是试验性的、不受支持的设置：录制模式、相机映射、标定角度这类。平时用不到，改坏了也没有人负责。</string>
+    <string name="dev_enable_action">打开开发者选项</string>
+    <string name="dev_enable_on_row">开发者选项已打开</string>
+    <string name="dev_enable_turn_off">关掉开发者选项</string>
+    <string name="dev_enable_warn_title">打开开发者选项？</string>
+    <string name="dev_enable_warn_msg">开发者选项里是试验性的、不受支持的设置，改动可能让录制、画面或警报不按预期工作。打开之后设置里会多出「开发者选项」这一分区，出问题时没有支持、风险自负。</string>
+    <string name="dev_enable_confirm">打开</string>
     <string name="tag_experimental">试验性</string>
     <string name="header_recording_on">录制中 · %1$s</string>
     <string name="header_recording_off">未录制 · %1$s</string>
@@ -1601,14 +1632,11 @@
     <string name="set_group_alerts_picture">照片</string>
     <string name="set_group_alerts_clip">短视频</string>
     <string name="set_group_alerts_checks">检查</string>
+    <string name="set_group_alerts_commands">命令</string>
     <string name="set_alerts_cameras_none">一路都没勾，按四路发</string>
 
     <!-- ntfy（试验，开发者选项里才选得了；规格见 docs/ntfy/） -->
     <string name="set_group_alerts_ntfy">ntfy</string>
-    <string name="set_alerts_channel_status_title">警报发到</string>
-    <string name="set_alerts_channel_status_telegram">警报发到：Telegram</string>
-    <string name="set_alerts_channel_status_ntfy_public">警报发到：ntfy（公开话题）</string>
-    <string name="set_alerts_channel_status_ntfy_protected">警报发到：ntfy（已保护）</string>
     <string name="set_alerts_ntfy_setup_title">设置 ntfy</string>
     <string name="set_alerts_ntfy_setup_again_title">ntfy 已配好 —— 再走一遍</string>
     <string name="set_alerts_ntfy_setup_summary">生成话题、扫码、确认收到一条</string>
@@ -1630,7 +1658,6 @@
     <string name="set_alerts_ntfy_token_summary">只有付费档要填：在 ntfy.sh 网页版「Account → Access tokens」里建</string>
     <string name="set_alerts_ntfy_token_empty">没填（免费档不需要）</string>
     <string name="set_alerts_ntfy_token_set">已填写（末四位 %1$s）</string>
-    <string name="set_alerts_channel_status_ntfy_paid">警报发到：ntfy（付费档）</string>
     <string name="set_alerts_ntfy_server_title">服务器</string>
     <string name="set_alerts_ntfy_server_summary">自己搭的才改，别人保持 ntfy.sh</string>
     <string name="set_dev_alerts_ntfy_title">警报走 ntfy</string>
@@ -1668,6 +1695,15 @@
     <string name="set_alerts_transport_summary">Telegram 机器人，或者 ntfy 话题</string>
     <string name="set_alerts_transport_telegram">Telegram</string>
     <string name="set_alerts_transport_ntfy">ntfy</string>
+    <string name="set_alerts_transport_now_telegram">现在发到 Telegram</string>
+    <string name="set_alerts_transport_now_ntfy_public">现在发到 ntfy（公开话题）</string>
+    <string name="set_alerts_transport_now_ntfy_paid">现在发到 ntfy（付费档）</string>
+    <string name="set_alerts_buttons_title">警报里的按钮</string>
+    <string name="set_alerts_buttons_summary">警报下面那排（HD、片段、座椅）要 Telegram；关掉之后车只发文字和照片，不带键盘</string>
+    <string name="set_alerts_back_title">回到警报</string>
+    <string name="set_alerts_back_from_notifications">从「通知」这一页退回去</string>
+    <string name="set_alerts_back_from_sentry">从「哨兵」这一页退回去</string>
+    <string name="set_alerts_back_from_climate">从「车厢温度」这一页退回去</string>
     <!-- 4.6：停车警报分成三页，这三行是入口；行尾按现在的设置写（showAlertsRows），所以这里不写 summary -->
     <string name="set_alerts_row_notifications">通知</string>
     <string name="set_alerts_row_sentry">哨兵</string>
@@ -1724,6 +1760,8 @@
     <string name="opt_alerts_climate_seats_driver">只主驾</string>
     <string name="opt_alerts_climate_seats_both">主驾和副驾</string>
     <string name="opt_alerts_climate_degrees">%1$s °C</string>
+    <string name="opt_alerts_climate_above">高于 %1$s °C</string>
+    <string name="opt_alerts_climate_up_to">最高 %1$s °C</string>
     <string name="opt_alerts_climate_minutes">%d 分钟</string>
     <string name="opt_alerts_climate_soc">%d%%</string>
     <string name="opt_alerts_climate_level">%d 档</string>

@@ -58,11 +58,19 @@ public class AboutActivity extends AppCompatActivity {
         bindLink(R.id.about_link_gpl, GPL_URL);
 
         setUpDeveloperUnlock();
+        setUpDeveloperRow();
 
         View close = findViewById(R.id.about_close);
         if (close != null) {
             close.setOnClickListener(v -> finish());
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 开发者选项可能是在别处（密码框、设置页）改的：回到这一页时按存着的值重写那两行
+        refreshDeveloperRow();
     }
 
     private String buildVersionLine() {
@@ -121,6 +129,63 @@ public class AboutActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * 「打开开发者选项」那一行（4.19）：写着现在开着还是关着，点了按状态做那件事。
+     *
+     * <p>没开时点它先弹一个<b>红色</b>的警告框（和警报那些「不可逆」的框同一个样式）：开发者选项里有
+     * 试验性的、不受支持的设置，改坏了没有人负责。看过那句话点确认才真的解锁（
+     * {@link com.kooo.evcam.settings.DeveloperMode#enableFromWarning}）—— 不输密码，
+     * 但那句警告不是装饰。开着时这一行只说「已经开着」，关掉用旁边那颗「关掉」（原来的 lock）。</p>
+     *
+     * <p>密码那条路照旧：点「安全须知」标题还是弹密码框，两条路都通。</p>
+     */
+    private void setUpDeveloperRow() {
+        View row = findViewById(R.id.about_developer_row);
+        View off = findViewById(R.id.about_developer_off);
+        if (row == null || off == null) {
+            return;
+        }
+        row.setOnClickListener(v -> {
+            if (com.kooo.evcam.settings.DeveloperMode.isUnlocked()) {
+                // 开着时这一行是状态，不是开关：关掉是旁边那颗，免得手滑一下就把界面弄没了
+                return;
+            }
+            confirmEnableDeveloperOptions();
+        });
+        off.setOnClickListener(v -> promptToLockDeveloperMode());
+        refreshDeveloperRow();
+    }
+
+    /** 按开发者选项此刻的状态改那两行的字与可见性。 */
+    private void refreshDeveloperRow() {
+        View row = findViewById(R.id.about_developer_row);
+        View off = findViewById(R.id.about_developer_off);
+        if (row == null || off == null) {
+            return;
+        }
+        boolean unlocked = com.kooo.evcam.settings.DeveloperMode.isUnlocked();
+        if (row instanceof android.widget.TextView) {
+            ((android.widget.TextView) row).setText(unlocked
+                    ? R.string.dev_enable_on_row : R.string.dev_enable_action);
+        }
+        row.setEnabled(!unlocked);
+        off.setVisibility(unlocked ? View.VISIBLE : View.GONE);
+    }
+
+    /** 打开开发者选项之前的那句话：试验性的、不受支持的、风险自负。确认键是红的。 */
+    private void confirmEnableDeveloperOptions() {
+        com.kooo.evcam.ui.CamDialogs.showDestructive(
+                new MaterialAlertDialogBuilder(this, R.style.Theme_Cam_MaterialAlertDialog)
+                        .setTitle(R.string.dev_enable_warn_title)
+                        .setMessage(R.string.dev_enable_warn_msg)
+                        .setPositiveButton(R.string.dev_enable_confirm, (dialog, which) -> {
+                            com.kooo.evcam.settings.DeveloperMode.enableFromWarning(this);
+                            refreshDeveloperRow();
+                            Toast.makeText(this, R.string.dev_unlocked, Toast.LENGTH_LONG).show();
+                        })
+                        .setNegativeButton(R.string.action_cancel, null));
+    }
+
     private void promptForDeveloperPassword() {
         final EditText input = com.kooo.evcam.ui.CamDialogs.input(this);
         input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
@@ -141,6 +206,7 @@ public class AboutActivity extends AppCompatActivity {
                 .setView(box)
                 .setPositiveButton(R.string.action_ok, (dialog, which) -> {
                     if (com.kooo.evcam.settings.DeveloperMode.unlock(this, input.getText().toString())) {
+                        refreshDeveloperRow();
                         Toast.makeText(this, R.string.dev_unlocked,
                                 Toast.LENGTH_LONG).show();
                     } else {
@@ -157,6 +223,7 @@ public class AboutActivity extends AppCompatActivity {
                 .setMessage(R.string.dev_lock_msg)
                 .setPositiveButton(R.string.dev_lock_confirm, (dialog, which) -> {
                     com.kooo.evcam.settings.DeveloperMode.lock(this);
+                    refreshDeveloperRow();
                     Toast.makeText(this, R.string.dev_locked, Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton(R.string.action_cancel, null));

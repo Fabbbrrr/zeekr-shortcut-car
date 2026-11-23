@@ -257,6 +257,11 @@ the app process (`DECISIONS.md` D7).
 
 - 每颗按钮带这一次警报的号（`AlertButton`，`a:<action>:<token>`），只对这一次有效；一周前那条消息上的
   按钮按下去什么都不做。按下先 ACK（`answerCallbackQuery`），再动手。
+- **按钮可以在设置里关掉**：`pref_alerts_buttons`（「警报里的按钮」，默认开）。关着时车发出去的文字和照片
+  一个 inline keyboard 都不带，而且**不发只有按钮才成立的那一句**（回执后面那句座椅问句）。
+  它管的五处：照片下面那排（HD / 片段）、温度警报那排（目标温度 + 关）、回执下面那两颗（开着 / 关着）、
+  「要不要开哨兵」那一问的两颗、座椅那一问的五颗。聊天里那排 `pic` / `status`（reply keyboard）不归它管 ——
+  那是命令键盘，不是警报下面的按钮。
 - **片段不再跟着照片自动发**：切视频要走那一路的录制器，按需才值得。长度用「短视频」那一档，
   关掉就只剩 HD 那颗按钮。
 - **片段多大由录制那边定**：哨兵 / 熄屏那一段的帧率设置（「跟随视频流配置」或固定 10 fps 之类）就是
@@ -280,6 +285,13 @@ message does nothing, and the tap is acknowledged before any work starts. Clips 
 the picture: cutting one needs that camera's recorder, and on demand is when it is worth doing. The clip's
 size is decided on the recording side — the sentry frame-rate setting is the knob — and nothing is
 re-encoded. One clip at a time, because the sample ring is shared.
+
+**Buttons can be switched off**: `pref_alerts_buttons` ("Buttons in alerts", on by default). With it off
+nothing the car sends carries an inline keyboard, and the sentence that only exists because of its buttons
+(the seat question after a receipt) is not sent at all. It governs five sites: the picture row (HD / clip),
+the temperature alert row (targets plus off), the two buttons under a receipt, the two on the Forgot Sentry
+question, and the five on the seat question. The `pic` / `status` reply keyboard in the chat is not part of
+it — that is the command row, not a button under an alert.
 
 ## 1.10 事件清单：每一项都能当场发一条
 
@@ -322,8 +334,8 @@ triggers present. It answers "what does it send" once configured; the three setu
 
 | 哪一档 | 什么时候 | 安静时段 | 重复 |
 |---|---|---|---|
-| 太热 | 停着、空调关着、车厢 ≥ 30 °C（设置里 26 / 28 / 30 / 32 / 35）连续十分钟新鲜读数 | 尊重 | 一趟停车一条，降到阈值以下 3 °C 才重新武装 |
-| 太冷 | 同上，车厢 ≤ 5 °C（0 / 5 / 10 / 15） | 尊重 | 同上 |
+| 太热 | 停着、空调关着、车厢 ≥ 30 °C（设置里 22–40 °C 的滑条，默认 30）连续十分钟新鲜读数 | 尊重 | 一趟停车一条，降到阈值以下 3 °C 才重新武装 |
+| 太冷 | 同上，车厢 ≤ 5 °C（设置里 -10–18 °C 的滑条，默认 5） | 尊重 | 同上 |
 | 危险 | 座椅上有人且 ≥ 35 °C，或者 ≥ 40 °C（`SAFETY_OCCUPIED_C` / `SAFETY_C`） | 不看 | 每 15 分钟一条，一趟最多 3 条 |
 
 - 危险那一档一刻不等，也不受空调开着、电量低压制：车里可能坐着人，等没有意义。
@@ -404,7 +416,21 @@ triggers present. It answers "what does it send" once configured; the three setu
 第二行才是这一组的总开关，下面才是：太热、太冷、高温安全提醒、目标温度、座椅、档位、开多久、电量下限
 （电量 20–99%）。总开关关着时下面几行收起来，那一行说明留着 —— 它说的「只关不开、要靠哨兵」恰恰是开关
 关着时最该看的。
-太热 / 太冷 / 目标 / 电量是滑条（25–40 °C、-10–15 °C、16–30 °C、20–99%）。
+太热 / 太冷 / 目标 / 电量是滑条（22–40 °C、-10–18 °C、16–30 °C、20–99%）；太热那根的行尾写「高于 30 °C」，
+太冷那根写「最高 5 °C」，夹取和默认值在 `AppConfig` 一处。三页的末行都是「回到警报」（`pref_alerts_back`）——
+普通一行，点一下把这一页从外壳的返回栈上弹掉，回到总开关那一页，标题区跟着退。哨兵那一页的第二行是数据量
+说明（`pref_alerts_clip_data`），4.18 从短视频那一组提到页首，短片关着、图关着的时候也照样在：它说的是这一页
+发出去的所有东西一共多贵。
+
+### 出口与命令：一行旧状态、一个新组（4.18）
+
+总开关那一页上原来有一行不可点的「警报发到（状态行）」，4.18 拿掉了：同一件事写在「警报发到哪儿」这一行的
+行尾上 —— 现在真的发到哪儿（Telegram / ntfy 公开话题 / ntfy 付费档），读的是 `AppConfig.isAlertsNtfy()` /
+`isAlertsNtfyPaid()`，和发送那一头同一个判断，所以三处不会各说各的。
+
+通知那一页上关于命令的都在「命令」这一组（`cat_alerts_commands`）里，排在两条出口后面、「检查」前面：
+「回应 Telegram 命令」（`pref_alerts_commands`）、「警报里的按钮」（`pref_alerts_buttons`，默认开）、
+以及 ntfy 的命令那两行（开发者选项 + 付费档，`pref_alerts_ntfy_commands` 和它下面那句解释）。
 
 ### 车在家的时候发不发
 
@@ -748,6 +774,8 @@ already awake.
 
 每次警报的数据量：照片 < 1 MB；5 秒约 2–4 MB；10 秒约 5–8 MB。全部走车的 4G。Telegram 的上限是 50 MB，
 所以尺寸不是问题，**弱网才是**：所以照片永远是第一条，视频是附加的，上传失败只记一行、不重试到天亮。
+这句数据量在设置里也有：`pref_alerts_clip_data` 是哨兵那一页的第二行（4.18 从短视频那一组提到页首），
+短片关着、图关着的时候也照样在 —— 它说的是这一页发出去的所有东西一共多贵，不只是那段短片。
 
 ##### English
 
@@ -759,7 +787,9 @@ touching the file being written. Sound follows the picture; `alerts_clip_audio` 
 Data volume per alert: photo < 1 MB; 5 seconds about 2–4 MB; 10 seconds about 5–8 MB. All of it
 goes over the car's 4G. Telegram's limit is 50 MB, so size is not the issue, **weak network is**:
 so the photo is always first, the video is an add-on, and a failed upload writes one line and does
-not retry all night.
+not retry all night. The same figure sits in settings — `pref_alerts_clip_data` is the second row of the
+Sentry page (moved there from the clip group in 4.18) and stays put with clips and pictures off, because it
+prices everything that page sends, not just the clip.
 
 ## 7. 人为的悬崖
 

@@ -61,16 +61,22 @@ public final class UpdateFlow {
         AlertDialog checking = message(activity,
                 activity.getString(R.string.upd_checking), false);
         com.kooo.evcam.AppConfig config = new com.kooo.evcam.AppConfig(activity);
-        final boolean includeBeta = config.isUpdateBetaEnabled();
-        // 「接收 Alpha 版」随「接收 Beta 版」：Beta 关着时它不算数
-        final boolean includeAlpha = includeBeta && config.isUpdateAlphaEnabled();
-        // 测试自己的构建时才不是上游（UpdateSource；上游那份代码不认这个开关）
-        GithubReleases.useOwner(UpdateSource.owner(config));
+        final String current = currentVersion(activity);
+        // 哪几档放行：从 fork 取时看「从 fork 接收哪一档」（update_channel，默认跟着装着的这一版的后缀），
+        // 从上游取时照旧看「接收的版本」那两个开关 —— 这一档只为 fork 而加，不动上游的规矩。
+        // Which channels are offered: the fork path reads update_channel, the upstream path keeps its
+        // own two switches.
+        UpdateChannel.Gates gates = UpdateSource.gates(config, current);
+        final boolean includeBeta = gates.includeBeta;
+        final boolean includeAlpha = gates.includeAlpha;
+        // 问哪个仓库、那个仓库的版本要不要带标记（UpdateSource；换成别人的 fork 时不要求标记）
+        final UpdateSource.Target target = UpdateSource.target(config);
+        AppLog.i(TAG, "检查更新：" + target + "，通道 beta=" + includeBeta + " alpha=" + includeAlpha);
         new Thread(() -> {
             GithubReleases.Release release = null;
             String error = null;
             try {
-                release = GithubReleases.fetchLatest(includeBeta, includeAlpha, currentVersion(activity));
+                release = GithubReleases.fetchLatest(target, includeBeta, includeAlpha, current);
             } catch (Exception e) {
                 AppLog.w(TAG, "检查更新失败", e);
                 error = failureText(activity, e,
@@ -301,6 +307,21 @@ public final class UpdateFlow {
                     .getPackageInfo(context.getPackageName(), 0).versionName;
         } catch (PackageManager.NameNotFoundException e) {
             return "";
+        }
+    }
+
+    /**
+     * 本机装的那一版的 versionCode；读不到是 0。
+     *
+     * <p>「更新与关于」上把版本名和版本号一起写出来：版本名是给人看的，versionCode 是能不能覆盖安装的
+     * 那个数 —— 两个来源的编号怎么交叉，看这两个数比看版本名清楚。</p>
+     */
+    public static int currentVersionCode(Context context) {
+        try {
+            return context.getPackageManager()
+                    .getPackageInfo(context.getPackageName(), 0).versionCode;
+        } catch (PackageManager.NameNotFoundException e) {
+            return 0;
         }
     }
 

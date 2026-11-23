@@ -54,9 +54,13 @@ public class DeveloperSettingsTest {
     /**
      * 开发者选项分区里、锁上之后<b>照样算数</b>的行 → 它存的键。
      *
-     * <p>只有一类：把开发者选项锁上不该顺带改掉的行为。更新来源就是这一种 —— 锁一下界面
-     * 就把一台车机换回上游的更新，等于下一次点「检查更新」可能装进一个上游版本。
-     * 理由写在 {@code AppConfig#isUpdateFromFork}。</p>
+     * <p>只有一类：把开发者选项锁上不该顺带改掉的行为。</p>
+     *
+     * <p>4.19 起这里是空的：「更新从哪儿取」那一行从开发者选项搬到了「更新与关于」页，
+     * 它不再是一个开发者行（{@code pref_update_fork}，见 {@link #ORDINARY}）。搬走之后它照样
+     * 不受开发者选项管 —— 锁上界面不该把一台车机换回上游的更新。
+     * Empty since 4.19: the update-source switch moved to the Update &amp; about page and is now an ordinary
+     * setting, which is still never gated by developer options.</p>
      */
     private static final Map<String, List<String>> UNGATED = new LinkedHashMap<>();
 
@@ -76,8 +80,9 @@ public class DeveloperSettingsTest {
         ROWS.put("pref_alerts_debug", NONE);
         // ntfy 那一行 2026-11-15 搬进「停车警报」了（事件清单 + 发到哪儿），开发者区不再有它。
         // The ntfy row moved into the alerts section on 2026-11-15; the developer area no longer has it.
-        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）。锁上开发者选项后照样算数（UNGATED）
-        UNGATED.put("pref_update_fork", Arrays.asList("update_from_fork"));
+        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）。4.19 起这一行在「更新与关于」页上，
+        // 不再是开发者行；它照样不归开发者选项管（不在 ORDINARY 里钉着）。
+        // The update-source row moved to Update & about in 4.19; it is pinned as an ordinary setting below.
         ROWS.put("pref_raw_frame_dump", Arrays.asList("raw_frame_dump"));
         ROWS.put("pref_gpu_fisheye_preview", Arrays.asList("gpu_fisheye_preview"));
         ROWS.put("pref_gpu_fisheye_video", Arrays.asList("gpu_fisheye_video"));
@@ -111,7 +116,12 @@ public class DeveloperSettingsTest {
             "video_storage_limit_gb", "photo_storage_limit_gb", "custom_sd_card_path",
             "exposure_compensation", "awb_mode", "car_model", "side_view_enabled", "side_view_min_speed",
             "side_view_mode", "side_view_place_height", "side_view_place_edge",
-            "side_view_place_top");
+            "side_view_place_top",
+            // 更新那几行（4.19）：「从哪儿取」「fork 接收哪一档」「fork 仓库」。搬出开发者选项之后
+            // 它们对没解锁的人也可用 —— 换仓库、换通道不该要一个密码。
+            // The update rows: available to everyone, since locking the developer interface must never
+            // change where a car takes its updates from.
+            "update_from_fork", "update_channel", "update_fork_repo");
 
     private static final Pattern KEY = Pattern.compile("android:key=\"([^\"]+)\"");
 

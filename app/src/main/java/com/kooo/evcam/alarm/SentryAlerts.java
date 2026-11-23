@@ -2283,8 +2283,11 @@ public final class SentryAlerts implements Telemetry.Listener {
      * only what the owner wants is uploaded. Clip length stays the setting (5 or 10 s); with video off the
      * row is HD alone.</p>
      */
-    private String alertMarkup() {
-        if (alertToken.isEmpty()) {
+    String alertMarkup() {
+        // 按钮关着（设置里的「警报里的按钮」）就没有这排：HD、片段都是 callback_query，
+        // 一排按不动的按钮比没有按钮更糟。
+        // With buttons switched off there is no row at all: every one of them is a callback_query.
+        if (!config.isAlertsButtons() || alertToken.isEmpty()) {
             return "";
         }
         java.util.List<String> labels = new ArrayList<>();
@@ -2782,16 +2785,32 @@ public final class SentryAlerts implements Telemetry.Listener {
         guardVetoed = false;
         guardToken = GuardToken.mint(nowMs);
         guardAskedAtMs = nowMs;
-        String markup = TelegramRequest.inlineKeyboard(
+        String markup = guardAskMarkup();
+        if (markup.isEmpty()) {
+            // 按钮关着：这一问没有能按的东西，不发（「问一句就自己开」那一档照旧排上，
+            // 它本来就是「没人反对就自己开」，没有按钮也就没人反对）。
+            // Buttons off: the ask has nothing to press, so it is not sent; ASK_THEN_ON still schedules
+            // the auto-on, because that mode means "nobody objected" and nobody can.
+            BlackBox.note("alerts: sentry ask not sent (buttons in alerts are off)");
+        } else {
+            guardSend(app.getString(R.string.alert_guard_ask, time(),
+                    GuardPolicy.AUTO_ON_MS / 1000), markup);
+        }
+        if (mode == GuardPolicy.Mode.ASK_THEN_ON) {
+            scheduleGuardAutoOn();
+        }
+    }
+
+    /** 那一问的两颗按钮（开了 / 别开）；按钮关着时是空串。 The ask's two buttons, or "" with buttons off. */
+    String guardAskMarkup() {
+        if (!config.isAlertsButtons() || guardToken.isEmpty()) {
+            return "";
+        }
+        return TelegramRequest.inlineKeyboard(
                 new String[]{app.getString(R.string.alert_guard_btn_on),
                         app.getString(R.string.alert_guard_btn_no)},
                 new String[]{GuardToken.data(GuardToken.ACTION_ON, guardToken),
                         GuardToken.data(GuardToken.ACTION_NO, guardToken)});
-        guardSend(app.getString(R.string.alert_guard_ask, time(),
-                GuardPolicy.AUTO_ON_MS / 1000), markup);
-        if (mode == GuardPolicy.Mode.ASK_THEN_ON) {
-            scheduleGuardAutoOn();
-        }
     }
 
     /** 60 秒没人否决就自己开。到点还要再判一次，别把车主按过的「别开」覆盖掉。 */
@@ -2870,9 +2889,9 @@ public final class SentryAlerts implements Telemetry.Listener {
         });
     }
 
-    /** 回执下面那两颗：开了给「关掉」，关了给「打开」。 */
-    private String guardReceiptMarkup(boolean nowOn) {
-        if (guardToken.isEmpty()) {
+    /** 回执下面那两颗：开了给「关掉」，关了给「打开」。按钮关着时一颗也不给。 */
+    String guardReceiptMarkup(boolean nowOn) {
+        if (!config.isAlertsButtons() || guardToken.isEmpty()) {
             return "";
         }
         String onOff = nowOn ? GuardToken.ACTION_OFF : GuardToken.ACTION_ON;
@@ -3435,7 +3454,10 @@ public final class SentryAlerts implements Telemetry.Listener {
      *
      * The row under a temperature alert: two degrees either side of the configured target, plus off.
      * A half-degree target still gets two degrees either side. */
-    private String climateMarkup() {
+    String climateMarkup() {
+        if (!config.isAlertsButtons()) {
+            return "";
+        }
         float target = config.getAlertsClimateTargetC();
         float low = Math.max(10f, target - 2f);
         float high = Math.min(35f, target + 2f);
@@ -3812,6 +3834,11 @@ public final class SentryAlerts implements Telemetry.Listener {
         if (config.isAlertsNtfy()) {
             return null;
         }
+        // 按钮关着：这一句没有按钮就只是一句没人能回的问话，所以整条都不发（见 sendSeatAsk）。
+        // With buttons off the question has nothing to press, so it is not sent at all.
+        if (!config.isAlertsButtons()) {
+            return null;
+        }
         if (climateToken == null || climateToken.isEmpty()) {
             // 这一条回执不是从温度警报来的（车主直接发的 ac on）：自己发一个号，这排按钮才有主人。
             // This receipt did not come from a temperature alert, so the row mints its own token.
@@ -3828,7 +3855,7 @@ public final class SentryAlerts implements Telemetry.Listener {
     private void sendSeatAsk() {
         String[] ask = seatAsk();
         if (ask == null) {
-            BlackBox.note("alerts: seat buttons not offered on this channel");
+            BlackBox.note("alerts: seat question not sent (no buttons on this channel or in settings)");
             return;
         }
         guardSend(ask[0], ask[1]);

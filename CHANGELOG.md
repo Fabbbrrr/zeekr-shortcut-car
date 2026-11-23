@@ -11,6 +11,27 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.19.0-fab-alerts-beta] - 2026-11-21
+
+The first release carrying the **alerts** marker (the name also keeps `fab` for one release so cars on
+4.18.0 can see it; from the next one the marker is `alerts` only).
+
+- Alerts: **Sentry Mode first** is on the hub, with the forgotten-Sentry setting and "arm it at home"
+  directly under the master switch.
+- Alerts: one **home point** on the Notifications page, shown only while the home exclusion or the guard
+  needs it; the exit's **setup row** reads "Set up Telegram / ntfy" and then "… is set up — run it again".
+- Alerts: **Where alerts go** now shows the current exit; the separate "Alerts go to" row is gone.
+- Alerts: **data-cost note** moved to the top of the Sentry page; every page has a **Back to Alerts** row.
+- Alerts: thresholds are **22–40 °C** (too hot) and **−10–18 °C** (too cold).
+- Alerts: a **Commands** group on Notifications holds "Answer commands" and a new **Buttons in alerts**
+  switch; with buttons off the car sends text and pictures with no keyboard and skips button-only
+  messages (the seat question, the forgotten-Sentry question).
+- Updates: **"Update from Fabbbrrr (alerts fork)"** is on by default and turning it off warns that the
+  next update removes the alerts; the about page shows the **installed version, the dts88 latest and the
+  fork latest**; the **fork repository** and the **fork channel** (Auto/Alpha/Beta/Stable) are editable.
+- About: **Enable developer options** from the About page, behind a red warning that says it is at your
+  own risk; it can be turned off again from the same place.
+
 ## [4.18.0-fab-beta] - 2026-11-21
 
 - Alerts: **Sentry Mode first**. The Alerts page now opens with a line saying the alerts need Sentry

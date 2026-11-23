@@ -7,6 +7,7 @@
 
 package com.kooo.evcam.update;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -207,5 +208,65 @@ public class VersionNameTest {
         assertFalse("关了 beta 就只有正式版", VersionName.isRelease("4.13.0-fab-beta"));
         assertTrue(VersionName.isRelease("4.13.0-fab"));
         assertFalse(VersionName.isBetaOrRelease("4.13.0-fab-rc1"));
+    }
+
+    // ---------------------------------------------------------------- 标记从 fab 换成 alerts（4.19）
+
+    /**
+     * 现在的标记是 {@code alerts}，老名字 {@code fab} 照旧认，两段都带着也认。
+     *
+     * <p>这一张表是那个「桥」的全部：新名字要认得，老名字不能丢（装着 4.18.0 的车只认旧标记，
+     * 只认新标记的话它永远看不到新版本），两个都带的是发版时最稳的写法。</p>
+     */
+    @Test
+    public void bothMarkersNameThisFork() {
+        assertEquals("现在的标记", "alerts", VersionName.FORK_MARKER);
+        assertEquals("老名字还认得", "fab", VersionName.LEGACY_FORK_MARKER);
+
+        // 新名字
+        assertTrue(VersionName.isFork("4.19.0-alerts-beta"));
+        assertTrue(VersionName.fitsSource("4.19.0-alerts-beta", true));
+        // 老名字：装着 4.18.0 的车只认它
+        assertTrue(VersionName.isFork("4.18.0-fab-beta"));
+        assertTrue(VersionName.fitsSource("4.18.0-fab-beta", true));
+        // 两个都带
+        assertTrue(VersionName.isFork("4.19.0-fab-alerts-beta"));
+        assertTrue(VersionName.fitsSource("4.19.0-fab-alerts-beta", true));
+        // 上游（dts88）发的：不是这个 fork 的
+        assertFalse(VersionName.isFork("4.12.1-alpha"));
+        assertFalse(VersionName.fitsSource("4.12.1-alpha", true));
+        assertTrue(VersionName.fitsSource("4.12.1-alpha", false));
+
+        // 两段标记都只是标记，不参与排序，也不算通道
+        assertEquals("beta", VersionName.channel("4.19.0-alerts-beta"));
+        assertEquals("beta", VersionName.channel("4.18.0-fab-beta"));
+        assertEquals("beta", VersionName.channel("4.19.0-fab-alerts-beta"));
+        assertTrue(VersionName.compare("4.19.0-fab-alerts-beta", "4.19.0-alerts-beta") == 0);
+        assertTrue(VersionName.isBetaOrRelease("4.19.0-alerts-beta"));
+        assertTrue(VersionName.isBetaOrRelease("4.19.0-fab-alerts-beta"));
+        assertTrue("正式版仍旧没有后缀", VersionName.isRelease("4.19.0-alerts"));
+        assertEquals(4, VersionName.major("4.19.0-alerts-beta"));
+
+        // 差一个字母就不算：「alerts」是整个后缀段
+        assertFalse(VersionName.isFork("4.19.0-alert-beta"));
+        assertFalse(VersionName.isFork("4.19.0-alertsx-beta"));
+        assertFalse(VersionName.isFork("4.19.0-fabulous-beta"));
+    }
+
+    /**
+     * 换了仓库之后不要标记（{@code update_fork_repo} 不是默认那个）：别人的 fork 不会替我们带标记。
+     *
+     * <p>但「只认 fork 那一边」还在：上游那条路不能带我们的标记，反过来一样。</p>
+     */
+    @Test
+    public void aCustomForkRepositoryWaivesOnlyTheMarker() {
+        // 别人的 fork 发的是 4.20.0-beta（没有我们的标记）：换成那个仓库之后它也算数
+        assertTrue(VersionName.fitsSource("4.20.0-beta", true, false));
+        assertTrue(VersionName.fitsSource("4.20.0-alerts-beta", true, false));
+        // 默认仓库仍然要标记
+        assertFalse(VersionName.fitsSource("4.20.0-beta", true, true));
+        // 上游那一边不受影响：三种写法都只有一个答案
+        assertFalse(VersionName.fitsSource("4.20.0-alerts-beta", false, false));
+        assertTrue(VersionName.fitsSource("4.20.0-beta", false, false));
     }
 }

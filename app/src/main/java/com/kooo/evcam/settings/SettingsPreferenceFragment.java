@@ -1165,6 +1165,14 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             });
         }
 
+        // 警报里的按钮（业主 2026-11-19）：默认开。关着时车发出去的文字和照片一个键盘都不带 ——
+        // 照片下面那排（HD、片段）、温度警报那排、回执后面那句座椅问句都看它（SentryAlerts 一处判）。
+        // Buttons in alerts, on by default: with it off nothing the car sends carries a keyboard.
+        bindSwitch("pref_alerts_buttons", appConfig.isAlertsButtons(), value -> {
+            appConfig.setAlertsButtons(value);
+            refreshAlerts();
+        });
+
         // 忘了开哨兵：四档（关 / 先问我 / 问一句就自己开 / 不问就开），存的是 0..3。
         // 取值怎么算在 alarm.GuardPolicy 一处，这里只写设置。
         // Forgot Sentry: four modes stored 0..3; GuardPolicy owns what each one does, this row only saves it.
@@ -1280,11 +1288,11 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // Four sliders; the bounds live in AppConfig, the summary is the value, and AppConfig stores it.
         bindAlertsClimateSlider("pref_alerts_climate_hot",
                 AppConfig.ALERTS_CLIMATE_HOT_MIN_C, AppConfig.ALERTS_CLIMATE_HOT_MAX_C,
-                appConfig.getAlertsClimateHotC(), R.string.opt_alerts_climate_degrees,
+                appConfig.getAlertsClimateHotC(), R.string.opt_alerts_climate_above,
                 appConfig::setAlertsClimateHotC);
         bindAlertsClimateSlider("pref_alerts_climate_cold",
                 AppConfig.ALERTS_CLIMATE_COLD_MIN_C, AppConfig.ALERTS_CLIMATE_COLD_MAX_C,
-                appConfig.getAlertsClimateColdC(), R.string.opt_alerts_climate_degrees,
+                appConfig.getAlertsClimateColdC(), R.string.opt_alerts_climate_up_to,
                 appConfig::setAlertsClimateColdC);
         bindAlertsClimateSlider("pref_alerts_climate_soc_floor",
                 AppConfig.ALERTS_CLIMATE_SOC_MIN, AppConfig.ALERTS_CLIMATE_SOC_MAX,
@@ -1461,12 +1469,34 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
                     com.kooo.evcam.alarm.ntfy.NtfyGate.TELEGRAM,
                     com.kooo.evcam.alarm.ntfy.NtfyGate.NTFY});
             transport.setValue(appConfig.getAlertsTransport());
+            // 行尾写现在真的发到哪儿（以前那是另一行状态行）。行尾只能从 ListPreference 自己的字符
+            // 格式化里拿出来，所以这里用 SummaryProvider，不走 setSummary。
+            // The summary reads the exit in use, replacing the old status row; a SummaryProvider keeps
+            // ListPreference's own format pass out of it.
+            transport.setSummaryProvider(preference -> transportSummary());
             transport.setOnPreferenceChangeListener((preference, newValue) -> {
                 String chosen = String.valueOf(newValue);
                 appConfig.setAlertsTransport(chosen);
                 com.kooo.evcam.blackbox.BlackBox.noteImportant(
                         "设置变更: pref_alerts_transport → " + chosen);
                 showAlertsRows();
+                return true;
+            });
+        }
+
+        // 每一页的末行：一句「回警报」，点了从这一页退回总开关那一页（外壳的返回栈，标题区也跟着退）。
+        // 行尾写的是从哪一页回去，所以三页共用同一个 key、三句话。
+        // The back row on each child page: it pops the shell's back stack, and its summary names the page.
+        Preference backRow = findPreference("pref_alerts_back");
+        int backSummary = alertsChildSummaryRes();
+        if (backRow != null && backSummary != 0) {
+            backRow.setPersistent(false);
+            backRow.setSummary(backSummary);
+            backRow.setOnPreferenceClickListener(preference -> {
+                androidx.fragment.app.FragmentManager manager = getParentFragmentManager();
+                if (manager.getBackStackEntryCount() > 0) {
+                    manager.popBackStack();
+                }
                 return true;
             });
         }
@@ -1575,7 +1605,7 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         pref.setMin(min);
         pref.setMax(Math.max(min, max));
         pref.setSeekBarIncrement(1);
-        // 行尾已经写着「30 °C」，拖动条右边那个裸数字就不用再写一遍
+        // 行尾已经写着「高于 30 °C」/「最高 5 °C」，拖动条右边那个裸数字就不用再写一遍
         pref.setShowSeekBarValue(false);
         pref.setUpdatesContinuously(false);
         pref.setValue(Math.max(min, Math.min(max, current)));
@@ -1816,27 +1846,58 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         return getString(R.string.set_alerts_hub_chat_missing);
     }
 
+    /**
+     * 「警报发到哪儿」行尾：现在真的发到哪儿。
+     *
+     * <p>和总开关那一页的那道行尾、以及发送那边是同一份判断（{@link AppConfig#isAlertsNtfy()} /
+     * {@link AppConfig#isAlertsNtfyPaid()}，真出口在 {@code AlertChannels.of(config)}），三处说法不会打架。
+     * 4.18 之前这是一行单独的状态行；行没了，选择就写在这一行的行尾上。</p>
+     *
+     * The transport row's summary: the exit in use, from the same source the hub and the sender read.
+     * The separate status row is gone, so the choice is stated here.
+     */
+    private String transportSummary() {
+        if (!appConfig.isAlertsNtfy()) {
+            return getString(R.string.set_alerts_transport_now_telegram);
+        }
+        return getString(appConfig.isAlertsNtfyPaid()
+                ? R.string.set_alerts_transport_now_ntfy_paid
+                : R.string.set_alerts_transport_now_ntfy_public);
+    }
+
+    /**
+     * 这一页的末行（「回警报」）行尾该说哪一句：从哪一页回去。不是在下一层页上就是 0（不接线）。
+     *
+     * <p>三页共用同一个 key（它们从不同时读进来），所以哪一句取决于这一页读的是哪一棵子树。</p>
+     *
+     * Which page the back row names: the summary follows the subtree this fragment loaded, and 0 means
+     * this is not a child page at all (nothing to wire).
+     */
+    private int alertsChildSummaryRes() {
+        String root = getArguments() != null ? getArguments().getString(ARG_ROOT) : null;
+        if (CHILD_NOTIFICATIONS.equals(root)) {
+            return R.string.set_alerts_back_from_notifications;
+        }
+        if (CHILD_SENTRY.equals(root)) {
+            return R.string.set_alerts_back_from_sentry;
+        }
+        if (CHILD_CLIMATE.equals(root)) {
+            return R.string.set_alerts_back_from_climate;
+        }
+        return 0;
+    }
+
     /** 两行的行尾写当前填了什么；令牌只说末四位。 */
     private void showAlertsRows() {
-        // 真的发到哪儿：读生效的出口，和发送那边是同一个函数，说法不会打架。
-        // Where alerts actually go: the effective exit, from the same function the sender uses, so the
-        // two cannot disagree.
-        Preference channelStatus = findPreference("pref_alerts_channel_status");
-        if (channelStatus != null) {
-            if (!appConfig.isAlertsNtfy()) {
-                channelStatus.setSummary(R.string.set_alerts_channel_status_telegram);
-            } else if (!appConfig.isAlertsNtfyPaid()) {
-                channelStatus.setSummary(R.string.set_alerts_channel_status_ntfy_public);
-            } else {
-                channelStatus.setSummary(R.string.set_alerts_channel_status_ntfy_paid);
-            }
-        }
+        // 发到哪儿只写在「警报发到哪儿」那一行的行尾上（那一行自己带 SummaryProvider，改完就是新值）。
+        // 以前还有一行不可点的状态行，4.18 拿掉了：同一件事写两遍，两处迟早各说各的。
+        // The exit is stated on the transport row itself; the separate status row was removed.
 
         // 四页共用这一处（ui-spec §三：可见性只写在一处）：总开关 → 这一页自己的开关。
-        // 总开关关着时，屏上只剩开关、出口、状态行和暂停那一行；三行入口一起收起来。
+        // 总开关关着时，屏上只剩开关、出口和暂停那一行；三行入口一起收起来。
         //
         // Two layers on every page: the master switch, then each page's own switch. With the master
-        // switch off only the switch, the exit, the status row and the paused row are left.
+        // switch off only the switch, the exit and the paused row are left.
         boolean alertsOn = appConfig.isAlertsEnabled();
         boolean ntfy = appConfig.isAlertsNtfy();
 
@@ -1882,6 +1943,9 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // 哨兵这一页的第一行也是说明，规则同通知那一页：总开关关着也留着。
         // The Sentry explainer, first row, kept with the master switch off.
         show("pref_alerts_sentry_note", alertsOn);
+        // 数据量说明（4.18 提到页首）：它说的是这一页发出去的所有东西一共多贵，所以不跟「发不发短片」收起。
+        // The data note at the top of the page survives every switch below it.
+        show("pref_alerts_clip_data", alertsOn);
         show("cat_alerts_when", sentry);
         show("pref_alerts_triggers", sentry);
         show("pref_alerts_arm_delay", sentry);
@@ -1899,7 +1963,6 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         show("cat_alerts_clip", sentry);
         boolean clipOn = sentry && appConfig.getAlertsClipSeconds() > 0;
         show("pref_alerts_clip_audio", clipOn);
-        show("pref_alerts_clip_data", clipOn);
 
         // ---- 通知那一页：两条出口各自的组二选一（车主 2026-11-15），加上「检查」里那几行。
         // 检查只在通知这一页（车主 2026-11-19）：要查的就是出口通不通。
@@ -1950,12 +2013,14 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         show("pref_alerts_ntfy_server", notifications && ntfy);
         show("pref_alerts_ntfy_rotate", notifications && ntfy);
 
-        // 命令那一行只给开发者选项里的人；免费档上它还在，但点不动，理由就写在同一行下面，
-        // 不另开一句。note 那一条只在免费档出现 —— 付费档的人已经能开，不需要那句解释。
-        // The command row exists only with developer options open. On the free tier it stays and is
-        // disabled, with the reason appended to its own summary. The note explains that disabled row, so
-        // it shows only where the row does (developer options open) and only on the free tier.
+        // 命令那一组（业主 2026-11-19）：排在两条出口后面，关于命令的都在里面。
+        // 「回应命令」是 Telegram 那一份；「警报里的按钮」两条路都在（它说的是发出去的东西带不带键盘）。
+        // The commands group sits after both exits: the Telegram switch, the buttons switch, then the ntfy
+        // rows (developer options plus a paid plan only).
         boolean developer = DeveloperMode.isUnlocked();
+        show("cat_alerts_commands", notifications);
+        show("pref_alerts_commands", notifications && !ntfy);
+        show("pref_alerts_buttons", notifications);
         show("pref_alerts_ntfy_commands", notifications && ntfy && developer);
         show("pref_alerts_ntfy_commands_note", notifications && ntfy && developer
                 && !appConfig.isAlertsNtfyPaid());
@@ -3600,12 +3665,10 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
             brand.setEnabled(false);
         }
 
-        // 测试自己的构建：更新从自己的 fork 取（update/UpdateSource）。上游不认这个开关
-        bindSwitch("pref_update_fork", appConfig.isUpdateFromFork(), value -> {
-            appConfig.setUpdateFromFork(value);
-            com.kooo.evcam.blackbox.BlackBox.noteImportant("开关变更: pref_update_fork → "
-                    + (value ? "自己的 fork" : "上游"));
-        });
+        // 「更新从自己的 fork 取」那一行 4.19 搬到了「更新与关于」页（bindUpdateForkRows）：
+        // 它不再是开发者行，而且关掉它要过一道红色警告框 —— 这里的 bindSwitch 是不带警告的。
+        // The update-source row moved to Update & about in 4.19 (bindUpdateForkRows); it is not a
+        // developer row any more and turning it off goes through the red warning dialog.
 
         // 车辆状态面板（2026-10-23 从界面页挪来）：主界面那个控件自己听这个开关
         bindSwitch("pref_vehicle_status", appConfig.isVehicleStatusEnabled(),
@@ -3815,6 +3878,13 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
                     new android.text.InputFilter.LengthFilter(64)});
             return;
         }
+        if ("pref_update_repo".equals(key)) {
+            // owner/repo 或者一整条 https://… ：用网址键盘，末段带点、带斜杠
+            input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+            input.setFilters(new android.text.InputFilter[]{
+                    new android.text.InputFilter.LengthFilter(120)});
+            return;
+        }
         if ("pref_alerts_chat".equals(key)) {
             // 群组的会话号是负数，所以允许一个前导减号
             input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED);
@@ -3834,9 +3904,20 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     // ------------------------------------------------------------------ 检查更新
 
     /**
-     * 更新与关于（4.0，ui-spec §十六）：「检查更新」行尾写本机装的是哪个版本，点这一行或行尾的「检查」就查；
-     * 「接收的版本」三档合成一行分段 —— 存的还是原来两个开关：正式版 = 都关，Beta 版 = 只开 Beta，Alpha 版 = 都开
-     * （Beta 关着时 Alpha 本来就不算数，UpdateFlow）；「关于与致谢」点了直接打开关于页。
+     * 更新与关于（4.0 §十六；4.19 重排）：
+     *
+     * <ul>
+     *   <li><b>检查更新</b>：行尾写本机装的是哪个版本，点这一行或行尾的「检查」就查（{@code UpdateFlow}）；</li>
+     *   <li><b>已装版本与最新版本</b>：本机（带 versionCode）、上游 dts88 最新、fork 最新，三个数字并排摆着，
+     *       「落后多少」自己就看出来了。打开这一页在后台查一次（{@code LatestVersions}），查到的存进 AppConfig；</li>
+     *   <li><b>从哪儿取更新</b>：默认 fork。关掉是带红色警告的决定，确认之前开关不动；</li>
+     *   <li><b>fork 接收哪一档、fork 仓库</b>：只喂 fork 那一条路；仓库换过之后不再要求标记（{@code UpdateSource}）；</li>
+     *   <li><b>接收的版本</b>：上游那一条路的三档，存的还是原来两个开关；</li>
+     *   <li><b>关于与致谢</b>：点了直接打开关于页。</li>
+     * </ul>
+     *
+     * <p>Rows: check, the three version numbers, where updates come from, the fork channel and repository,
+     * the upstream channel, and About. The numbers load in the background and never open a dialog.</p>
      */
     private void bindUpdate() {
         ValueActionPreference check = findPreference("pref_check_update");
@@ -3848,6 +3929,9 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         }
         onClick("pref_check_update",
                 pref -> com.kooo.evcam.update.UpdateFlow.start(getActivity()));
+
+        bindUpdateVersionsRow();
+        bindUpdateForkRows();
 
         SegmentedPreference channel = findPreference("pref_update_channel");
         if (channel != null) {
@@ -3875,6 +3959,242 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     private CharSequence channelNote(String channel) {
         return getString(CHANNEL_ALPHA.equals(channel) ? R.string.set_update_alpha_summary
                 : CHANNEL_BETA.equals(channel) ? R.string.set_update_channel_beta : R.string.set_update_channel_stable);
+    }
+
+    // ------------------------------------------------------------------ 三个版本号
+
+    /** 正在后台查最新版本：别叠着起线程（连点两下「检查」不该变成两次请求）。 */
+    private volatile boolean checkingVersions;
+
+    /**
+     * 上一次查回来的两个数字；没查过是 null（那时看缓存）。
+     *
+     * <p>分开存是有意的：缓存是「上一次查到的」，而这一格是「这一次查的结果」。断网时结果是空的，
+     * 那一行就该写「没能查到」—— 不能拿上一次的数字冒充这一次的。（下一次打开这一页时缓存还在。）</p>
+     */
+    private volatile com.kooo.evcam.update.LatestVersions.Numbers fetchedVersions;
+
+    /**
+     * 「已装版本与最新版本」那一行：三个数字写在同一行的说明里，行尾一个「检查」重新查一次。
+     *
+     * <p>打开这一页就在后台查一次（{@link #refreshLatestVersions}），先显示存着的数字 ——
+     * 断网时那几个数字也还在，只是旁边写一句「没能查到」。</p>
+     */
+    private void bindUpdateVersionsRow() {
+        ValueActionPreference row = findPreference("pref_update_versions");
+        if (row == null || getContext() == null) {
+            return;
+        }
+        row.setAction(getString(R.string.action_check), this::refreshLatestVersions);
+        row.setOnPreferenceClickListener(preference -> {
+            refreshLatestVersions();
+            return true;
+        });
+        // 先起后台那一次（它当场把行尾写成「正在查询…」），回来的时候再换成数字；
+        // 没起（这会儿不出网、或者已经查着）就直接把存着的数字摆上去。
+        refreshLatestVersions();
+        if (!checkingVersions) {
+            showVersionNumbers();
+        }
+    }
+
+    /** 把三个数字写进那一行：本机（带 versionCode）、上游最新、fork 最新。只读缓存，不联网。 */
+    private void showVersionNumbers() {
+        ValueActionPreference row = findPreference("pref_update_versions");
+        if (row == null || getContext() == null) {
+            return;
+        }
+        String installed = com.kooo.evcam.update.UpdateFlow.currentVersion(requireContext());
+        int code = com.kooo.evcam.update.UpdateFlow.currentVersionCode(requireContext());
+        // 查过一次之后看结果（查不到就是「没能查到」）；还没查过就看存着的数字。
+        com.kooo.evcam.update.LatestVersions.Numbers known = fetchedVersions;
+        String upstream = known != null ? known.upstream : appConfig.getCachedLatestUpstream();
+        String fork = known != null ? known.fork : appConfig.getCachedLatestFork();
+        String unknown = getString(checkingVersions
+                ? R.string.set_update_versions_checking : R.string.set_update_versions_unknown);
+
+        com.kooo.evcam.update.UpdateSource.Target forkTarget =
+                com.kooo.evcam.update.UpdateSource.fork(appConfig.getUpdateForkRepo());
+        StringBuilder text = new StringBuilder();
+        text.append(getString(R.string.set_update_versions_installed, installed, code));
+        text.append('\n').append(getString(R.string.set_update_versions_source,
+                com.kooo.evcam.update.UpdateSource.UPSTREAM_OWNER, upstream.isEmpty() ? unknown : upstream));
+        text.append('\n').append(getString(R.string.set_update_versions_source,
+                forkTarget.owner, fork.isEmpty() ? unknown : fork));
+        row.setSummary(text.toString());
+    }
+
+    /**
+     * 后台查一次两个仓库的最新版本号，回来之后改那一行的说明。
+     *
+     * <p>界面线程上不做任何网络的事：{@link com.kooo.evcam.update.LatestVersions#refresh} 自己起线程，
+     * 回调也在那个线程上，这里只负责排回界面。页面中途被关掉时什么都不做。</p>
+     */
+    private void refreshLatestVersions() {
+        if (checkingVersions) {
+            return;
+        }
+        checkingVersions = true;
+        showVersionNumbers();
+        com.kooo.evcam.update.LatestVersions.refresh(appConfig, numbers -> {
+            fetchedVersions = numbers;
+            checkingVersions = false;
+            if (!isAdded() || getActivity() == null) {
+                return;
+            }
+            requireActivity().runOnUiThread(() -> {
+                if (isAdded()) {
+                    showVersionNumbers();
+                }
+            });
+        });
+    }
+
+    // ------------------------------------------------------------------ 从哪儿取更新
+
+    /**
+     * 「更新从哪儿取」那一行（4.19 从开发者选项挪上来，默认 fork）。
+     *
+     * <p>开着：标题写「从 Fabbbrrr 取更新（alerts fork）」。关掉要先过一道<b>红色</b>警告框
+     * （下一次更新会去掉 alerts 的功能，要装回来得从 fork 手动装一次）；取消就还是开着 ——
+     * 返回 false，开关自己不动。打开不需要警告。</p>
+     *
+     * <p>fork 那两行（接收哪一档、仓库）只在从 fork 取的时候出现。</p>
+     */
+    private void bindUpdateForkRows() {
+        SwitchPreferenceCompat fork = findPreference("pref_update_fork");
+        if (fork != null) {
+            fork.setPersistent(false);
+            fork.setChecked(appConfig.isUpdateFromFork());
+            fork.setOnPreferenceChangeListener((preference, newValue) -> {
+                boolean on = Boolean.TRUE.equals(newValue);
+                if (!on) {
+                    confirmSwitchToUpstream();
+                    // 开关先不动：等确认框那一下
+                    return false;
+                }
+                appConfig.setUpdateFromFork(true);
+                com.kooo.evcam.blackbox.BlackBox.noteImportant("开关变更: pref_update_fork → 自己的 fork");
+                showForkRows();
+                showVersionNumbers();
+                return true;
+            });
+        }
+
+        ListPreference channel = findPreference("pref_update_fork_channel");
+        if (channel != null) {
+            channel.setPersistent(false);
+            channel.setEntries(new CharSequence[] {getString(R.string.opt_update_channel_auto),
+                    getString(R.string.opt_update_channel_alpha),
+                    getString(R.string.opt_update_channel_beta),
+                    getString(R.string.opt_update_channel_stable)});
+            channel.setEntryValues(new String[] {
+                    com.kooo.evcam.update.UpdateChannel.AUTO.key,
+                    com.kooo.evcam.update.UpdateChannel.ALPHA.key,
+                    com.kooo.evcam.update.UpdateChannel.BETA.key,
+                    com.kooo.evcam.update.UpdateChannel.STABLE.key});
+            channel.setValue(appConfig.getUpdateChannel());
+            channel.setSummary(channel.getEntry());
+            channel.setOnPreferenceChangeListener((preference, newValue) -> {
+                String value = String.valueOf(newValue);
+                appConfig.setUpdateChannel(value);
+                com.kooo.evcam.blackbox.BlackBox.noteImportant("设置变更: pref_update_fork_channel → " + value);
+                channel.setValue(value);
+                channel.setSummary(channel.getEntry());
+                return false;
+            });
+        }
+
+        Preference repo = findPreference("pref_update_repo");
+        if (repo != null) {
+            showUpdateRepo(repo);
+            repo.setOnPreferenceClickListener(preference -> {
+                editUpdateForkRepo(repo);
+                return true;
+            });
+        }
+
+        showForkRows();
+    }
+
+    /** fork 那两行的可见性 + 「从哪儿取」那一行的字：都照此刻存着的值重排。 */
+    private void showForkRows() {
+        boolean fromFork = appConfig.isUpdateFromFork();
+        SwitchPreferenceCompat fork = findPreference("pref_update_fork");
+        if (fork != null) {
+            fork.setTitle(fromFork ? R.string.dev_update_fork_title : R.string.set_update_fork_off_title);
+            fork.setSummary(fromFork ? R.string.dev_update_fork_summary : R.string.set_update_fork_off_summary);
+            if (fork.isChecked() != fromFork) {
+                fork.setChecked(fromFork);
+            }
+        }
+        show("pref_update_fork_channel", fromFork);
+        show("pref_update_repo", fromFork);
+    }
+
+    /** 关掉「从 fork 取更新」之前的那个框：下一次更新会换掉 alerts，主操作是红的。 */
+    private void confirmSwitchToUpstream() {
+        com.kooo.evcam.ui.CamDialogs.showDestructive(
+                new MaterialAlertDialogBuilder(requireContext(), R.style.Theme_Cam_MaterialAlertDialog)
+                        .setTitle(R.string.set_update_to_upstream_title)
+                        .setMessage(R.string.set_update_to_upstream_msg)
+                        .setPositiveButton(R.string.set_update_to_upstream_confirm, (dialog, which) -> {
+                            appConfig.setUpdateFromFork(false);
+                            com.kooo.evcam.blackbox.BlackBox.noteImportant(
+                                    "开关变更: pref_update_fork → 上游（确认过警告）");
+                            showForkRows();
+                            showVersionNumbers();
+                        })
+                        .setNegativeButton(R.string.action_cancel, null));
+    }
+
+    /** 「fork 仓库」那一行的说明：现在的仓库名 + 换了之后会发生什么。 */
+    private void showUpdateRepo(Preference repo) {
+        com.kooo.evcam.update.UpdateSource.Target target =
+                com.kooo.evcam.update.UpdateSource.fork(appConfig.getUpdateForkRepo());
+        repo.setSummary(getString(R.string.set_update_repo_summary, target.fullName()));
+    }
+
+    /**
+     * 改 fork 仓库：{@code owner/repo} 或者 {@code https://github.com/owner/repo}。
+     *
+     * <p>认不出来就<b>不存</b>，把要求说一遍（{@link com.kooo.evcam.update.UpdateSource#normaliseRepo}）——
+     * 存下一串拼不出 API 地址的字，结果只会是「永远没有更新」。存下来了就把「fork 最新」那条缓存清掉
+     * （那是上一个仓库的数字），当场在后台重查一次。</p>
+     */
+    private void editUpdateForkRepo(Preference repo) {
+        final android.widget.EditText input = com.kooo.evcam.ui.CamDialogs.input(requireContext());
+        input.setText(appConfig.getUpdateForkRepo());
+        input.setSelectAllOnFocus(true);
+        configureInput("pref_update_repo", input);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        android.widget.LinearLayout box = new android.widget.LinearLayout(requireContext());
+        box.setOrientation(android.widget.LinearLayout.VERTICAL);
+        box.setPadding(pad, pad / 2, pad, 0);
+        box.addView(input);
+        android.widget.TextView note = com.kooo.evcam.ui.CamDialogs.note(requireContext(),
+                getString(R.string.set_update_repo_hint));
+        note.setPadding(0, pad / 2, 0, 0);
+        box.addView(note);
+
+        com.kooo.evcam.ui.CamDialogs.show(new MaterialAlertDialogBuilder(requireContext(),
+                R.style.Theme_Cam_MaterialAlertDialog)
+                .setTitle(R.string.set_update_repo_title)
+                .setView(box)
+                .setPositiveButton(R.string.action_save, (dialog, which) -> {
+                    String raw = input.getText().toString();
+                    if (!appConfig.setUpdateForkRepo(raw)) {
+                        toast(getString(R.string.set_update_repo_invalid));
+                        return;
+                    }
+                    toast(getString(R.string.set_update_repo_saved, appConfig.getUpdateForkRepo()));
+                    com.kooo.evcam.blackbox.BlackBox.noteImportant(
+                            "设置变更: pref_update_repo → " + appConfig.getUpdateForkRepo());
+                    showUpdateRepo(repo);
+                    showVersionNumbers();
+                    refreshLatestVersions();
+                })
+                .setNegativeButton(R.string.action_cancel, null));
     }
 
     // ------------------------------------------------------------------ 谁出现、谁变灰、名称旁的标签

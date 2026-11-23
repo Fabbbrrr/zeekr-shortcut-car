@@ -42,13 +42,27 @@ public class ForkVersionTest {
         String gradle = buildGradle();
         String versionName = capture(VERSION_NAME, gradle);
         assertTrue("读不到 versionName，这个测试就没意义了", versionName != null);
-        assertTrue("fork 的 versionName 必须带 -" + VersionName.FORK_MARKER + "（现在是 " + versionName + "），"
-                + "否则打开「更新从自己的 fork 取」之后，这个 Release 不会被当成自己的版本",
+        assertTrue("fork 的 versionName 必须带 " + java.util.Arrays.toString(VersionName.FORK_MARKERS)
+                        + " 里的一段（现在是 " + versionName + "），"
+                        + "否则打开「更新从自己的 fork 取」之后，这个 Release 不会被当成自己的版本",
                 VersionName.isFork(versionName));
         assertTrue("带标记的版本号也得认得出通道（现在是 " + versionName + "）",
                 VersionName.isAlphaBetaOrRelease(versionName));
-        assertFalse("上游的版本号不能被当成 fork 发的（现在是 " + versionName + "）",
-                VersionName.isFork(versionName.replace("-" + VersionName.FORK_MARKER, "")));
+        // 把认得的每一段标记都去掉：剩下的名字不能再被当成 fork 发的。
+        // 4.19 起有两个标记（alerts 和老的 fab），只去掉一个是不够的。
+        // Strip every known marker: what is left must not still look like a fork release.
+        StringBuilder bare = new StringBuilder(versionName);
+        for (String marker : VersionName.FORK_MARKERS) {
+            int at = bare.indexOf("-" + marker);
+            while (at >= 0) {
+                bare.delete(at, at + marker.length() + 1);
+                at = bare.indexOf("-" + marker);
+            }
+        }
+        assertFalse("去掉标记之后还认成 fork 发的（现在是 " + bare + "，原文 " + versionName + "）",
+                VersionName.isFork(bare.toString()));
+        assertTrue("去掉标记之后就没有人要的那一档了：上游的版本号不能被当成 fork 发的",
+                VersionName.fitsSource(bare.toString(), false));
     }
 
     /**

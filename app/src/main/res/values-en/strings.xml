@@ -1387,8 +1387,8 @@ If I forget: %3$s</string>
 
     <!-- Developer options section -->
     <string name="set_section_developer">Developer options</string>
-    <string name="dev_update_fork_title">Updates from my fork</string>
-    <string name="dev_update_fork_summary">Testing only: Check for updates asks Fabbbrrr/zeekr-shortcut-car for releases instead of upstream. Off by default; turn it off to go back</string>
+    <string name="dev_update_fork_title">Updates from Fabbbrrr (alerts fork)</string>
+    <string name="dev_update_fork_summary">Check for updates asks this fork for releases. Only marked versions count, so an upstream number, however high, is never offered</string>
     <string name="dev_permissions_title">Permissions</string>
     <string name="dev_permissions_summary">Manage the permissions the app needs</string>
     <string name="dev_perm_group_basic">Basic permissions</string>
@@ -1532,7 +1532,7 @@ If I forget: %3$s</string>
     <string name="dev_tool_recording_title">Recording in progress</string>
     <string name="dev_tool_progress">(%1$d/%2$d) %3$s</string>
     <string name="dev_tool_file_result">%1$s: %2$s</string>
-    <string name="dev_note">Tap Safety notice in Settings → Updates &amp; about → About &amp; credits to turn off developer options and hide this section</string>
+    <string name="dev_note">Turn developer options off in Settings → Update &amp; about → About &amp; credits; the section hides when they are off</string>
     <string name="set_rearview_camera_label_title">Direction label</string>
     <string name="set_rearview_camera_label_summary">Shows the direction of the current view in the top-left corner of the window</string>
 
@@ -1568,6 +1568,37 @@ If I forget: %3$s</string>
     <string name="set_update_channel_stable">Checks for stable versions only</string>
     <string name="set_update_channel_beta">Checks for stable and beta versions</string>
     <string name="action_check">Check</string>
+    <!-- 4.19 Update &amp; about: two sources, the two latest numbers, repository and channel -->
+    <string name="set_update_versions_title">Installed and latest</string>
+    <string name="set_update_versions_installed">Installed %1$s (versionCode %2$d)</string>
+    <string name="set_update_versions_source">%1$s latest %2$s</string>
+    <string name="set_update_versions_checking">Checking…</string>
+    <string name="set_update_versions_unknown">Could not check</string>
+    <string name="set_update_fork_off_title">Updates from dts88 (upstream)</string>
+    <string name="set_update_fork_off_summary">Check for updates asks upstream dts88. The next update removes the alerts features</string>
+    <string name="set_update_to_upstream_title">Switch updates to upstream</string>
+    <string name="set_update_to_upstream_msg">Updates will come from dts88/zeekr-shortcut-car. The next update will remove the alerts features, and getting them back needs a manual install from the fork.</string>
+    <string name="set_update_to_upstream_confirm">Use upstream</string>
+    <string name="set_update_fork_channel_title">Versions from the fork</string>
+    <string name="opt_update_channel_auto">Auto (follow the installed build)</string>
+    <string name="opt_update_channel_alpha">Alpha</string>
+    <string name="opt_update_channel_beta">Beta</string>
+    <string name="opt_update_channel_stable">Stable</string>
+    <string name="set_update_repo_title">Fork repository</string>
+    <string name="set_update_repo_summary">%1$s. Once changed, only releases from that repository count and the marker is not required; the sha256 check stays</string>
+    <string name="set_update_repo_hint">owner/repo, or https://github.com/owner/repo</string>
+    <string name="set_update_repo_invalid">That repository name is not readable. Use owner/repo, or https://github.com/owner/repo</string>
+    <string name="set_update_repo_saved">Fork repository set to %1$s</string>
+
+    <!-- 4.19 The developer-options entry on About (no password, but the warning comes first) -->
+    <string name="dev_enable_title">Developer options</string>
+    <string name="dev_enable_body">Experimental, unsupported settings: recording mode, camera mapping, calibration angles and the like. You will not need them day to day, and nothing here is supported if it breaks.</string>
+    <string name="dev_enable_action">Enable developer options</string>
+    <string name="dev_enable_on_row">Developer options are on</string>
+    <string name="dev_enable_turn_off">Turn them off</string>
+    <string name="dev_enable_warn_title">Enable developer options?</string>
+    <string name="dev_enable_warn_msg">Developer options hold experimental, unsupported settings. Changing them can make recording, the picture or the alerts stop behaving as expected. A Developer options section appears in Settings, and there is no support if something breaks: use is at your own risk.</string>
+    <string name="dev_enable_confirm">Enable</string>
     <string name="tag_experimental">Experimental</string>
     <string name="header_recording_on">Recording · %1$s</string>
     <string name="header_recording_off">Not recording · %1$s</string>
@@ -1607,14 +1638,11 @@ If I forget: %3$s</string>
     <string name="set_group_alerts_picture">The picture</string>
     <string name="set_group_alerts_clip">Short video</string>
     <string name="set_group_alerts_checks">Checks</string>
+    <string name="set_group_alerts_commands">Commands</string>
     <string name="set_alerts_cameras_none">Nothing ticked, so all four are sent</string>
 
     <!-- ntfy (selectable from the Alerts section; see docs/ntfy/) -->
     <string name="set_group_alerts_ntfy">ntfy</string>
-    <string name="set_alerts_channel_status_title">Alerts go to</string>
-    <string name="set_alerts_channel_status_telegram">Alerts go to: Telegram</string>
-    <string name="set_alerts_channel_status_ntfy_public">Alerts go to: ntfy (public topic)</string>
-    <string name="set_alerts_channel_status_ntfy_protected">Alerts go to: ntfy (protected)</string>
     <string name="set_alerts_ntfy_setup_title">Set up ntfy</string>
     <string name="set_alerts_ntfy_setup_again_title">ntfy is set up — run it again</string>
     <string name="set_alerts_ntfy_setup_summary">Make a topic, scan it, confirm one arrived</string>
@@ -1636,7 +1664,6 @@ If I forget: %3$s</string>
     <string name="set_alerts_ntfy_token_summary">Paid plans only: make one on ntfy.sh under Account → Access tokens</string>
     <string name="set_alerts_ntfy_token_empty">Empty (not needed on the free plan)</string>
     <string name="set_alerts_ntfy_token_set">Filled in (ends in %1$s)</string>
-    <string name="set_alerts_channel_status_ntfy_paid">Alerts go to: ntfy (paid plan)</string>
     <string name="set_alerts_ntfy_server_title">Server</string>
     <string name="set_alerts_ntfy_server_summary">Only change this for your own server; otherwise keep ntfy.sh</string>
     <string name="set_dev_alerts_ntfy_title">Alerts via ntfy</string>
@@ -1674,6 +1701,15 @@ If I forget: %3$s</string>
     <string name="set_alerts_transport_summary">A Telegram bot, or an ntfy topic</string>
     <string name="set_alerts_transport_telegram">Telegram</string>
     <string name="set_alerts_transport_ntfy">ntfy</string>
+    <string name="set_alerts_transport_now_telegram">Sending to Telegram</string>
+    <string name="set_alerts_transport_now_ntfy_public">Sending to ntfy (public topic)</string>
+    <string name="set_alerts_transport_now_ntfy_paid">Sending to ntfy (paid plan)</string>
+    <string name="set_alerts_buttons_title">Buttons in alerts</string>
+    <string name="set_alerts_buttons_summary">Buttons under an alert (HD, clip, seat choices) need Telegram; with this off the car sends text and pictures with no keyboard</string>
+    <string name="set_alerts_back_title">Back to Alerts</string>
+    <string name="set_alerts_back_from_notifications">Return from the Notifications page</string>
+    <string name="set_alerts_back_from_sentry">Return from the Sentry page</string>
+    <string name="set_alerts_back_from_climate">Return from the Cabin temperature page</string>
     <!-- 4.6: the alerts section is three pages; these three rows open them. The summary is written live
          in showAlertsRows, so the XML has none. -->
     <string name="set_alerts_row_notifications">Notifications</string>
@@ -1729,6 +1765,8 @@ If I forget: %3$s</string>
     <string name="opt_alerts_climate_seats_driver">Driver only</string>
     <string name="opt_alerts_climate_seats_both">Driver and passenger</string>
     <string name="opt_alerts_climate_degrees">%1$s °C</string>
+    <string name="opt_alerts_climate_above">above %1$s °C</string>
+    <string name="opt_alerts_climate_up_to">up to %1$s °C</string>
     <string name="opt_alerts_climate_minutes">%d min</string>
     <string name="opt_alerts_climate_soc">%d%%</string>
     <string name="opt_alerts_climate_level">%d</string>

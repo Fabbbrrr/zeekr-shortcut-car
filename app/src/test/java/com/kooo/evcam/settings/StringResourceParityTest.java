@@ -86,6 +86,12 @@ public class StringResourceParityTest {
             "set_group_alerts_", "opt_alerts_", "cat_alerts_", "pref_alerts_", "header_alerts_",
             "action_alert", "dev_update_fork_",
             "ntfy_", "set_ntfy_", "telegram_", "set_telegram_",
+            // 4.19（fork 公开之前那一批）：开发者选项的入口、两个最新版本号、更新来源的警告框、
+            // fork 的仓库与通道。和更新那一页原来那几行一样，阿语留到单独一轮。
+            // 4.19: the developer-options entry, the two latest-version numbers, the source warning,
+            // and the fork repository/channel rows. Arabic stays in the documented separate pass.
+            "dev_enable_", "set_update_versions_", "set_update_fork_off_", "set_update_to_upstream_",
+            "set_update_repo_", "set_update_fork_channel_", "opt_update_channel_",
     };
 
     /**
@@ -151,8 +157,28 @@ public class StringResourceParityTest {
      * <p>The 4.17 pass added seven, all Alerts copy: the requirement line under the master switch, the
      * "Sentry Mode is required" clause its guard row ends with, and the two wizard rows' titles and summary
      * (421 + 7 = 428). Rows that only moved need no new words.</p>
+     *
+     * <p>4.18 那一轮（公开之前那几张页面的修正）删了五条旧的状态行文案（{@code set_alerts_channel_status_*}
+     * 的标题、Telegram、ntfy 公开、ntfy 受保护、ntfy 付费档），加了十二条：出口行尾的三句
+     * （{@code set_alerts_transport_now_*}）、命令那一组的组名（{@code set_group_alerts_commands}）、
+     * 「警报里的按钮」的标题与行尾（{@code set_alerts_buttons_title/_summary}）、「回到警报」的标题与三句
+     * 行尾（{@code set_alerts_back_*}）、以及两根拖动条的方向词（{@code opt_alerts_climate_above/_up_to}）。
+     * 428 − 5 + 12 = 435。都是停车警报的文案，阿语照旧留到单独一轮。</p>
+     *
+     * <p>The 4.18 pass dropped five status-row strings and added twelve: the transport row's three summaries,
+     * the commands group title, the buttons switch's title and summary, the back row's title and three
+     * summaries, and the two directional words the temperature sliders end with. 428 − 5 + 12 = 435.</p>
+     *
+     * <p>4.19 那一轮（fork 公开前的那一批更新/开发者文案）加了二十八条，一条停车警报的文案都没动：
+     * 「已装版本与最新版本」那一行 5 条、关掉 fork 来源那两行 2 条、改成上游那个警告框 3 条、
+     * fork 的通道名 5 条（行名 + 四个档名）、fork 仓库 5 条，以及「关于」页上开发者选项的入口 8 条。
+     * 阿语跟更新那一页原来说好的一样，留到单独一轮：435 + 28 = 463。</p>
+     *
+     * <p>The 4.19 pass added twenty-eight strings for the update and developer rows (the version row,
+     * the upstream warning, the fork channel and repository, and the About developer-options entry) and
+     * touched no alerts copy: 435 + 28 = 463.</p>
      */
-    private static final int PENDING_ARABIC_COUNT = 428;
+    private static final int PENDING_ARABIC_COUNT = 463;
 
     /**
      * 温度那一批占位符必须收「已经写好的数字」（{@code %1$s}），不能是 {@code %d}。

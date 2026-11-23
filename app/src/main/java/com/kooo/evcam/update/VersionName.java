@@ -18,33 +18,64 @@ package com.kooo.evcam.update;
  *
  * <p>所以按段拆开、按数字比。这部分完全不碰网络和 Android，可以单独测。</p>
  *
- * <h3>fork 标记（{@code -fab}）</h3>
+ * <h3>fork 标记（{@code -alerts}，以及以前的 {@code -fab}）</h3>
  *
- * <p>这个 fork 的版本号写成 {@code 4.13.0-fab-beta}：数字段跟上游对齐，后缀里多一段
+ * <p>这个 fork 的版本号写成 {@code 4.19.0-alerts-beta}：数字段跟上游对齐，后缀里多一段
  * {@value #FORK_MARKER}。标记只做一件事 —— 说明「这个版本是这个 fork 发的」。
  * 检查更新据此分来源：开了「更新从自己的 fork 取」时只认带标记的版本，没开时只认不带标记的，
  * 所以上游的版本号哪怕比 fork 的编号大，也不会被当成一条要装上的更新。</p>
  *
- * <p>标记本身不参与排序：{@code 4.13.0-fab-beta} 和 {@code 4.13.0-beta} 比大小是相等的。
+ * <h3>为什么两个标记都认</h3>
+ *
+ * <p>标记从 {@code fab} 换成 {@value #FORK_MARKER} 不是改个名字那么简单：车机上装着的还是
+ * {@code 4.18.0-fab-beta}，它<b>只认</b>旧标记发出去的 Release。新版本要是只写在 {@code -alerts}
+ * 的名字下，那些车永远看不到它 —— 表现就是「一直没有更新」，而看上去什么都正常。
+ * 所以：新名字用 {@value #FORK_MARKER}，旧名字（{@value #LEGACY_FORK_MARKER}）照旧认，
+ * 一个名字里两段都带（{@code 4.19.0-fab-alerts-beta}）也认。等再也没有 4.18.0 在路上跑，
+ * 旧标记才可以从 {@link #FORK_MARKERS} 里拿掉。</p>
+ *
+ * <p>标记本身不参与排序：{@code 4.19.0-alerts-beta} 和 {@code 4.19.0-beta} 比大小是相等的。
  * 排序只看数字段和通道（alpha / beta / 正式版）。来源由 {@link #isFork} 分开管，
  * 混在一个数字里分不清是谁发的。</p>
  */
 public final class VersionName {
 
-    /** 后缀里代表「这个 fork 发的版本」的那一段。 */
-    public static final String FORK_MARKER = "fab";
+    /** 后缀里代表「这个 fork 发的版本」的那一段（2026-11-20 起；以前是 {@value #LEGACY_FORK_MARKER}）。 */
+    public static final String FORK_MARKER = "alerts";
+
+    /**
+     * 老名字里的标记：4.18.0 及以前发出去的版本带的是它，而那些车只认它。
+     *
+     * <p>The marker every release up to 4.18.0 carried. Cars still running those builds accept
+     * only this one, so dropping it would silently strand them: no release would ever match.</p>
+     */
+    public static final String LEGACY_FORK_MARKER = "fab";
+
+    /** 全部认得的标记，当前的排在前面。判断「是不是这个 fork 发的」只看这里。 */
+    public static final String[] FORK_MARKERS = {FORK_MARKER, LEGACY_FORK_MARKER};
 
     private VersionName() {
     }
 
     /**
-     * 这个版本号是不是这个 fork 发的（后缀里有一段正好是 {@value #FORK_MARKER}）。
+     * 这个版本号是不是这个 fork 发的（后缀里有一段正好是某一个 {@link #FORK_MARKERS 标记}）。
      *
-     * <p>只看整段：{@code 4.13.0-fab-beta} 是，{@code 4.13.0-fabulous-beta} 不是。</p>
+     * <p>只看整段：{@code 4.19.0-alerts-beta} 是，{@code 4.19.0-alert-beta} 不是；
+     * 老名字 {@code 4.18.0-fab-beta} 也是，两段都带的 {@code 4.19.0-fab-alerts-beta} 还是。</p>
      */
     public static boolean isFork(String version) {
         for (String token : suffixTokens(version)) {
-            if (token.equalsIgnoreCase(FORK_MARKER)) {
+            if (isMarker(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 这一段是不是 fork 标记（当前那个或老名字那个）。 */
+    public static boolean isMarker(String token) {
+        for (String marker : FORK_MARKERS) {
+            if (marker.equalsIgnoreCase(token)) {
                 return true;
             }
         }
@@ -52,13 +83,14 @@ public final class VersionName {
     }
 
     /**
-     * 后缀里去掉 fork 标记之后剩下的那一段，也就是通道：{@code 4.13.0-fab-beta} → {@code beta}，
-     * {@code 4.13.0} → 空（正式版）。标记的位置不固定，{@code -fab-beta} 和 {@code -beta-fab} 一样。
+     * 后缀里去掉 fork 标记之后剩下的那一段，也就是通道：{@code 4.19.0-alerts-beta} → {@code beta}，
+     * {@code 4.13.0} → 空（正式版）。标记的位置不固定，{@code -alerts-beta} 和 {@code -beta-alerts} 一样，
+     * 两段标记都带着时两段都去掉。
      */
     public static String channel(String version) {
         StringBuilder out = new StringBuilder();
         for (String token : suffixTokens(version)) {
-            if (token.equalsIgnoreCase(FORK_MARKER)) {
+            if (isMarker(token)) {
                 continue;
             }
             if (out.length() > 0) {
@@ -76,7 +108,25 @@ public final class VersionName {
      * 两边的版本永远进不了对方的列表，跟谁的编号大无关。</p>
      */
     public static boolean fitsSource(String version, boolean forkMarked) {
-        return isFork(version) == forkMarked;
+        return fitsSource(version, forkMarked, true);
+    }
+
+    /**
+     * 同上，但可以<b>不要</b>标记（{@code requireMarker} = false）。
+     *
+     * <p>只有一种情况用得上：设置里把 fork 的仓库换成了别的（{@code update_fork_repo}）。
+     * 别人的 fork 不会替我们带 {@code -alerts}，硬要标记等于把那个来源的版本全关掉。
+     * 换了仓库之后仍然是「只认 fork 那一边」，上游那一边照样认不带标记的。</p>
+     *
+     * <p>The marker requirement is waived only for a fork repository other than the default one;
+     * another fork will not carry our marker. The upstream branch still only accepts unmarked names.</p>
+     */
+    public static boolean fitsSource(String version, boolean forkMarked, boolean requireMarker) {
+        if (!forkMarked) {
+            // 上游那一边：带我们标记的版本不是它发的
+            return !isFork(version);
+        }
+        return !requireMarker || isFork(version);
     }
 
     /**

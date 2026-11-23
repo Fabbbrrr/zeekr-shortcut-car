@@ -1368,8 +1368,8 @@ Kalau lupa: %3$s</string>
 
     <!-- Bahagian pilihan pembangun -->
     <string name="set_section_developer">Pilihan pembangun</string>
-    <string name="dev_update_fork_title">Kemas kini dari fork saya</string>
-    <string name="dev_update_fork_summary">Untuk ujian: Semak kemas kini bertanya kepada Fabbbrrr/zeekr-shortcut-car, bukan hulu. Tutup secara lalai; matikan untuk kembali</string>
+    <string name="dev_update_fork_title">Kemas kini dari Fabbbrrr (fork alerts)</string>
+    <string name="dev_update_fork_summary">Semak kemas kini bertanya kepada fork ini. Hanya versi bertanda diterima, jadi nombor hulu, walau lebih tinggi, tidak akan ditawarkan</string>
     <string name="dev_permissions_title">Kebenaran</string>
     <string name="dev_permissions_summary">Urus kebenaran yang diperlukan apl</string>
     <string name="dev_perm_group_basic">Kebenaran asas</string>
@@ -1509,7 +1509,7 @@ Kalau lupa: %3$s</string>
     <string name="dev_tool_recording_title">Rakaman sedang berjalan</string>
     <string name="dev_tool_progress">(%1$d/%2$d) %3$s</string>
     <string name="dev_tool_file_result">%1$s: %2$s</string>
-    <string name="dev_note">Ketik Safety notice dalam Tetapan → Kemas kini &amp; perihal → Perihal &amp; penghargaan untuk mematikan pilihan pembangun dan menyembunyikan bahagian ini</string>
+    <string name="dev_note">Tutup pilihan pembangun dalam Tetapan → Kemas kini &amp; tentang → Tentang &amp; kredit; seksyen itu hilang apabila ditutup</string>
     <string name="set_rearview_camera_label_title">Label arah</string>
     <string name="set_rearview_camera_label_summary">Menunjukkan arah paparan semasa di penjuru kiri atas tetingkap</string>
 
@@ -1545,6 +1545,37 @@ Kalau lupa: %3$s</string>
     <string name="set_update_channel_stable">Hanya menyemak versi stabil</string>
     <string name="set_update_channel_beta">Menyemak versi stabil dan beta</string>
     <string name="action_check">Semak</string>
+    <!-- 4.19 Kemas kini &amp; tentang: dua sumber, dua nombor terkini, repositori dan saluran -->
+    <string name="set_update_versions_title">Versi terpasang dan terkini</string>
+    <string name="set_update_versions_installed">Terpasang %1$s (versionCode %2$d)</string>
+    <string name="set_update_versions_source">%1$s terkini %2$s</string>
+    <string name="set_update_versions_checking">Sedang menyemak…</string>
+    <string name="set_update_versions_unknown">Tidak dapat menyemak</string>
+    <string name="set_update_fork_off_title">Kemas kini dari dts88 (hulu)</string>
+    <string name="set_update_fork_off_summary">Semak kemas kini bertanya kepada hulu dts88. Kemas kini seterusnya membuang ciri alerts</string>
+    <string name="set_update_to_upstream_title">Tukar kemas kini ke hulu</string>
+    <string name="set_update_to_upstream_msg">Kemas kini akan datang dari dts88/zeekr-shortcut-car. Kemas kini seterusnya membuang ciri alerts, dan untuk mendapatkannya semula perlu pemasangan manual dari fork.</string>
+    <string name="set_update_to_upstream_confirm">Guna hulu</string>
+    <string name="set_update_fork_channel_title">Versi dari fork</string>
+    <string name="opt_update_channel_auto">Auto (ikut versi terpasang)</string>
+    <string name="opt_update_channel_alpha">Alpha</string>
+    <string name="opt_update_channel_beta">Beta</string>
+    <string name="opt_update_channel_stable">Stabil</string>
+    <string name="set_update_repo_title">Repositori fork</string>
+    <string name="set_update_repo_summary">%1$s. Selepas ditukar, hanya versi repositori itu diterima dan tanda tidak diperlukan; semakan sha256 kekal</string>
+    <string name="set_update_repo_hint">owner/repo, atau https://github.com/owner/repo</string>
+    <string name="set_update_repo_invalid">Nama repositori itu tidak dapat dibaca. Guna owner/repo, atau https://github.com/owner/repo</string>
+    <string name="set_update_repo_saved">Repositori fork ditetapkan kepada %1$s</string>
+
+    <!-- 4.19 Pintu masuk pilihan pembangun pada halaman Tentang (tanpa kata laluan, tetapi amaran dahulu) -->
+    <string name="dev_enable_title">Pilihan pembangun</string>
+    <string name="dev_enable_body">Tetapan percubaan yang tidak disokong: mod rakaman, pemetaan kamera, sudut penentukuran dan seumpamanya. Anda tidak akan memerlukannya setiap hari, dan tiada sokongan jika ia rosak.</string>
+    <string name="dev_enable_action">Buka pilihan pembangun</string>
+    <string name="dev_enable_on_row">Pilihan pembangun dibuka</string>
+    <string name="dev_enable_turn_off">Tutup pilihan pembangun</string>
+    <string name="dev_enable_warn_title">Buka pilihan pembangun?</string>
+    <string name="dev_enable_warn_msg">Pilihan pembangun mengandungi tetapan percubaan yang tidak disokong. Mengubahnya boleh membuatkan rakaman, gambar atau amaran tidak berfungsi seperti dijangka. Satu seksyen Pilihan pembangun akan muncul dalam Tetapan, dan tiada sokongan jika berlaku masalah: atas risiko pemilik.</string>
+    <string name="dev_enable_confirm">Buka</string>
     <string name="tag_experimental">Percubaan</string>
     <string name="header_recording_on">Merakam · %1$s</string>
     <string name="header_recording_off">Tidak merakam · %1$s</string>
@@ -1583,14 +1614,11 @@ Kalau lupa: %3$s</string>
     <string name="set_group_alerts_picture">Gambar</string>
     <string name="set_group_alerts_clip">Video pendek</string>
     <string name="set_group_alerts_checks">Semakan</string>
+    <string name="set_group_alerts_commands">Arahan</string>
     <string name="set_alerts_cameras_none">Tiada yang ditanda, jadi semua empat dihantar</string>
 
     <!-- ntfy (dipilih dari bahagian Amaran; lihat docs/ntfy/) -->
     <string name="set_group_alerts_ntfy">ntfy</string>
-    <string name="set_alerts_channel_status_title">Amaran dihantar ke</string>
-    <string name="set_alerts_channel_status_telegram">Amaran dihantar ke: Telegram</string>
-    <string name="set_alerts_channel_status_ntfy_public">Amaran dihantar ke: ntfy (topik awam)</string>
-    <string name="set_alerts_channel_status_ntfy_protected">Amaran dihantar ke: ntfy (terlindung)</string>
     <string name="set_alerts_ntfy_setup_title">Sediakan ntfy</string>
     <string name="set_alerts_ntfy_setup_again_title">ntfy sudah siap — jalankan sekali lagi</string>
     <string name="set_alerts_ntfy_setup_summary">Buat topik, imbas, sahkan satu sampai</string>
@@ -1612,7 +1640,6 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_ntfy_token_summary">Pelan berbayar sahaja: buat di ntfy.sh bawah Account → Access tokens</string>
     <string name="set_alerts_ntfy_token_empty">Kosong (tidak perlu pada pelan percuma)</string>
     <string name="set_alerts_ntfy_token_set">Sudah diisi (akhir %1$s)</string>
-    <string name="set_alerts_channel_status_ntfy_paid">Amaran dihantar ke: ntfy (pelan berbayar)</string>
     <string name="set_alerts_ntfy_server_title">Pelayan</string>
     <string name="set_alerts_ntfy_server_summary">Ubah hanya untuk pelayan sendiri; selain itu kekalkan ntfy.sh</string>
     <string name="set_dev_alerts_ntfy_title">Amaran melalui ntfy</string>
@@ -1650,6 +1677,15 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_transport_summary">Bot Telegram, atau topik ntfy</string>
     <string name="set_alerts_transport_telegram">Telegram</string>
     <string name="set_alerts_transport_ntfy">ntfy</string>
+    <string name="set_alerts_transport_now_telegram">Menghantar ke Telegram</string>
+    <string name="set_alerts_transport_now_ntfy_public">Menghantar ke ntfy (topik awam)</string>
+    <string name="set_alerts_transport_now_ntfy_paid">Menghantar ke ntfy (pelan berbayar)</string>
+    <string name="set_alerts_buttons_title">Butang dalam amaran</string>
+    <string name="set_alerts_buttons_summary">Butang di bawah amaran (HD, klip, pilihan tempat duduk) perlukan Telegram; bila dimatikan kereta menghantar teks dan gambar tanpa papan kekunci</string>
+    <string name="set_alerts_back_title">Kembali ke Amaran</string>
+    <string name="set_alerts_back_from_notifications">Kembali dari halaman Makluman</string>
+    <string name="set_alerts_back_from_sentry">Kembali dari halaman Sentri</string>
+    <string name="set_alerts_back_from_climate">Kembali dari halaman Suhu kabin</string>
     <!-- 4.6: bahagian amaran ada tiga halaman; tiga baris ini membukanya. Hujung baris ditulis
          dalam showAlertsRows, jadi XML tiada ringkasan. -->
     <string name="set_alerts_row_notifications">Makluman</string>
@@ -1705,6 +1741,8 @@ Kalau lupa: %3$s</string>
     <string name="opt_alerts_climate_seats_driver">Pemandu sahaja</string>
     <string name="opt_alerts_climate_seats_both">Pemandu dan penumpang</string>
     <string name="opt_alerts_climate_degrees">%1$s °C</string>
+    <string name="opt_alerts_climate_above">melebihi %1$s °C</string>
+    <string name="opt_alerts_climate_up_to">tidak melebihi %1$s °C</string>
     <string name="opt_alerts_climate_minutes">%d min</string>
     <string name="opt_alerts_climate_soc">%d%%</string>
     <string name="opt_alerts_climate_level">%d</string>

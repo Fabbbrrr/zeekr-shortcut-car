@@ -46,8 +46,8 @@ a new wake path, Fahrenheit UI, any automatic write that is not an owner command
 | Key | Type | Default | Row |
 |---|---|---|---|
 | `alerts_climate_enabled` | bool | false | `pref_alerts_climate` (the page's own switch) |
-| `alerts_climate_hot_c` | int °C | 30 | `pref_alerts_climate_hot` (slider 25–40) |
-| `alerts_climate_cold_c` | int °C | 5 | `pref_alerts_climate_cold` (slider −10–15) |
+| `alerts_climate_hot_c` | int °C | 30 | `pref_alerts_climate_hot` (slider 22–40) |
+| `alerts_climate_cold_c` | int °C | 5 | `pref_alerts_climate_cold` (slider −10–18) |
 | `alerts_climate_safety` | bool | true | `pref_alerts_climate_safety` |
 | `alerts_climate_target_c` | int °C | 22 | `pref_alerts_climate_target` (slider 16–30) |
 | `alerts_climate_seats` | string enum `off\|driver\|both` | `driver` | `pref_alerts_climate_seats` |

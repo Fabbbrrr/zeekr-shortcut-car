@@ -185,13 +185,41 @@ public class ClimateSettingsWiringTest {
         SeekBarPreference hot = climatePage().findPreference("pref_alerts_climate_hot");
         hot.setValue(30);
         // 建页时写的是存着的那一格
-        assertEquals("30 °C", String.valueOf(hot.getSummary()));
+        assertEquals(hot.getContext().getString(R.string.opt_alerts_climate_above, 30),
+                String.valueOf(hot.getSummary()));
 
         hot.callChangeListener(35);
 
         assertEquals("行尾得是刚拖到的那一格，不是上一格（值本身还没提交）",
-                "35 °C", String.valueOf(hot.getSummary()));
+                hot.getContext().getString(R.string.opt_alerts_climate_above, 35),
+                String.valueOf(hot.getSummary()));
         assertEquals(35, config.getAlertsClimateHotC());
+    }
+
+    // ================================================================= 警报里的按钮
+
+    /**
+     * 「警报里的按钮」：默认开，存进 AppConfig，并且当场告诉跑着的那一套。
+     *
+     * <p>和这一栏里每一个开关一样 —— 存了、跑着的没听见，就是「重启才生效」。它管的是发出去的东西
+     * 带不带键盘，判断在 {@code SentryAlerts} 一处。</p>
+     *
+     * The buttons switch: on by default, stored in AppConfig, and the running alerts are told at once.
+     */
+    @Test
+    public void theButtonsSwitchStoresAndTellsTheRunningAlerts() throws Exception {
+        SettingsPreferenceFragment page = notificationsPage();
+        Preference row = page.findPreference("pref_alerts_buttons");
+        assertNotNull("少了「警报里的按钮」那个开关", row);
+        assertTrue("默认开",
+                ((androidx.preference.SwitchPreferenceCompat) row).isChecked());
+        assertNull("开始时没有策略（没人叫过 refresh）", policy());
+
+        assertEquals(Boolean.TRUE, row.callChangeListener(false));
+
+        assertFalse("开关的值存进了设置", config.isAlertsButtons());
+        assertNotNull("开关改完必须叫 refresh()，否则改到的东西不算数", policy());
+        config.setAlertsButtons(true);
     }
 
     // ================================================================= 那一行实话

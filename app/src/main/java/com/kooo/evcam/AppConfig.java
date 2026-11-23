@@ -19,6 +19,8 @@ import com.kooo.evcam.camera.CameraNames;
 import com.kooo.evcam.settings.LicensePlate;
 import com.kooo.evcam.settings.SettingSpec;
 import com.kooo.evcam.settings.SettingsRegistry;
+import com.kooo.evcam.update.UpdateChannel;
+import com.kooo.evcam.update.UpdateSource;
 import com.kooo.evcam.zeekr.FisheyeProjection;
 
 /**
@@ -94,8 +96,8 @@ public class AppConfig {
     /** 2.14.0-alpha 及以前的「只显示前后视」开关：读到时换成「前后」档、拿掉（{@link #getRearViewViews}）。 */
     private static final String KEY_REARVIEW_FRONT_REAR_LEGACY = "rearview_front_rear";
     private static final String KEY_REARVIEW_GUIDE_SEEN = "rearview_guide_seen";  // 后视镜使用指南是否弹过
-    private static final String KEY_UPDATE_BETA = "update_include_beta";  // 检查更新是否接收 Beta 版
-    private static final String KEY_UPDATE_ALPHA = "update_include_alpha";  // 检查更新是否接收 Alpha 版
+    private static final String KEY_UPDATE_BETA = "update_include_beta";  // 检查更新是否接收 Beta 版（上游那条路）
+    private static final String KEY_UPDATE_ALPHA = "update_include_alpha";  // 检查更新是否接收 Alpha 版（上游那条路）
     private static final String KEY_REARVIEW_X = "rearview_x";                    // 窗口位置
     // 盲区画面：打转向灯时显示该侧的摄像头画面（zeekr.SideViewService）
     private static final String KEY_SIDE_VIEW_ENABLED = "side_view_enabled";      // 开关
@@ -134,8 +136,15 @@ public class AppConfig {
     private static final String KEY_LICENSE_PLATE = "license_plate";  // 车牌号（可选）
     private static final String KEY_LICENSE_PLATE_ENABLED = "license_plate_enabled";
     // 停车警报（Telegram）：开关、机器人令牌、会话号
-    // 测试用：更新从自己的 fork 取（UpdateSource；开发者选项里，默认关，不进上游）
+    // 更新从自己的 fork 取（UpdateSource）：默认开着（4.19 起，公开之前改的），
+    // 因为 fork 的编号比上游低，指向上游等于「下一次检查更新就装回上游那个没有 alerts 的版本」。
+    // 这个键不在 DEVELOPER_KEYS 里：开发者选项锁上之后它照样算数。
     private static final String KEY_UPDATE_FORK = "update_from_fork";
+    private static final String KEY_UPDATE_FORK_REPO = "update_fork_repo";      // 那个 fork 的仓库（owner/repo）
+    private static final String KEY_UPDATE_CHANNEL = "update_channel";           // fork 那一条路接收哪一档（UpdateChannel）
+    // 上一次查到的两个最新版本号（"本机 / 上游 / fork 各是哪一版"那一行）。运行状态：不进导出、不进诊断报告
+    private static final String KEY_UPDATE_LATEST_UPSTREAM = "update_latest_upstream";
+    private static final String KEY_UPDATE_LATEST_FORK = "update_latest_fork";
     private static final String KEY_ALERTS_ENABLED = "alerts_enabled";
     private static final String KEY_ALERTS_PAUSED = "alerts_paused";  // 聊天里临时关掉，总开关不动
     private static final String KEY_ALERTS_TRIGGERS = "alerts_triggers";
@@ -154,6 +163,7 @@ public class AppConfig {
     private static final String KEY_ALERTS_STRAIGHTEN = "alerts_straighten";  // 发之前掰直
     private static final String KEY_ALERTS_SEND_PICTURE = "alerts_send_picture";  // 发警报时附一张压缩图
     private static final String KEY_ALERTS_COMMANDS = "alerts_commands";   // 回应 Telegram 里的命令
+    private static final String KEY_ALERTS_BUTTONS = "alerts_buttons";     // 警报下面带按钮（HD / 片段 / 座椅）
     // 忘了开哨兵：提醒哪一档（存 0..3，见 alarm.GuardPolicy）
     private static final String KEY_ALERTS_GUARD_MODE = "alerts_guard_mode";
     private static final String KEY_ALERTS_GUARD_HOME = "alerts_guard_home";  // "lat,lon"，存在 secrets 里
@@ -838,7 +848,12 @@ public class AppConfig {
                 // The two rotation marks: when this install first rotated and how many times. Not
                 // settings, not exported — a backup restored onto another car must not carry them.
                 KEY_ALERTS_NTFY_TOPIC_ROUND,
-                KEY_ALERTS_NTFY_INSTALL_AT)));
+                KEY_ALERTS_NTFY_INSTALL_AT,
+                // 「上游最新 / fork 最新」那两个数字（4.19）：查到的结果，不是设置。
+                // 不进导出 —— 把一台车的数字恢复到另一台上，只会把那边的「已经查到过」弄错。
+                // The two cached "latest" numbers: results, not settings, so they stay out of exports.
+                KEY_UPDATE_LATEST_UPSTREAM,
+                KEY_UPDATE_LATEST_FORK)));
     }
 
     /**
@@ -2576,6 +2591,26 @@ public class AppConfig {
         AppLog.i(TAG, "停车警报命令回应设为 " + (enabled ? "开" : "关"));
     }
 
+    /**
+     * 警报下面带不带按钮（默认开）。关着时车只发文字和照片，一个键盘都不带。
+     *
+     * <p>按钮是 {@code callback_query}：只有 Telegram 有回程。所以这一项关着时，照片下面那排
+     * （HD、哪一路的片段）、温度警报那排、回执下面那句座椅问句都不发 —— 一排按不动的按钮
+     * 比没有按钮更糟。</p>
+     *
+     * <p>Whether alerts carry buttons (on by default). With it off the car sends text and pictures and
+     * no keyboard at all: the buttons are {@code callback_query}, and a row nobody can press is worse
+     * than no row.</p>
+     */
+    public boolean isAlertsButtons() {
+        return prefs.getBoolean(KEY_ALERTS_BUTTONS, true);
+    }
+
+    public void setAlertsButtons(boolean enabled) {
+        prefs.edit().putBoolean(KEY_ALERTS_BUTTONS, enabled).apply();
+        AppLog.i(TAG, "警报里的按钮设为 " + (enabled ? "开" : "关（只发文字和照片）"));
+    }
+
     /** 已经处理到哪一条更新：重启之后不能把上一条命令再执行一次。 */
     public long getAlertsCommandOffset() {
         return prefs.getLong(KEY_ALERTS_COMMAND_OFFSET, 0L);
@@ -2821,25 +2856,99 @@ public class AppConfig {
     /**
      * 「检查更新」去自己的 fork，而不是上游（{@link com.kooo.evcam.update.UpdateSource}）。
      *
-     * <p>测试用，开发者选项里，默认关。</p>
+     * <h3>默认开（4.19 起）</h3>
+     *
+     * <p>这个包以后要在 fork 上公开，装它的人要的是 alerts 那一套功能。默认指向上游的话，
+     * 下一次检查更新就会装进一个<b>没有 alerts</b> 的上游版本 —— 而 fork 的编号比上游低
+     * （上游 {@code 4.12}，fork {@code 4.5}），数字上根本看不出谁是自己人。所以默认开；
+     * 关掉是一个带红色警告的决定（设置页那一行，{@code set_update_to_upstream_*}）。</p>
      *
      * <h3>为什么它不在 {@link #DEVELOPER_KEYS} 里</h3>
      *
-     * <p>它是开发者选项里唯一一项锁上之后<b>照样算数</b>的开关。把开发者选项锁上是整理界面，
-     * 不该顺带把一台车机的更新来源换回上游 —— 那等于锁一下开关就可能装进一个上游的版本，
-     * 而这个 fork 的编号比上游低（上游 {@code 4.12}，fork {@code 4.5}），数字上根本看不出来谁是自己人。
-     * 存着的值就是答案，跟开发者选项开着没开着无关；要看它、改它，仍然得开开发者选项。</p>
+     * <p>把开发者选项锁上是整理界面，不该顺带把一台车机的更新来源换回上游 —— 那等于锁一下开关就可能
+     * 装进一个上游的版本。存着的值就是答案，跟开发者选项开着没开着无关。这一行现在也不在开发者
+     * 选项分区里，它在「更新与关于」页上（{@code pref_update_fork}）。</p>
      *
-     * <p>来源本身还有一道门：开了这个开关就只认带 {@code -fab} 标记的版本
+     * <p>来源本身还有一道门：开着这个开关就只认带 {@code -alerts}（或老名字 {@code -fab}）标记的版本
      * （{@code GithubReleases.fetchLatest}），上游的版本号再大也进不来。</p>
      */
     public boolean isUpdateFromFork() {
-        return prefs.getBoolean(KEY_UPDATE_FORK, false);
+        return prefs.getBoolean(KEY_UPDATE_FORK, true);
     }
 
     public void setUpdateFromFork(boolean enabled) {
         prefs.edit().putBoolean(KEY_UPDATE_FORK, enabled).apply();
         AppLog.i(TAG, "更新来源设为 " + (enabled ? "自己的 fork" : "上游"));
+    }
+
+    /**
+     * 那个 fork 的仓库，写成 {@code owner/repo}。
+     *
+     * <p>存着的那一行如果读不回来（手改过的备份、升级前的老值），回到
+     * {@link com.kooo.evcam.update.UpdateSource#DEFAULT_FORK_REPO} —— 一个拼不出 API 地址的仓库名
+     * 只会变成「永远没有更新」。</p>
+     */
+    public String getUpdateForkRepo() {
+        String stored = prefs.getString(KEY_UPDATE_FORK_REPO, UpdateSource.DEFAULT_FORK_REPO);
+        String normalised = UpdateSource.normaliseRepo(stored);
+        return normalised == null ? UpdateSource.DEFAULT_FORK_REPO : normalised;
+    }
+
+    /**
+     * 存一行新的 fork 仓库；认不出来就不存（调用方已经把原因说给用户了）。
+     *
+     * <p>换了仓库就把「fork 最新是哪一版」那条缓存删掉：那是上一个仓库的数字，留着就是在
+     * 新仓库名下摆一个旧数字。</p>
+     *
+     * @return 存下来了没有
+     */
+    public boolean setUpdateForkRepo(String raw) {
+        String normalised = UpdateSource.normaliseRepo(raw);
+        if (normalised == null) {
+            AppLog.w(TAG, "不认得的仓库名，没有存下来：" + raw);
+            return false;
+        }
+        prefs.edit()
+                .putString(KEY_UPDATE_FORK_REPO, normalised)
+                .remove(KEY_UPDATE_LATEST_FORK)
+                .apply();
+        AppLog.i(TAG, "fork 仓库设为 " + normalised);
+        return true;
+    }
+
+    /**
+     * fork 那一条路接收哪一档（{@link com.kooo.evcam.update.UpdateChannel}）：{@code auto} 跟着装着的这一版的后缀走。
+     *
+     * <p>只影响「从 fork 取」那一次检查；上游那一条路照旧读「接收的版本」两个开关。</p>
+     */
+    public String getUpdateChannel() {
+        return UpdateChannel.fromKey(prefs.getString(KEY_UPDATE_CHANNEL, null)).key;
+    }
+
+    public void setUpdateChannel(String channelKey) {
+        String value = UpdateChannel.fromKey(channelKey).key;
+        prefs.edit().putString(KEY_UPDATE_CHANNEL, value).apply();
+        AppLog.i(TAG, "fork 接收的版本设为 " + value);
+    }
+
+    /** 上一次查到的上游最新版本号；没查过是空串。 */
+    public String getCachedLatestUpstream() {
+        return prefs.getString(KEY_UPDATE_LATEST_UPSTREAM, "");
+    }
+
+    /** 上一次查到的 fork 最新版本号；没查过是空串。 */
+    public String getCachedLatestFork() {
+        return prefs.getString(KEY_UPDATE_LATEST_FORK, "");
+    }
+
+    /** 记下这一次查到的上游最新版本号（{@code update.LatestVersions} 查完写进来）。 */
+    public void setCachedLatestUpstream(String version) {
+        prefs.edit().putString(KEY_UPDATE_LATEST_UPSTREAM, version).apply();
+    }
+
+    /** 记下这一次查到的 fork 最新版本号；换仓库时会被删掉（{@link #setUpdateForkRepo}）。 */
+    public void setCachedLatestFork(String version) {
+        prefs.edit().putString(KEY_UPDATE_LATEST_FORK, version).apply();
     }
 
     // ==================== 车厢温度警报（climate alerts） ====================
@@ -2852,11 +2961,11 @@ public class AppConfig {
      *
      * <p>The ranges, declared once: the sliders' bounds and the getters' clamping share them.</p>
      */
-    public static final int ALERTS_CLIMATE_HOT_MIN_C = 25;
+    public static final int ALERTS_CLIMATE_HOT_MIN_C = 22;
     public static final int ALERTS_CLIMATE_HOT_MAX_C = 40;
     public static final int ALERTS_CLIMATE_HOT_DEFAULT_C = 30;
     public static final int ALERTS_CLIMATE_COLD_MIN_C = -10;
-    public static final int ALERTS_CLIMATE_COLD_MAX_C = 15;
+    public static final int ALERTS_CLIMATE_COLD_MAX_C = 18;
     public static final int ALERTS_CLIMATE_COLD_DEFAULT_C = 5;
     public static final float ALERTS_CLIMATE_TARGET_MIN_C = 16f;
     public static final float ALERTS_CLIMATE_TARGET_MAX_C = 30f;
@@ -2913,7 +3022,7 @@ public class AppConfig {
         AppLog.i(TAG, "alerts climate " + (enabled ? "on" : "off"));
     }
 
-    /** 车厢「太热」（°C）：25–40 的整度，默认 30。夹到范围里，不再按档位吸附。 */
+    /** 车厢「太热」（°C）：22–40 的整度，默认 30。夹到范围里，不再按档位吸附。 */
     public int getAlertsClimateHotC() {
         return clampTo(readInt(KEY_ALERTS_CLIMATE_HOT_C, ALERTS_CLIMATE_HOT_DEFAULT_C),
                 ALERTS_CLIMATE_HOT_MIN_C, ALERTS_CLIMATE_HOT_MAX_C);
@@ -2924,7 +3033,7 @@ public class AppConfig {
                 clampTo(celsius, ALERTS_CLIMATE_HOT_MIN_C, ALERTS_CLIMATE_HOT_MAX_C)).apply();
     }
 
-    /** 车厢「太冷」（°C）：-10–15 的整度，默认 5。 */
+    /** 车厢「太冷」（°C）：-10–18 的整度，默认 5。 */
     public int getAlertsClimateColdC() {
         return clampTo(readInt(KEY_ALERTS_CLIMATE_COLD_C, ALERTS_CLIMATE_COLD_DEFAULT_C),
                 ALERTS_CLIMATE_COLD_MIN_C, ALERTS_CLIMATE_COLD_MAX_C);

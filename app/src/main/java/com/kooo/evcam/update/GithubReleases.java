@@ -38,16 +38,24 @@ import java.util.List;
  * 预发布，用它会永远返回 404 —— 表现就是「永远没有更新」。
  * 所以这里拉列表，自己挑。</p>
  *
- * <h3>默认只推 beta 与正式版</h3>
+ * <h3>哪几档推、问哪个仓库</h3>
  *
  * <p>alpha 是开发过程中随手发的，数量多、稳定性没有保证 ——
  * 不该不问一声就推给一台正在用的车机。判断在 {@link VersionName#isBetaOrRelease}。
- * 设置里关掉「接收 Beta 版」时只推正式版（{@link VersionName#isRelease}）；打开「接收 Alpha 版」
- * （项目所有者 2026-10-23，默认关，只在 Beta 也开着时算数）时连 alpha 一起推（{@link VersionName#isAlphaBetaOrRelease}）。</p>
+ * 关掉「接收 Beta 版」时只推正式版（{@link VersionName#isRelease}）；打开「接收 Alpha 版」
+ * （项目所有者 2026-10-23，默认关，只在 Beta 也开着时算数）时连 alpha 一起推（{@link VersionName#isAlphaBetaOrRelease}）。
+ * 从 fork 取时哪几档由 {@link UpdateChannel} 定（{@code update_channel}），由 {@code UpdateFlow} 算好传进来 ——
+ * 这里只照两个布尔值挑，不管它们从哪来。问哪个仓库、那个仓库的版本要不要带标记，
+ * 全在 {@link UpdateSource.Target} 里（参数传，不放静态字段：两个仓库会被同时问到）。</p>
+ *
+ * <h3>谁问它</h3>
+ *
+ * <p>「检查更新」（{@code UpdateFlow}，要装的时候才问）和「更新与关于」上那三个版本号
+ * （{@code LatestVersions}，只看数字）。两边都不带设备信息。</p>
  *
  * <h3>这是本应用唯一一次主动出网</h3>
  *
- * <p>只在用户点「检查更新」时发生，去的是 {@code api.github.com} 和
+ * <p>只在用户点「检查更新」或者打开「更新与关于」时发生，去的是 {@code api.github.com} 和
  * GitHub 的下载域名，不带任何设备信息，也不上传任何东西。
  * 只走 https；下载回来的 APK 要和 GitHub 给的 sha256、大小对上才算数（{@link DownloadIntegrity}）。</p>
  */
@@ -75,14 +83,6 @@ public final class GithubReleases {
 
     private static final String TAG = "GithubReleases";
 
-    private static final String REPO = "zeekr-shortcut-car";
-
-    /**
-     * 问哪个所有者的 Releases。上游是 {@link UpdateSource#UPSTREAM_OWNER}；测试构建时
-     * 由 {@link UpdateFlow#start} 照设置改成自己 fork（{@link UpdateSource}）。
-     */
-    private static volatile String owner = UpdateSource.UPSTREAM_OWNER;
-
     /** GitHub 要求带 User-Agent，不带会直接 403。 */
     private static final String USER_AGENT = "ZeekrShortcut-UpdateCheck";
 
@@ -101,13 +101,13 @@ public final class GithubReleases {
     private GithubReleases() {
     }
 
-    /** 这次去问哪个仓库。空值一律回到上游 —— 设置读不到也不该把更新检查弄坏。 */
-    static void useOwner(String value) {
-        owner = value == null || value.trim().isEmpty() ? UpdateSource.UPSTREAM_OWNER : value.trim();
-    }
-
-    private static String listUrl() {
-        return "https://api.github.com/repos/" + owner + "/" + REPO + "/releases?per_page=20";
+    /**
+     * 这个仓库的 Releases 列表。问到哪儿、要不要标记，由调用方给的 {@link UpdateSource.Target} 说 ——
+     * 不放在静态字段里：页面上「本机 / 上游 / fork 各是哪一版」会同时问两个仓库，
+     * 一个静态字段会让两次请求互相改掉对方的地址。
+     */
+    private static String listUrl(UpdateSource.Target target) {
+        return "https://api.github.com/repos/" + target.owner + "/" + target.repo + "/releases?per_page=20";
     }
 
     /** 一个可安装的版本。 */
@@ -162,13 +162,14 @@ public final class GithubReleases {
      * @return 没有符合条件、且带 APK 的版本时返回 null
      * @throws IOException 网络或解析出错
      */
-    public static Release fetchLatest(boolean includeBeta, boolean includeAlpha, String currentVersion)
-            throws IOException {
-        String body = getText(listUrl());
-        // 只认自己那一档：fork 发的版本带 -fab 标记，上游发的不带（UpdateSource）。
+    public static Release fetchLatest(UpdateSource.Target target, boolean includeBeta, boolean includeAlpha,
+                                      String currentVersion) throws IOException {
+        String body = getText(listUrl(target));
+        // 只认自己那一档：fork 发的版本带 -alerts（老名字 -fab）标记，上游发的不带（UpdateSource）。
         // 光比版本号分不开 —— 上游的编号可能比 fork 的大，那是「上游又抬了一版」，
         // 不是「fork 发了新版」，这一句就是不让它变成一个要装上的更新。
-        boolean forkMarked = UpdateSource.forkMarked(owner);
+        boolean forkMarked = target.forkMarked;
+        boolean requireMarker = target.requireMarker;
         Release best = null;
         List<Release> newer = new ArrayList<>();
         try {
@@ -183,7 +184,7 @@ public final class GithubReleases {
                 if (candidate == null) {
                     continue;
                 }
-                if (!VersionName.fitsSource(candidate.tagName, forkMarked)) {
+                if (!VersionName.fitsSource(candidate.tagName, forkMarked, requireMarker)) {
                     // 另一边的版本：数字再大也不属于这次检查的地方
                     continue;
                 }

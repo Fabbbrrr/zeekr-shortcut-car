@@ -530,8 +530,43 @@ public class AlertClimateAutoOffTest {
         assertEquals("只发回执那一条", 1, ShadowNtfySender.texts);
     }
 
-    /** 直接发 {@code ac on} 来的回执没有温度警报的号：自己造一个，这排按钮才有主人。 */
+    /**
+     * 「警报里的按钮」关掉：发送那一头一个 inline keyboard 都不挂，只有按钮才成立的那一句也不发。
+     *
+     * <p>四颗挂法全开着时都该有东西（不这么验的话，把一处删了也算通过）；关掉之后都该是空串，
+     * 而座椅那一问干脆返回 {@code null} —— 一句「座椅要不要也开」没有按钮就只是没人能回的一句话，
+     * 少发一条消息比多发一条没法按的强。</p>
+     *
+     * With buttons switched off nothing carries an inline keyboard, and the question that only exists
+     * because of its buttons is not sent at all. Each site is checked while they are on first, so deleting
+     * one of the gates cannot pass this test.
+     */
     @Test
+    public void withButtonsOffNothingCarriesAKeyboard() throws Exception {
+        config.setAlertsTransport(NtfyGate.TELEGRAM);
+        set("alertToken", GuardToken.mint(90L));
+        set("guardToken", GuardToken.mint(91L));
+        setClimateToken(GuardToken.mint(92L));
+
+        assertFalse("开着时照片下面有那排按钮（HD / 片段）", alerts.alertMarkup().isEmpty());
+        assertFalse("开着时温度警报下面那排也在", alerts.climateMarkup().isEmpty());
+        assertFalse("开着时回执下面那两颗也在", alerts.guardReceiptMarkup(true).isEmpty());
+        assertFalse("开着时「要不要开哨兵」那一问有两颗", alerts.guardAskMarkup().isEmpty());
+        assertNotNull("开着时座椅那一问才发", alerts.seatAsk());
+
+        config.setAlertsButtons(false);
+
+        assertEquals("照片下面不再挂键盘", "", alerts.alertMarkup());
+        assertEquals("温度警报也不再挂", "", alerts.climateMarkup());
+        assertEquals("回执下面不再挂", "", alerts.guardReceiptMarkup(true));
+        assertEquals("没有按钮就不发那一问", "", alerts.guardAskMarkup());
+        assertNull("座椅那一问只有按钮，所以整句都不发", alerts.seatAsk());
+
+        // 收尾：这一项存在同一份设置里。
+        config.setAlertsButtons(true);
+    }
+
+    /** 直接发 {@code ac on} 来的回执没有温度警报的号：自己造一个，这排按钮才有主人。 */    @Test
     public void theSeatRowMintsItsOwnTokenWhenTheReceiptCameFromAChatCommand() throws Exception {
         config.setAlertsTransport(NtfyGate.TELEGRAM);
         setClimateToken("");
