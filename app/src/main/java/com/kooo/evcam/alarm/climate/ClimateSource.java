@@ -29,6 +29,8 @@ import java.util.Locale;
  *   <li>功能号、区域照系统的常量名取（{@link Names}），这台车机上没有的就是做不了。纯 Java，没有安卓的东西：车接口、
  *       常量名、等待都是参数，测试换上假的、不睡（{@code ClimateSourceTest}）。</li>
  *   <li>{@link Report#detail} 只放 ASCII 和号码、读到的值，进黑匣子；给人看的字在 {@code strings.xml}。</li>
+ *   <li>自动关以后照快照把车放回去（{@link #applyRestore}）：先读回来对一遍，车上已经对的不动，对不上的才写 ——
+ *       每个号只写一次，不 dwell、不重试。快照那一趟路是只读的（{@link ClimateSnapshot}）。</li>
  * </ul>
  *
  * <p>Writes for the climate alerts (ticket T2): power, setpoint (both front zones), and the front seats'
@@ -52,6 +54,10 @@ import java.util.Locale;
  * {@link CarAccess#readFloat} and a {@code false} from {@link CarAccess#writeFloat} mean "this head unit cannot",
  * not "something broke".</p>
  *
+ * <p><b>Restore.</b> {@link #applyRestore} replays a {@link ClimateSnapshot} after the off: it reads back first, skips
+ * what already matches, and writes what drifted — one attempt per field, no dwell loop, no failure storm. The
+ * snapshot pass it reads back through is read-only.</p>
+ *
  * <p>Pure Java on purpose: no Android imports, so the rules run under a plain JVM unit test.</p>
  */
 public final class ClimateSource {
@@ -62,8 +68,10 @@ public final class ClimateSource {
     static final String FRONT_ZONE = "ROW_1";
     /** 主驾区域（{@code ROW_1_LEFT}，0x01）：设定温度和座椅写在这里。 */
     static final String DRIVER_ZONE = "ROW_1_LEFT";
-    /** 副驾区域（{@code ROW_1_RIGHT}，0x04）：设定温度和座椅也写在这里（车是双区的，两边各一个设定值）。 */
+    /** 副驾区域（{@code ROW_1_RIGHT}，0x04）：设定温度和座椅也写在这里（车是双区的，两边各一个设定值）；二排开关在 {@link #REAR_ZONE}。 */
     static final String PASSENGER_ZONE = "ROW_1_RIGHT";
+    /** 二排区域（{@code ROW_2}）：恢复那一趟的二排开关写在这里（照 RESTORE.md §3）。 */
+    static final String REAR_ZONE = "ROW_2";
 
     /** 读回最多等多久。 */
     static final long BACK_MS = 3_000;
@@ -254,6 +262,69 @@ public final class ClimateSource {
         }
     }
 
+    /**
+     * 照快照把车放回去（自动关之后）：先读回来对一遍，车上已经对的就不动；对不上的才写 —— 每个号只写一次，
+     * 不 dwell、不重试、不要求读回。受理了就算写到（这台适配层很多号读回来是空的，把读不到当成没做成就是假话）；
+     * 被拒了就记一笔，接着写下一个，不停下来。结果都进 {@link Report#detail}（ASCII，黑匣子）。
+     *
+     * <p>写哪些：设定温度（两个前排区域，走 {@link CarAccess#writeFloat}，单位照 {@link #speaksFahrenheit}）、
+     * 前排座椅加热 / 通风（照存的原始值：功能号 + 档位，0 就是关）、内循环（默认区域那一档）、二排开关
+     * （{@link #REAR_ZONE}）。<b>不开空调</b>：前排开关那一笔不写 —— 「绝不自动开空调」这条不变，车主自己在车机上开，
+     * 拿到的是它自己的设定。前排开关在快照里只是读了、对了，不写回去。只有 {@link Names} 里有号名的才试。</p>
+     *
+     * <p>全都不知道就一笔都不写。结论：这一趟里有被拒的 → {@link Outcome#NO_CHANGE}（给人看的就是原来那句「没变」）；
+     * 写了并且都受理了 → {@link Outcome#DONE}；一笔都没写出去、但读回证实车上就是快照说的这样 → {@link Outcome#DONE}；
+     * 什么都没有（都是 null，或者号都不在）→ {@link Outcome#REFUSED}。</p>
+     *
+     * <p>单位那一关照写的那条路走（先看车上现在设定的那个数）。快照存的是通道原值、不换算，所以一辆真的报华氏、
+     * 设定值也读得到的车，这两条规则撞上时换算会做两遍 —— 那一格是 unknown（设定值熬不熬得过一次断电，
+     * {@code CASE.md} §13.5）：契约怎么写就怎么做，撞车的后果写在这儿。</p>
+     *
+     * <p>{@link Clock} 在这里不参与等待：恢复不 dwell（契约写了 no dwell loop），传它是为了和 {@link #apply} 同一个形状。</p>
+     *
+     * <p>结果里的栏照 {@link Report} 的样子用：{@code powerWrote} 装的是二排开关那一笔（恢复不写前排开关），
+     * {@code passengerWrote} 是副驾那一笔设定温度，{@code seatWroteLeft} / {@code seatWroteRight} 是那一侧任何一笔座椅写
+     * 受理了；{@code powerOn} 一律 false（恢复不读回）；{@code targetC} 是写回去的那个设定值（照快照原值，先写的算，没写是 0）。</p>
+     *
+     * <p>Replay a snapshot after the off. Reads back first and skips what already matches (an unchanged setting is
+     * not touched); writes what drifted, one attempt per field, no dwell loop, no failure storm. Acceptance is what
+     * is reported; results go to detail (ASCII, black box), and a refused write does not stop the pass.</p>
+     *
+     * <p>What gets written: the setpoint (both front zones, through {@link CarAccess#writeFloat}, unit by
+     * {@link #speaksFahrenheit}), the front seat heat and ventilation with the raw stored value (id plus level, 0 is
+     * off), circulation on the default scope, and rear power on {@code ROW_2}. It does <b>not</b> switch the climate
+     * on — the front power write does not happen, so "never start climate automatically" still holds; the front
+     * switch is only read and compared. Only fields that exist in {@link Names} are attempted, and a fully unknown
+     * snapshot writes nothing.</p>
+     *
+     * <p>The outcome: a pass in which a write was refused is {@link Outcome#NO_CHANGE} — that is the pass the
+     * no-change sentence is for; every write accepted is {@link Outcome#DONE}; so is a pass that wrote nothing
+     * because the car already holds what the snapshot says; a pass with nothing known at all is
+     * {@link Outcome#REFUSED}.</p>
+     *
+     * <p>The unit follows the write path (the setpoint the car holds now decides). The snapshot stores the channel
+     * value verbatim, so on a car that really speaks Fahrenheit and really reports its setpoint the two rules meet and
+     * the conversion runs twice. That cell is graded unknown ({@code CASE.md} §13.5); the contract is implemented as
+     * written and the consequence is written down here.</p>
+     *
+     * <p>The {@link Clock} does no waiting here: the restore does not dwell, it is a parameter so the shape matches
+     * {@link #apply}.</p>
+     */
+    public static Report applyRestore(CarAccess access, Names names, Clock clock,
+                                     ClimateSnapshot.Snapshot snapshot) {
+        if (access == null || names == null || clock == null || snapshot == null) {
+            return new Report(Outcome.UNAVAILABLE, 0f, false, false, false, false, false,
+                    "missing argument");
+        }
+        Run run = new Run(access, names, clock);
+        try {
+            return run.restore(snapshot);
+        } catch (RuntimeException e) {
+            run.note("failed: " + e);
+            return run.report(Outcome.UNAVAILABLE, 0f, false);
+        }
+    }
+
     // ================================================================= 一次写车
 
     /** 一次写车的读写、记一笔（ASCII，进黑匣子）。 */
@@ -269,6 +340,12 @@ public final class ClimateSource {
         /** 座椅那一笔写了并且受理了没有，两侧各一位（{@link Report#seatWroteLeft} / {@link Report#seatWroteRight}）。 */
         private boolean seatWroteLeft;
         private boolean seatWroteRight;
+        /** 恢复那一趟的计数：受理几笔、拒几笔、读回证实了几笔（「已经对了，不动」）—— 见 {@link #restoreOutcome()}。 */
+        private int restoreAccepted;
+        private int restoreRefused;
+        private int restoreVerified;
+        /** 恢复那一趟写回去的设定温度（照快照原值，先写的那个算；没写是 0）。 */
+        private float restoreTarget;
 
         Run(CarAccess access, Names names, Clock clock) {
             this.access = access;
@@ -592,6 +669,167 @@ public final class ClimateSource {
                 return report(Outcome.DONE, target, true);
             }
             return report(Outcome.NO_CHANGE, target, seenPower != null && seenPower == 1);
+        }
+
+        // ------------------------------------------------------------- 恢复（照快照写回）
+
+        /**
+         * 照快照写回：先用 {@link ClimateSnapshot} 那一趟只读的路读回来对一遍，已经对的不动，对不上的写一次。
+         *
+         * <p>写的次序是「设定在前、二排开关在后」：二排开关是这一趟里唯一能把那个区叫醒的一笔，留到最后，前面的才是设定。
+         * Settings first, the rear switch last — it is the one write in this pass that wakes that zone.</p>
+         */
+        Report restore(ClimateSnapshot.Snapshot want) {
+            ClimateSnapshot.Snapshot now = ClimateSnapshot.read(access, names);
+            if (now.detail.length() > 0) {
+                note("readback " + now.detail);
+            }
+            if (!ClimateSnapshot.anyKnown(want)) {
+                note("nothing known, nothing written");
+                return report(Outcome.REFUSED, 0f, false);
+            }
+
+            int driver = zone(DRIVER_ZONE);
+            int passenger = zone(PASSENGER_ZONE);
+            int rear = zone(REAR_ZONE);
+
+            // 单位照写的那条路走：看车上现在设定的那个数（>45 才是华氏），读不到才看单位那个号；
+            // 两个前排区域同一个值、同一次换算，跟 on() 里一样。
+            Integer temp = function("HVAC_FUNC_TEMP");
+            Integer unitId = function("HVAC_FUNC_TEMP_UNIT");
+            Integer unitF = function("TEMPERATURE_UNIT_F");
+            Integer unit = unitId == null ? null : read(unitId, driver, "unit");
+            boolean fahrenheit = speaksFahrenheit(now.driverSetpointC, unit, unitF);
+
+            putBackFloat(temp, driver, want.driverSetpointC, now.driverSetpointC,
+                    "temp left", "left", null, fahrenheit);
+            putBackFloat(temp, passenger, want.passengerSetpointC, now.passengerSetpointC,
+                    "temp right", "right", "passenger", fahrenheit);
+
+            Integer heat = function("HVAC_FUNC_SEAT_HEATING");
+            Integer vent = function("HVAC_FUNC_SEAT_VENTILATION");
+            putBack(heat, driver, want.seatHeatLeft, now.seatHeatLeft, "seat heat left", "left");
+            putBack(vent, driver, want.seatVentLeft, now.seatVentLeft, "seat vent left", "left");
+            putBack(heat, passenger, want.seatHeatRight, now.seatHeatRight, "seat heat right", "right");
+            putBack(vent, passenger, want.seatVentRight, now.seatVentRight, "seat vent right", "right");
+
+            putBackPlain(function("HVAC_FUNC_CIRCULATION"), want.circulation, now.circulation,
+                    "circulation");
+
+            Integer power = function("HVAC_FUNC_POWER");
+            putBack(power, rear, want.rearPower, now.rearPower, "power rear", "rear");
+
+            return report(restoreOutcome(), restoreTarget, false);
+        }
+
+        /**
+         * 把一个号写回快照里的值：快照不知道（null）就不写并点名；读回已经是那个值也不写（一个没变的设定不动它）；
+         * 其余写一次 —— 不 dwell、不重试，拒了就记一笔接着走。受理了记 {@code flag} 那一栏（可为 null，只进 detail）。
+         */
+        private void putBack(Integer id, int zone, Integer want, Integer now, String label, String flag) {
+            if (want == null) {
+                note("skip " + label + ": unknown, not written");
+                return;
+            }
+            if (id == null) {
+                note("skip " + label + ": no id");
+                return;
+            }
+            if (now != null && now.intValue() == want.intValue()) {
+                restoreVerified++;
+                note("skip " + label + ": already " + want);
+                return;
+            }
+            if (write(id, zone, want)) {
+                restoreAccepted++;
+                mark(flag);
+            } else {
+                restoreRefused++;
+            }
+        }
+
+        /** 不带区域那一路的写回（内循环走的就是这一路）：规矩同 {@link #putBack}，受理了没有别的欄可记，只进 detail。 */
+        private void putBackPlain(Integer id, Integer want, Integer now, String label) {
+            if (want == null) {
+                note("skip " + label + ": unknown, not written");
+                return;
+            }
+            if (id == null) {
+                note("skip " + label + ": no id");
+                return;
+            }
+            if (now != null && now.intValue() == want.intValue()) {
+                restoreVerified++;
+                note("skip " + label + ": already " + want);
+                return;
+            }
+            boolean accepted = access.write(id, want);
+            note("write " + label + " " + ClimateSnapshot.NO_ZONE + "=" + want
+                    + (accepted ? " ok" : " refused"));
+            if (accepted) {
+                restoreAccepted++;
+            } else {
+                restoreRefused++;
+            }
+        }
+
+        /** 浮点通道的写回（设定温度）：要不要换算照 {@link ClimateSource#speaksFahrenheit}，跟写的那条路一个规矩。 */
+        private void putBackFloat(Integer id, int zone, Float want, Float now, String label, String side,
+                                  String flag, boolean fahrenheit) {
+            if (want == null) {
+                note("skip " + label + ": unknown, not written");
+                return;
+            }
+            if (id == null) {
+                note("skip " + label + ": no id");
+                return;
+            }
+            if (now != null && Math.abs(now - want) <= EPSILON) {
+                restoreVerified++;
+                note("skip " + label + ": already " + floatText(want));
+                return;
+            }
+            float value = fahrenheit ? celsiusToFahrenheit(want) : want;
+            if (writeFloat(id, zone, value, side, fahrenheit ? "F" : "C")) {
+                restoreAccepted++;
+                if (restoreTarget == 0f) {
+                    restoreTarget = want;
+                }
+                mark(flag);
+            } else {
+                restoreRefused++;
+            }
+        }
+
+        /** 受理了记在哪一栏（照 {@link Report} 那几栏的样子；null = 没有这一栏，detail 里记着就行）。 */
+        private void mark(String flag) {
+            if ("passenger".equals(flag)) {
+                passengerWrote = true;
+            } else if ("left".equals(flag)) {
+                seatWroteLeft = true;
+            } else if ("right".equals(flag)) {
+                seatWroteRight = true;
+            } else if ("rear".equals(flag)) {
+                powerWrote = true;
+            }
+        }
+
+        /**
+         * 恢复这一趟的结论：有被拒的 → {@link Outcome#NO_CHANGE}（给人看的那句就是「没变」）；写了并且都受理了（或者
+         * 读回证实车上本来就对）→ {@link Outcome#DONE}；一笔都没写出去 → {@link Outcome#REFUSED}。
+         */
+        private Outcome restoreOutcome() {
+            if (restoreRefused > 0) {
+                return Outcome.NO_CHANGE;
+            }
+            if (restoreAccepted > 0 || restoreVerified > 0) {
+                return Outcome.DONE;
+            }
+            return Outcome.REFUSED;
+        }
+
+        private static String floatText(Float value) {
+            return value == null ? "?" : String.format(Locale.US, "%.2f", value);
         }
 
         // ------------------------------------------------------------- 读写
