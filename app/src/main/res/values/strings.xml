@@ -1744,6 +1744,8 @@
     <string name="set_alerts_climate_seats_summary">开空调时动哪些座椅：%1$s</string>
     <string name="set_alerts_climate_seat_level_title">座椅档位</string>
     <string name="set_alerts_climate_seat_level_summary">座椅加热 / 通风用 %1$s</string>
+    <string name="set_alerts_climate_restore_title">改过的放回原样</string>
+    <string name="set_alerts_climate_restore_summary">到点自己关时，把它刚才改过的设置放回原来的样子；读不到的那些它不动</string>
     <string name="set_alerts_climate_minutes_title">开多久</string>
     <string name="set_alerts_climate_minutes_summary">开 %1$s，到点自己关</string>
     <string name="set_alerts_climate_soc_floor_title">电量下限</string>

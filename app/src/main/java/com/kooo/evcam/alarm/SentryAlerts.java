@@ -24,6 +24,7 @@ import com.kooo.evcam.MainActivity;
 import com.kooo.evcam.R;
 import com.kooo.evcam.alarm.climate.ClimateOffGuard;
 import com.kooo.evcam.alarm.climate.ClimateProbe;
+import com.kooo.evcam.alarm.climate.ClimateSnapshot;
 import com.kooo.evcam.alarm.climate.ClimateSource;
 import com.kooo.evcam.alarm.guard.AlertAnchor;
 import com.kooo.evcam.alarm.guard.AlertMoment;
@@ -359,6 +360,19 @@ public final class SentryAlerts implements Telemetry.Listener {
      * duplicate chat lines.
      */
     private volatile int climateOffGeneration;
+    /**
+     * 上一条 {@code ac on} 在写之前读到的那一份快照（{@link ClimateSnapshot}）：自动关把车关上以后照它放回去。
+     *
+     * <p>只有开着「放回」那一项才读，而且只在写车那条线程上读。读不到的字段是 {@code null}，不写回车 ——
+     * 宁可不放，也不要凭空给车上写一个没读到的值。进程没了它就没了：那个进程里什么都没改过，
+     * 所以十分钟后那一次就是干净的关，这是诚实的形状，不是漏掉的一步。</p>
+     *
+     * The snapshot read off the car before the last {@code ac on} wrote it; the auto-off puts it back after
+     * the off. Read only while the put-back setting is on, and only on the climate thread. An unreadable
+     * field is {@code null} and is never written back — a gap beats inventing a value for the car. It lives
+     * in process memory only: a new process overwrote nothing, so its auto-off is a plain off.
+     */
+    private volatile ClimateSnapshot.Snapshot climateSnapshot;
 
     /** {@link ClimateSource} 要的功能号与区域：名字从这里来，不写死号码。 */
     private static final ClimateSource.Names CLIMATE_NAMES = new ClimateSource.Names() {
@@ -3700,6 +3714,12 @@ public final class SentryAlerts implements Telemetry.Listener {
         climateWork.execute(() -> {
             try {
                 CarAccess access = Telemetry.get().carAccess();
+                // 写之前先读一遍（只有开着「放回」那一项、而且这一笔是「开」时）：读不到的字段就是 null，
+                // 还原时不写。主线程上不多读车，这一笔跟在写同一趟。
+                // Read-before-write, field by field: what cannot be read stays null and is not written back.
+                if (targetC > 0 && config.isAlertsClimateRestore()) {
+                    climateSnapshot = ClimateSnapshot.read(access, CLIMATE_NAMES);
+                }
                 final ClimateSource.Report report = ClimateSource.apply(access, CLIMATE_NAMES,
                         SystemClock::sleep, plan);
                 app.getMainExecutor().execute(
@@ -3985,6 +4005,9 @@ public final class SentryAlerts implements Telemetry.Listener {
                     CLIMATE_NAMES, SystemClock::sleep,
                     new ClimateSource.Plan(false, 0f, true, config.isAlertsClimateSeatsBoth(),
                             false, false, level));
+            // 先关，后还原（顺序不能反 —— 还原不能挡住那笔关，车机这时候最容易睡）。
+            // Put-back only runs after the off landed, on this same thread, and never ahead of it.
+            final ClimateSource.Report restore = restoreAfterOff(report, generation);
             app.getMainExecutor().execute(() -> {
                 if (!climateOffCurrent(generation)) {
                     // 写的时候这一条被取消了：读回的结果不归它了，也不要再说话。
@@ -4007,6 +4030,9 @@ public final class SentryAlerts implements Telemetry.Listener {
                     }
                     deliverText(channel(), app.getString(R.string.alert_climate_no_change_plain));
                 }
+                if (restore != null) {
+                    reportRestore(restore, generation);
+                }
             });
         } catch (RuntimeException e) {
             BlackBox.note("alerts: climate auto-off failed (" + e + ")");
@@ -4016,6 +4042,49 @@ public final class SentryAlerts implements Telemetry.Listener {
     /** 这一条链还该不该动手：号对得上才行。Whether this chain may still act: the number has to match. */
     private boolean climateOffCurrent(int generation) {
         return generation == climateOffGeneration;
+    }
+
+    /**
+     * 关上以后照快照把车放回原来的样子：跑在写车那一条线程上，紧跟在那笔关后面（每一笔都要等车机）。
+     *
+     * <p>三个条件缺一不可：真的关上了、这一项开着、手上那份快照至少认得一个字段。号对不上（这一条被取消过）
+     * 就连这一笔都不写 —— 不写、也不说。快照里读不到的字段由 {@link ClimateSnapshot} 那边写成 null，
+     * 不写回车：宁可少放一样，也不要往车上写一个没读到的值。</p>
+     *
+     * <p>Nothing runs unless the off landed, the setting is on, and the snapshot knows at least one field.
+     * A dropped chain writes nothing and says nothing. Fields the adapter could not read stay {@code null}
+     * and are never written back — the no-guess rule.</p>
+     *
+     * @return 真的动了手才返回车机的回话（没动手是 {@code null}）
+     */
+    private ClimateSource.Report restoreAfterOff(ClimateSource.Report off, int generation) {
+        if (!config.isAlertsClimateRestore() || off.outcome != ClimateSource.Outcome.DONE) {
+            return null;
+        }
+        if (!climateOffCurrent(generation)) {
+            BlackBox.note("alerts: climate restore skipped, the chain was dropped");
+            return null;
+        }
+        ClimateSnapshot.Snapshot snapshot = climateSnapshot;
+        if (snapshot == null || !ClimateSnapshot.anyKnown(snapshot)) {
+            return null;
+        }
+        return ClimateSource.applyRestore(Telemetry.get().carAccess(), CLIMATE_NAMES,
+                SystemClock::sleep, snapshot);
+    }
+
+    /**
+     * 还原的回话：每一笔只进黑匣子；车机拒了的，用现成那句话说出来（号对不上就连这句也不说）。
+     *
+     * What the car answered goes to the black box; a write it refused is said out loud with the existing
+     * no-change sentence, and a dropped chain does not get to say it.
+     */
+    private void reportRestore(ClimateSource.Report restore, int generation) {
+        BlackBox.note("alerts: climate restore " + restore.outcome + " (" + restore.detail + ")");
+        if (restore.outcome == ClimateSource.Outcome.REFUSED && climateOffCurrent(generation)
+                && channel().ready()) {
+            deliverText(channel(), app.getString(R.string.alert_climate_no_change_plain));
+        }
     }
 
     /**

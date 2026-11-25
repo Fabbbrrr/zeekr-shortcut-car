@@ -1727,6 +1727,8 @@ Kalau lupa: %3$s</string>
     <string name="set_alerts_climate_seats_summary">Tempat duduk yang disentuh semasa penghawa dingin dijalankan: %1$s</string>
     <string name="set_alerts_climate_seat_level_title">Tahap tempat duduk</string>
     <string name="set_alerts_climate_seat_level_summary">Pemanas dan pengudaraan pada %1$s</string>
+    <string name="set_alerts_climate_restore_title">Kembalikan apa yang diubah</string>
+    <string name="set_alerts_climate_restore_summary">Apabila ia mati sendiri, ia mengembalikan tetapan yang baru diubahnya; apa yang tidak dapat dibaca, ia biarkan</string>
     <string name="set_alerts_climate_minutes_title">Berapa lama</string>
     <string name="set_alerts_climate_minutes_summary">Hidup %1$s, kemudian mati sendiri</string>
     <string name="set_alerts_climate_soc_floor_title">Had bawah bateri</string>

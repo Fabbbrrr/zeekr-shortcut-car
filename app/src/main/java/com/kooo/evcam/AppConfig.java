@@ -180,6 +180,7 @@ public class AppConfig {
     private static final String KEY_ALERTS_CLIMATE_SAFETY = "alerts_climate_safety";    // 高温安全提醒
     private static final String KEY_ALERTS_CLIMATE_TARGET_C = "alerts_climate_target_c";  // °C，叫车开空调时设成
     private static final String KEY_ALERTS_CLIMATE_SEAT_LEVEL = "alerts_climate_seat_level";  // 1..3
+    private static final String KEY_ALERTS_CLIMATE_RESTORE = "alerts_climate_restore";  // 自动关照快照放回
     private static final String KEY_ALERTS_CLIMATE_MINUTES = "alerts_climate_minutes";  // 开多久
     private static final String KEY_ALERTS_CLIMATE_SOC_FLOOR = "alerts_climate_soc_floor";  // 电量下限 %
     private static final String KEY_ALERTS_COMMAND_OFFSET = "alerts_command_offset";  // 轮询到哪一条（运行状态）
@@ -3122,6 +3123,26 @@ public class AppConfig {
     public void setAlertsClimateSeatLevel(int level) {
         prefs.edit().putInt(KEY_ALERTS_CLIMATE_SEAT_LEVEL,
                 snapToChoices(ALERTS_CLIMATE_SEAT_LEVEL_CHOICES, level, 2)).apply();
+    }
+
+    /**
+     * 自动关要不要把它改过的设置放回原来的样子：默认<b>开</b>。关掉就是今天的行为（关就是干净的关）。
+     *
+     * <p>契约见 {@code docs/climate-alerts/RESTORE.md} §2：读不到的字段不写回去，所以「放回」只覆盖
+     * 这一趟真的读到过的东西。关掉它给那些多写几笔就会不对劲的车留一个逃生口。</p>
+     *
+     * Whether the auto-off puts back the settings it changed; default on. Off keeps today's behaviour —
+     * a plain off, settings included. A field that could not be read is not written back, so the put-back
+     * only covers what this app actually read. The switch is the escape hatch for a car where the extra
+     * writes misbehave.
+     */
+    public boolean isAlertsClimateRestore() {
+        return readBoolean(KEY_ALERTS_CLIMATE_RESTORE, true);
+    }
+
+    public void setAlertsClimateRestore(boolean enabled) {
+        prefs.edit().putBoolean(KEY_ALERTS_CLIMATE_RESTORE, enabled).apply();
+        AppLog.i(TAG, "车厢自动关放回设为 " + (enabled ? "开" : "关"));
     }
 
     /** 开一次空调最多几分钟（到点自己关）：5 / 10 / 15，默认 10。 */
