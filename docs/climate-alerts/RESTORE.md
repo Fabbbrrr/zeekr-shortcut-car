@@ -157,6 +157,40 @@ and `strings.xml` are hot files — exactly one owner each, above.
 - Full `:app:testDebugUnitTest` on the merged tree, baseline = whatever fork `main` @ `5101fd66`
   reports + the new tests only. Robolectric tests need `@Config(sdk = 34)` (CI runs JDK 17).
 
+## 6. Review pass — the decisions the contract left open
+
+The adversarial review (`REVIEW-RESTORE.md`, `d05b057b`) caught four things this file left half-decided.
+Decided here, before the tag; the code was changed to match.
+
+1. **The loud leg speaks on `NO_CHANGE`, not `REFUSED`.** A pass where the car refused a write is
+   `NO_CHANGE` — that is the pass the no-change sentence is for, as written. A pass that knew nothing
+   (`REFUSED`) stays silent: it broke nothing, so it has nothing to report. Glue flipped to match.
+2. **The Fahrenheit collision: the snapshot is verbatim-channel, the write replays it verbatim.** On a
+   Fahrenheit car the snapshot's numbers ARE channel (Fahrenheit) numbers — a car only answers its own
+   unit — so the compare uses the existing rule on the car's *current* number while the write sends the
+   snapshot's own number back. A Fahrenheit car gets its 68 back, not a re-converted 154.4. Celsius
+   cars are unchanged (both readings Celsius, both paths agree). The classification rule still decides
+   the compare, so `theUnitRuleComesFromTheSetpointNotTheUnitId` still pins 4.15.0's bug.
+3. **The capture runs on every ON, even with the setting off.** Reads write nothing, so the cost is nine
+   binder reads on a feature that is switched off; the alternative — capture gated on the setting — let
+   a switch flipped mid-window replay the *previous* session's stale snapshot. And the snapshot now
+   dies with the park session (`climateForgetSession` clears it): what the previous drive read never
+   gets written to this one.
+4. **Two ON commands in a row: the second snapshot records what the first wrote.** The last command's
+   settings are the car's truth at auto-off time; the replay restores that. The seat buttons under a
+   receipt are the same: they change what a later replay will put back. Accepted, written down.
+5. **The DONE gate stays.** "If the off reached the car" means the readback saw it — the same standard
+   every other receipt in this feature uses. An off that was accepted but not confirmed does not
+   trigger a restore; the black box says so. This is a cost, stated: on the sleeping bus that is the
+   normal case, and those settings stay at the app's values until the car recalls them itself.
+6. **The settings row follows its neighbours exactly**: `bindSwitch`, no forced `refresh()` — the value
+   is read live where it is used. The line in §5 that said "triggers refresh" meant "is wired like the
+   climate rows above it"; this is that wording, corrected. `StringResourceParityTest`'s pending count
+   moved 463 → 465 for the two new strings (the test's own rule: say so here).
+7. **The test seam**: `SentryAlerts` grew `climateAccessForTest` (package-private, null in production)
+   because `Telemetry.carAccess()` cannot answer under Robolectric — without it every wiring test would
+   prove only the no-write legs. `Telemetry` itself is still untouched.
+
 ## Execution log
 
 Slice W3 (branch `slice/restore-tests`). Tests written against the §3 contract signatures exactly;

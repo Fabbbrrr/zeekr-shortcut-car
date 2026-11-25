@@ -374,6 +374,18 @@ public final class SentryAlerts implements Telemetry.Listener {
      */
     private volatile ClimateSnapshot.Snapshot climateSnapshot;
 
+    /**
+     * 写车那个接口的测试口子（测试注入假的车；平时是 null，照走 {@code Telemetry}）。
+     * Test seam: the fake car the wiring tests inject; null in production, where the real path runs.
+     */
+    volatile com.kooo.evcam.telemetry.CarAccess climateAccessForTest;
+
+    /** 写车那一路拿接口：测试里优先进注入的那份。Which car the climate path talks to. */
+    private com.kooo.evcam.telemetry.CarAccess climateCarAccess() {
+        com.kooo.evcam.telemetry.CarAccess injected = climateAccessForTest;
+        return injected != null ? injected : Telemetry.get().carAccess();
+    }
+
     /** {@link ClimateSource} 要的功能号与区域：名字从这里来，不写死号码。 */
     private static final ClimateSource.Names CLIMATE_NAMES = new ClimateSource.Names() {
         @Override
@@ -3713,11 +3725,13 @@ public final class SentryAlerts implements Telemetry.Listener {
         final int session = climateSession;
         climateWork.execute(() -> {
             try {
-                CarAccess access = Telemetry.get().carAccess();
-                // 写之前先读一遍（只有开着「放回」那一项、而且这一笔是「开」时）：读不到的字段就是 null，
+                CarAccess access = climateCarAccess();
+                // 写之前先读一遍（每一笔「开」都读，哪怕「放回」那一项关着 —— 读不写东西，零风险；
+                // 不这么做，开关中途才打开的那一条就会拿着上一趟的旧快照去回车）。读不到的字段就是 null，
                 // 还原时不写。主线程上不多读车，这一笔跟在写同一趟。
-                // Read-before-write, field by field: what cannot be read stays null and is not written back.
-                if (targetC > 0 && config.isAlertsClimateRestore()) {
+                // Read-before-write on every ON, even with the put-back switch off: reads write nothing, and a
+                // switch flipped mid-window must not replay the previous session's stale snapshot.
+                if (targetC > 0) {
                     climateSnapshot = ClimateSnapshot.read(access, CLIMATE_NAMES);
                 }
                 final ClimateSource.Report report = ClimateSource.apply(access, CLIMATE_NAMES,
@@ -4001,7 +4015,7 @@ public final class SentryAlerts implements Telemetry.Listener {
                 return;
             }
             climateOffPending = null;
-            final ClimateSource.Report report = ClimateSource.apply(Telemetry.get().carAccess(),
+            final ClimateSource.Report report = ClimateSource.apply(climateCarAccess(),
                     CLIMATE_NAMES, SystemClock::sleep,
                     new ClimateSource.Plan(false, 0f, true, config.isAlertsClimateSeatsBoth(),
                             false, false, level));
@@ -4069,19 +4083,21 @@ public final class SentryAlerts implements Telemetry.Listener {
         if (snapshot == null || !ClimateSnapshot.anyKnown(snapshot)) {
             return null;
         }
-        return ClimateSource.applyRestore(Telemetry.get().carAccess(), CLIMATE_NAMES,
+        return ClimateSource.applyRestore(climateCarAccess(), CLIMATE_NAMES,
                 SystemClock::sleep, snapshot);
     }
 
     /**
      * 还原的回话：每一笔只进黑匣子；车机拒了的，用现成那句话说出来（号对不上就连这句也不说）。
+     * 什么都没读到那一趟不说话 —— 它没弄成任何东西，也就没什么可报告的（RESTORE.md §七）。
      *
-     * What the car answered goes to the black box; a write it refused is said out loud with the existing
-     * no-change sentence, and a dropped chain does not get to say it.
+     * <p>What the car answered goes to the black box; a pass where the car refused a write is said out loud
+     * with the existing no-change sentence, and a dropped chain does not get to say it. A pass that knew
+     * nothing stays silent — it broke nothing, so it has nothing to report.</p>
      */
     private void reportRestore(ClimateSource.Report restore, int generation) {
         BlackBox.note("alerts: climate restore " + restore.outcome + " (" + restore.detail + ")");
-        if (restore.outcome == ClimateSource.Outcome.REFUSED && climateOffCurrent(generation)
+        if (restore.outcome == ClimateSource.Outcome.NO_CHANGE && climateOffCurrent(generation)
                 && channel().ready()) {
             deliverText(channel(), app.getString(R.string.alert_climate_no_change_plain));
         }
@@ -4131,6 +4147,9 @@ public final class SentryAlerts implements Telemetry.Listener {
         // A new epoch also expires the buttons: yesterday's "ac 22" must not act on today's car.
         climateSession++;
         climateToken = "";
+        // 旧一趟的快照不进新一趟：上一趟读到的东西不许写到这一趟的车上。
+        // The previous session's snapshot never rides into the next one.
+        climateSnapshot = null;
         ClimatePolicy policy = climatePolicy;
         if (policy != null) {
             policy.reset();

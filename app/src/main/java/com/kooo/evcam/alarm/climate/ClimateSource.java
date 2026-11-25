@@ -302,10 +302,10 @@ public final class ClimateSource {
      * because the car already holds what the snapshot says; a pass with nothing known at all is
      * {@link Outcome#REFUSED}.</p>
      *
-     * <p>The unit follows the write path (the setpoint the car holds now decides). The snapshot stores the channel
-     * value verbatim, so on a car that really speaks Fahrenheit and really reports its setpoint the two rules meet and
-     * the conversion runs twice. That cell is graded unknown ({@code CASE.md} §13.5); the contract is implemented as
-     * written and the consequence is written down here.</p>
+     * <p>The unit follows the write path for the comparison only (the setpoint the car holds now decides).
+     * The snapshot stores the channel value verbatim and the restore writes that verbatim number back — a
+     * car that really speaks Fahrenheit gets its own 68 back, not a re-converted 154.4 (review pass,
+     * {@code RESTORE.md} §七; the cell was {@code CASE.md} §13.5 and is now decided).</p>
      *
      * <p>The {@link Clock} does no waiting here: the restore does not dwell, it is a parameter so the shape matches
      * {@link #apply}.</p>
@@ -773,7 +773,11 @@ public final class ClimateSource {
             }
         }
 
-        /** 浮点通道的写回（设定温度）：要不要换算照 {@link ClimateSource#speaksFahrenheit}，跟写的那条路一个规矩。 */
+        /** 浮点通道的写回（设定温度）：比对照车上现在的数（单位那把尺），但写回去的是快照存的那个号 ——
+         *  快照存的就是这条通道上读到的数，照原样收回，不会再刷一次换算（RESTORE.md §七）。
+         *  The compare uses the car's current number through the existing unit rule, but the write replays the
+         *  snapshot's own number verbatim — it was read off this very channel, and converting it again is the
+         *  double cut the review caught (RESTORE.md §七). */
         private void putBackFloat(Integer id, int zone, Float want, Float now, String label, String side,
                                   String flag, boolean fahrenheit) {
             if (want == null) {
@@ -789,7 +793,7 @@ public final class ClimateSource {
                 note("skip " + label + ": already " + floatText(want));
                 return;
             }
-            float value = fahrenheit ? celsiusToFahrenheit(want) : want;
+            float value = want;
             if (writeFloat(id, zone, value, side, fahrenheit ? "F" : "C")) {
                 restoreAccepted++;
                 if (restoreTarget == 0f) {
