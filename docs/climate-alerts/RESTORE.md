@@ -156,3 +156,53 @@ and `strings.xml` are hot files — exactly one owner each, above.
   new keys are exported by default and every new string exists in `values`, `values-en`, `values-ms`.
 - Full `:app:testDebugUnitTest` on the merged tree, baseline = whatever fork `main` @ `5101fd66`
   reports + the new tests only. Robolectric tests need `@Config(sdk = 34)` (CI runs JDK 17).
+
+## Execution log
+
+Slice W3 (branch `slice/restore-tests`). Tests written against the §3 contract signatures exactly;
+none of them compiles on this branch (the classes under test land with W1) — **nothing here was run**.
+All entries: `written, run pending merge`. Assertion style: the fakes' recorded calls (id/zone/value),
+per the house rule.
+
+### ClimateSnapshotTest (`app/src/test/java/com/kooo/evcam/alarm/climate/ClimateSnapshotTest.java`)
+
+- `theReadPassNeverWrites` — the snapshot pass reads all nine fields and issues zero writes. written, run pending merge
+- `anUnknownFieldProducesNoWrite` — the null field gets no write back after drift; other known drifted fields are written (anti-vacuous). written, run pending merge
+- `anUnknownFieldIsNamedInDetailWhenRestored` — the unknown field is named in detail (assertion pinned to the lowercase word `circulation`; wording itself is not contract-frozen — see ambiguities) and detail stays ASCII. written, run pending merge
+- `aPlaceholderReadingIsStoredAsUnknown` — 253/255 readings store as null; channels change to real values after the snapshot; the pass still writes nothing. written, run pending merge
+- `theOtherFieldsAreKeptWhenOneReadIsAPlaceholder` — one placeholder does not poison the other fields; the kept zero writes back, the unknown does not. written, run pending merge
+- `aLegitimateZeroIsAKnownValue` — a real 0 (off / level 0) is a value: stored, and written back when the car moved off it; front power is never written. written, run pending merge
+- `aReadValueIsKeptVerbatimOnAFahrenheitCar` — a Fahrenheit car's channel numbers (68.0 / 73.4) store verbatim — no unit cut at snapshot time; nothing drifted so nothing is written. written, run pending merge
+- `knownCountCountsTheFieldsThatAreNotNull` — 7 readable fields, 2 nulled → knownCount 7. written, run pending merge
+- `anyKnownIsFalseForAFullyUnknownSnapshot` — all-null snapshot → false. written, run pending merge
+- `anyKnownIsTrueWhenAtLeastOneFieldIsKnown` — one readable field → true; the read pass still wrote nothing. written, run pending merge
+- `everyFieldIsResolvedThroughNamesAndZones` — every id/zone/constant (including `IHvac.HVAC_FUNC_CIRCULATION` and `ROW_2`) is really asked of Names; no writes. written, run pending merge
+
+### ClimateRestoreTest (`app/src/test/java/com/kooo/evcam/alarm/climate/ClimateRestoreTest.java`)
+
+- `everyDriftedKnownFieldGetsItsSnapshotValueWrittenBack` — the eight drifted known fields get exactly their id/zone/value pairs (both front zones get the setpoint). written, run pending merge
+- `eachSeatKeepsItsOwnLevelOnItsOwnZone` — driver heat keeps the driver's level on the driver's zone, passenger its own on its own (crossed wires go red). written, run pending merge
+- `aFieldAlreadyEqualAtReadbackIsSkipped` — the one field the car still holds equal to the snapshot is untouched; the drifted ones are written. written, run pending merge
+- `theFrontPowerIsCapturedButNeverWrittenBack` — front power is remembered (snapshot holds 1) but no write touches it — "never start climate automatically" holds. written, run pending merge
+- `aFullyUnknownSnapshotWritesNothing` — empty adapter → all-null snapshot, `anyKnown` false, zero writes, no crash. written, run pending merge
+- `aNullSnapshotWritesNothing` — a null snapshot argument: zero writes, no crash. written, run pending merge
+- `anUnknownFieldIsNotWrittenBackEvenWhenTheCarStartsAnswering` — unknown at snapshot stays unwritten even if the id answers again by auto-off time. written, run pending merge
+- `aFahrenheitCarGetsBackTheNumberItsChannelHolds` — the Fahrenheit car's channels get their own 68.0 back on both front zones; the double-conversion numbers (154.4/154.3) and the read-side-converted 20.0 must not appear. written, run pending merge
+- `theUnitRuleComesFromTheSetpointNotTheUnitId` — the 4.15.0 car (unit id says F, setpoint 19.5): gets 19.5 back, not 67.1/67.2; the pure rule mirrors (`speaksFahrenheit`) agree with the write path's existing pins. written, run pending merge
+- `aRefusedWriteDoesNotStopThePassAndIsNoted` — the refused field is attempted once, every other drifted field is still attempted, and the refusal is named in detail (lowercase `refused`; wording not contract-frozen — see ambiguities); detail stays ASCII. written, run pending merge
+- `everyDriftedFieldGetsExactlyOneAttemptAndThePassDoesNotDwell` — exactly one write call per drifted field, and the fake clock is never woken (contract: one attempt per field, no dwell loop). written, run pending merge
+- `aFieldMissingFromNamesIsNotAttempted` — the constant missing from Names means its fields read unknown and never get a write; the rest is written. written, run pending merge
+
+### Ambiguities (pinned to the reading the contract's own words support)
+
+- **"unit conversion matches the write path's"** vs **"no unit conversion at snapshot time — the
+  snapshot stores what the car holds on that channel"**: since the snapshot stores the channel verbatim,
+  a round-trip through a Fahrenheit car lands the same number back on the channel (68.0). The Fahrenheit
+  tests pin the number that reaches the channel plus negatives (no double conversion, no single-sided
+  conversion), which every reading of the pair must satisfy; they do not pin *where* the cut happens.
+- **Detail-wording asserts**: the contract fixes only that results go to detail (ASCII). The two wording
+  asserts pin the lowercase field word (`circulation`) and the word `refused` — the narrowest honest
+  reading of "named in detail" / "is noted". If W1's wording differs, adjust the assert strings only.
+- **`knownCount()` on the all-known fake = 9** assumes all nine contract fields are read via
+  CarAccess+Names on a fully-answering adapter. If W1 legitimately cannot resolve one id on the fake,
+  the fake's `FakeNames` gains it (test-side file, W3 owns it) — not the field list.
