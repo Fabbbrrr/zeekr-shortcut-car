@@ -222,6 +222,39 @@ public class ClimateSettingsWiringTest {
         config.setAlertsButtons(true);
     }
 
+    // ================================================================= 自动关之后放回原样
+
+    /**
+     * 「放回原样」那一行：在车厢温度这一页、默认开着、改一下就存进 AppConfig —— 就够了，不叫 refresh()。
+     *
+     * <p>这一项跟上面几条不同：它的值在用它的那一刻现读（{@code RESTORE.md} §6.6 把契约里「要叫 refresh()」
+     * 那句收回去了），所以这里 {@code climatePolicy} 还是 null 不是漏接，而是钉住的那份接线。强制叫一次反而
+     * 会多重建一份没人用的策略。</p>
+     *
+     * The put-back row lives on the climate page, is on by default, and stores its value in AppConfig — and
+     * that is the whole wiring. This one is read live where it is used (RESTORE.md §6.6 took back the
+     * contract's "triggers refresh()" line), so a still-null policy here is the pinned shape, not a missed
+     * call; forcing one would rebuild a policy nobody uses.
+     */
+    @Test
+    public void theRestoreSwitchStoresItsValueWithoutRefreshingAnything() throws Exception {
+        Preference row = climatePage().findPreference("pref_alerts_climate_restore");
+        assertNotNull("少了「放回原样」那个开关", row);
+        assertTrue("默认开",
+                ((androidx.preference.SwitchPreferenceCompat) row).isChecked());
+        assertNull("开始时没有策略（没人叫过 refresh）", policy());
+
+        assertEquals(Boolean.TRUE, row.callChangeListener(false));
+
+        assertFalse("关掉的值存进了设置", config.isAlertsClimateRestore());
+        assertNull("这一项不叫 refresh()：值是用的时候现读的", policy());
+
+        // 再打开：同一行、同一个值。
+        // Back on: same row, same setting.
+        assertEquals(Boolean.TRUE, row.callChangeListener(true));
+        assertTrue(config.isAlertsClimateRestore());
+    }
+
     // ================================================================= 那一行实话
 
     /**

@@ -11,6 +11,15 @@ commit message, not here.
 
 Nothing yet.
 
+## [4.20.0-alerts-beta] - 2026-11-26
+
+- The auto-off now puts the climate back the way it found it. Before `ac 22` changes anything, the app
+  reads what the car holds — setpoint, front seats, circulation, rear zone — and when the timer
+  switches the climate off, it puts those back: you get in, press the climate on, and your settings are
+  there. What the car does not report, it does not touch, and it does not switch the climate on by
+  itself. There is a switch on the Climate page to keep the old plain-off behaviour. The first drive on
+  this build is also the first measurement of what this car reports back.
+
 ## [4.19.2-alerts-beta] - 2026-11-21
 
 - Same code, first release with the plain `alerts` marker and no `fab` anywhere in the name. It is the

@@ -581,6 +581,14 @@
                 android:key="pref_alerts_climate_seat_level"
                 android:title="@string/set_alerts_climate_seat_level_title" />
 
+            <!-- 自动关把这次改过的设置放回原来的样子（读不到的不动、也不猜）。关掉它就是今天的行为。
+                 The auto-off puts back the settings it changed; what it cannot read it leaves alone.
+                 Off is today's behaviour, unchanged. -->
+            <SwitchPreferenceCompat
+                android:key="pref_alerts_climate_restore"
+                android:title="@string/set_alerts_climate_restore_title"
+                android:summary="@string/set_alerts_climate_restore_summary" />
+
             <ListPreference
                 android:key="pref_alerts_climate_minutes"
                 android:title="@string/set_alerts_climate_minutes_title" />

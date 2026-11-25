@@ -1751,6 +1751,8 @@ If I forget: %3$s</string>
     <string name="set_alerts_climate_seats_summary">Seats touched when the AC runs: %1$s</string>
     <string name="set_alerts_climate_seat_level_title">Seat level</string>
     <string name="set_alerts_climate_seat_level_summary">Heating and ventilation at %1$s</string>
+    <string name="set_alerts_climate_restore_title">Put back what it changed</string>
+    <string name="set_alerts_climate_restore_summary">When it switches off by itself it puts back the settings it just changed; what it cannot read it leaves alone</string>
     <string name="set_alerts_climate_minutes_title">How long</string>
     <string name="set_alerts_climate_minutes_summary">Runs for %1$s, then switches off by itself</string>
     <string name="set_alerts_climate_soc_floor_title">Battery floor</string>
