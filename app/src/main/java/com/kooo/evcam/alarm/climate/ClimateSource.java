@@ -267,7 +267,7 @@ public final class ClimateSource {
      * 不 dwell、不重试、不要求读回。受理了就算写到（这台适配层很多号读回来是空的，把读不到当成没做成就是假话）；
      * 被拒了就记一笔，接着写下一个，不停下来。结果都进 {@link Report#detail}（ASCII，黑匣子）。
      *
-     * <p>写哪些：设定温度（两个前排区域，走 {@link CarAccess#writeFloat}，单位照 {@link #speaksFahrenheit}）、
+     * <p>写哪些：设定温度（两个前排区域，走 {@link CarAccess#writeFloat}，写回照快照存的那个号原样）、
      * 前排座椅加热 / 通风（照存的原始值：功能号 + 档位，0 就是关）、内循环（默认区域那一档）、二排开关
      * （{@link #REAR_ZONE}）。<b>不开空调</b>：前排开关那一笔不写 —— 「绝不自动开空调」这条不变，车主自己在车机上开，
      * 拿到的是它自己的设定。前排开关在快照里只是读了、对了，不写回去。只有 {@link Names} 里有号名的才试。</p>
@@ -276,9 +276,11 @@ public final class ClimateSource {
      * 写了并且都受理了 → {@link Outcome#DONE}；一笔都没写出去、但读回证实车上就是快照说的这样 → {@link Outcome#DONE}；
      * 什么都没有（都是 null，或者号都不在）→ {@link Outcome#REFUSED}。</p>
      *
-     * <p>单位那一关照写的那条路走（先看车上现在设定的那个数）。快照存的是通道原值、不换算，所以一辆真的报华氏、
-     * 设定值也读得到的车，这两条规则撞上时换算会做两遍 —— 那一格是 unknown（设定值熬不熬得过一次断电，
-     * {@code CASE.md} §13.5）：契约怎么写就怎么做，撞车的后果写在这儿。</p>
+     * <p>单位那一照只用在「比」这一头（看车上现在设定的那个数）；写回去的是快照存的那个号 —— 快照存的
+     * 就是这条通道上读到的数，一辆真报华氏的车收回它自己的 68，不会被刷第二遍换算（评审那一轮定的，
+     * {@code RESTORE.md} §六；那一格原本是 unknown，现在写成了决定）。
+     * The unit rule decides the compare only; the write replays the snapshot's own number — a Fahrenheit car
+     * gets its 68 back, not a re-converted 154.4 ({@code RESTORE.md} §6).</p>
      *
      * <p>{@link Clock} 在这里不参与等待：恢复不 dwell（契约写了 no dwell loop），传它是为了和 {@link #apply} 同一个形状。</p>
      *
