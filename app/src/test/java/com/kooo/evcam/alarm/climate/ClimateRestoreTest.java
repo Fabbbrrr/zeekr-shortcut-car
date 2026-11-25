@@ -216,14 +216,15 @@ public class ClimateRestoreTest {
      * 华氏车（45 以上那一档 —— 设定值 68 说华氏）：写回去的是那个通道自己的数 68.0，两边一样；
      * 快照存的是通道原数（读那一头不换算），所以回放也是原数对原数 —— 谁都不许多砍一刀。
      *
-     * <p>两种合理的实现（原样写回 / 存摄氏再按规矩换回去）最后落到通道上的都是 68.0；多砍或漏砍的都到
-     * 不了 68.0。这一条钉的是通道上真正出现的那个数。</p>
+     * <p>漂移（25）落在摄氏档里，所以单位那把尺在这条里并没有真的砍那一刀：写回的是通道原数，两种读法都到 68.0。
+     * 真正会撞上双砍的那一格是 {@code aGenuineFahrenheitCarGetsItsVerbatimNumberBackNotAReconvertedOne}（§6.2）。</p>
      *
      * A Fahrenheit car (setpoint 68 — above the Fahrenheit line): what its channel gets back is its own
      * number, 68.0, on both front zones. The snapshot stores the channel verbatim (no cut at read time),
-     * so the replay is number-for-number — neither side may cut twice. The two sane implementations
-     * (verbatim, or store-as-Celsius-then-convert-back) both land on 68.0 on the channel; an extra or a
-     * missing conversion does not. This pins the number that actually reaches the channel.
+     * so the replay is number-for-number — neither side may cut twice. The drift here (25) sits in the
+     * Celsius band, so this one pins the number that reaches the channel rather than the double cut; the
+     * drift that actually fires it is
+     * {@link #aGenuineFahrenheitCarGetsItsVerbatimNumberBackNotAReconvertedOne} (§6.2).
      */
     @Test
     public void aFahrenheitCarGetsBackTheNumberItsChannelHolds() {
@@ -246,6 +247,50 @@ public class ClimateRestoreTest {
                 car.calls.toString().contains("=154.4") || car.calls.toString().contains("=154.3"));
         assertFalse("读那一头先换算、写这一头不砍，就成 20.0: " + car.calls,
                 car.calls.toString().contains("=20.0"));
+    }
+
+    /**
+     * 真的报华氏的车（通道上是 68 / 73.4，单位号也是华氏）：快照照原样存，回放照原样写回 —— 车主的命令把两区
+     * 推到 73.4 / 68.0 之后，两个区域收回的是各自通道上原来的那个数（68.0 / 73.4），不是再换算一次的 154.4。
+     *
+     * <p>这一格是审查点名的那一格（{@code REVIEW-RESTORE.md} 那条 major，{@code RESTORE.md} §6.2 定下的）：
+     * 写回去的是快照存的那个通道原数，换算只在「比对照车上现在的那个数」时用来定单位。所以漂移必须落在 45 以上，
+     * 单位那把尺才真的判成华氏 —— 漂移落在摄氏档上的话，换算那一刀根本不会发生，这条测试就是空过（旧的那条就是这样躲开的）。</p>
+     *
+     * A genuine Fahrenheit car (68 / 73.4 on the channel, and the unit id agrees): the snapshot keeps the
+     * channel verbatim and the replay writes that same number back. With the command pushing the zones to
+     * 73.4 and 68.0, each zone gets its own number back — never a second cut (154.4 for 68, 164.1 for
+     * 73.4). The drift sits above 45 on purpose: below it the unit rule says "no conversion" and the double
+     * cut the review caught would never fire, which is exactly how the older cell dodged it.
+     */
+    @Test
+    public void aGenuineFahrenheitCarGetsItsVerbatimNumberBackNotAReconvertedOne() {
+        FakeCar car = car();
+        car.putFloat(TEMP, DRIVER, 68f);
+        car.putFloat(TEMP, PASSENGER, 73.4f);
+        car.putInt(TEMP_UNIT, DRIVER, UNIT_F);
+
+        ClimateSnapshot.Snapshot s = ClimateSnapshot.read(car, names());
+        assertEquals("快照存的是通道原数，不是减回去的摄氏值", Float.valueOf(68f), s.driverSetpointC);
+        assertEquals(Float.valueOf(73.4f), s.passengerSetpointC);
+
+        // 车主的命令把两区都改了：主驾 68 → 73.4，副驾 73.4 → 68.0。两边都在 45 以上或以下各占一半，
+        // 所以两边各有一个「该换算却没换算」的错法可以撞。
+        // The command moved both zones: the driver 68 → 73.4 and the passenger 73.4 → 68.0, so each side has
+        // its own "converted when it should not have been" mistake to catch.
+        car.putFloat(TEMP, DRIVER, 73.4f);
+        car.putFloat(TEMP, PASSENGER, 68f);
+
+        ClimateSource.applyRestore(car, names(), new FakeClock(), s);
+
+        assertTrue("主驾通道收回它自己的 68.0: " + car.calls,
+                car.calls.contains("writeFloat " + TEMP + "@" + DRIVER + "=68.0"));
+        assertTrue("副驾通道收回它自己的 73.4: " + car.calls,
+                car.calls.contains("writeFloat " + TEMP + "@" + PASSENGER + "=73.4"));
+        assertFalse("再换算一刀就是 154.4 / 154.3: " + car.calls,
+                car.calls.toString().contains("=154.4") || car.calls.toString().contains("=154.3"));
+        assertFalse("73.4 再换算就成 164.1: " + car.calls,
+                car.calls.toString().contains("=164.1") || car.calls.toString().contains("=164.2"));
     }
 
     /**

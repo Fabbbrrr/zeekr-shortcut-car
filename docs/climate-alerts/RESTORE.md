@@ -240,3 +240,80 @@ per the house rule.
 - **`knownCount()` on the all-known fake = 9** assumes all nine contract fields are read via
   CarAccess+Names on a fully-answering adapter. If W1 legitimately cannot resolve one id on the fake,
   the fake's `FakeNames` gains it (test-side file, W3 owns it) — not the field list.
+
+### Test pass (`wt-restore-c` @ `46402df5`) — the review's tests
+
+Run: `./gradlew :app:testDebugUnitTest --tests "*ClimateRestoreTest*" --tests "*ClimateSnapshotTest*"
+--tests "*AlertClimateAutoOffTest*" --tests "*ClimateSettingsWiringTest*" --tests "*SettingsShotsTest*"`
+(JDK 21, `sdk.dir` in `local.properties`). All entries below: **run, green**.
+
+Per class (baseline before this pass → after): `AlertClimateAutoOffTest` 29 → **37**,
+`ClimateRestoreTest` 12 → **13**, `ClimateSnapshotTest` 11 → **11** (untouched),
+`ClimateSettingsWiringTest` 11 → **12**, `SettingsShotsTest` 37 → **37** (comment only). 100 → **110**
+tests, 0 failures, 0 errors, 0 skipped. The 29 existing auto-off tests pass unchanged — their bodies are
+not touched (see the harness note below).
+
+#### `AlertClimateAutoOffTest` — the glue's zero coverage (closes the review's third major)
+
+New: a `FakeCar implements CarAccess` (records every read and write as `id@zone` strings), the new seam
+`climateAccessForTest` set by reflection, `Telemetry`'s `state`/`readings` set by reflection (the pattern
+`NotifyAtHomeTest` already uses), and `seedCarNames()` — `CarNames`' name table filled with the test's
+made-up ids, because the ecarx interface classes do not exist under Robolectric and the production
+`CLIMATE_NAMES` resolves every id through `CarNames`.
+
+- `anOnCommandReadsTheNineFieldsBeforeItWritesAndTheWriteIsTheCommands` — via `onClimateCommand` (action
+  ON): calls 0..8 are the nine snapshot reads in order, the first write is the command's 22.0 on both
+  zones, the seat write is level 2, and no put-back-shaped write (21.5, level 0) appears.
+- `anAutoOffWithTheSwitchOnPutsBackExactlyTheDriftedFields` — the off reads back 0 (DONE), then the
+  put-back writes exactly the two drifted setpoints; the whole recorded call list is compared.
+- `withThePutBackSwitchOffTheCaptureStillRunsAndNothingIsWrittenBack` — §6.3: the nine reads still
+  happen, the snapshot is stored, and the off's pass is exactly its own six calls.
+- `aDroppedChainWritesNothingBackEvenWhenItWroteTheOff` — the fake bumps `climateOffGeneration` on its
+  first write, so the cancel collides with the off itself: the off is written, the put-back is not, and
+  nothing is said.
+- `aSnapshotThatKnewNothingWritesNothingAndSaysNothing` — the fake answers only the one id the off's
+  readback needs, so the snapshot knows one field (front power, never written back). The put-back pass
+  really runs (its nine reads plus the unit read are in the list), writes nothing, ends `REFUSED`, and
+  says nothing (§6.1).
+- `aRefusedPutBackEndsNoChangeAndSaysTheNoChangeSentenceOnce` — a refused driver setpoint write ends the
+  pass `NO_CHANGE`, the passenger write still happens, and the existing no-change sentence is sent once.
+- `drivingAwayDropsTheSnapshotSoTheNextParkPutsNothingBack` — after the drive-away path the field is
+  null; re-parking and re-arming the chain on a fake that answers everything writes nothing back.
+- `aSecondOnInARowCapturesWhatTheFirstWroteAndThatIsWhatTheAutoOffPutsBack` — §6.4 pinned: the second
+  snapshot holds 22.0 and seat level 2 (what the first ON wrote), and the replay writes those back, not
+  the owner's original 21.5.
+
+Harness note: `setUp` now resets `Telemetry`'s `state`/`readings` and the injected car, because the
+sandbox is shared by the whole class and a parked car left by one test made three existing
+"car is not parked" tests fail. The existing tests' own bodies are untouched.
+
+#### `ClimateRestoreTest` — the §6.2 cell (closes the review's Fahrenheit major and its minor)
+
+- New `aGenuineFahrenheitCarGetsItsVerbatimNumberBackNotAReconvertedOne` — channels 68 / 73.4 with unit
+  F, drift to 73.4 / 68.0, so the unit rule really says Fahrenheit on the compare side; each zone gets its
+  own channel number back (68.0 / 73.4) and neither 154.4 nor 164.1 appears.
+- **Flipped asserts: none.** No existing assertion in the file depended on the conversion the verbatim
+  rule removed (`aFahrenheitCarGetsBackTheNumberItsChannelHolds` drifts to 25, i.e. the Celsius band, so
+  the old `celsiusToFahrenheit` branch never fired for it — the review's own `minor`). What the rule did
+  retire is one *claim* in that test's docstring: that "store as Celsius then convert back" was a sane
+  implementation. That sentence is corrected and points at the new cell; the asserts stand unchanged.
+
+#### `ClimateSettingsWiringTest` — the switch (§6.6)
+
+- `theRestoreSwitchStoresItsValueWithoutRefreshingAnything` — `pref_alerts_climate_restore` exists, is on
+  by default, and toggling it through `callChangeListener` stores the value in `AppConfig`. No refresh
+  claim: `climatePolicy` is still null afterwards, which is the pinned shape — the value is read live.
+
+#### `SettingsShotsTest`
+
+- Comment only: `八行` → `九行` above the nine-row `CLIMATE_ROWS` (the stale count the review caught).
+  `CLIMATE_ROWS` already contained `pref_alerts_climate_restore`; no assertion changed.
+
+#### Not done, said plainly
+
+- `ClimateSource`'s prose at the top of `applyRestore` (the Chinese paragraph around
+  `ClimateSource.java:279-281`) still describes the Fahrenheit collision as an `unknown` cell that is
+  "implemented as written", while the English paragraph above it cites §6.2. Main source was out of
+  scope for this pass; the behaviour is right and the javadoc is stale.
+- The put-back's nine binder reads on every ON are still unmeasured (the review's note). Nothing here
+  measures them — the fake is not the adapter.

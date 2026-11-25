@@ -1362,7 +1362,7 @@ public class SettingsShotsTest {
         new AppConfig(RuntimeEnvironment.getApplication()).setAlertsPaused(false);
     }
 
-    /** 车厢温度那一组的八行（开关自己不在里面）：这一组自己的开关关着时一起收起来。那一行实话不在里面 —— 它开关关着也要看得到。 */
+    /** 车厢温度那一组的九行（总开关自己不在里面）：这一组自己的开关关着时一起收起来。那一行实话不在里面 —— 它开关关着也要看得到。 */
     private static final String[] CLIMATE_ROWS = {
             "pref_alerts_climate_hot", "pref_alerts_climate_cold", "pref_alerts_climate_safety",
             "pref_alerts_climate_target", "pref_alerts_climate_seats",
