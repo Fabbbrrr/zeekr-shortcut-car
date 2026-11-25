@@ -178,7 +178,7 @@ public class StringResourceParityTest {
      * the upstream warning, the fork channel and repository, and the About developer-options entry) and
      * touched no alerts copy: 435 + 28 = 463.</p>
      */
-    private static final int PENDING_ARABIC_COUNT = 463;
+    private static final int PENDING_ARABIC_COUNT = 465;
 
     /**
      * 温度那一批占位符必须收「已经写好的数字」（{@code %1$s}），不能是 {@code %d}。

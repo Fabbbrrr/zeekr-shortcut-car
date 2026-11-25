@@ -1366,8 +1366,8 @@ public class SettingsShotsTest {
     private static final String[] CLIMATE_ROWS = {
             "pref_alerts_climate_hot", "pref_alerts_climate_cold", "pref_alerts_climate_safety",
             "pref_alerts_climate_target", "pref_alerts_climate_seats",
-            "pref_alerts_climate_seat_level", "pref_alerts_climate_minutes",
-            "pref_alerts_climate_soc_floor"};
+            "pref_alerts_climate_seat_level", "pref_alerts_climate_restore",
+            "pref_alerts_climate_minutes", "pref_alerts_climate_soc_floor"};
 
     /**
      * 车厢温度那一页：开关一直在，开着才有下面九行；总开关关着时整页都收起来（那一页也就进不去）。

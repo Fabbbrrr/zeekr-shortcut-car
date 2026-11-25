@@ -156,8 +156,8 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
     private static final String[] CLIMATE_ROWS = {
             "pref_alerts_climate_hot", "pref_alerts_climate_cold", "pref_alerts_climate_safety",
             "pref_alerts_climate_target", "pref_alerts_climate_seats",
-            "pref_alerts_climate_seat_level", "pref_alerts_climate_minutes",
-            "pref_alerts_climate_soc_floor"};
+            "pref_alerts_climate_seat_level", "pref_alerts_climate_restore",
+            "pref_alerts_climate_minutes", "pref_alerts_climate_soc_floor"};
 
     /**
      * 只显示某一个分区。
@@ -1307,6 +1307,13 @@ public class SettingsPreferenceFragment extends PreferenceFragmentCompat {
         // 高温安全提醒：35 °C 且座椅上有人、或 40 °C，安静时段也发。默认开。
         bindSwitch("pref_alerts_climate_safety", appConfig.isAlertsClimateSafety(),
                 appConfig::setAlertsClimateSafety);
+
+        // 自动关之后把改过的设置放回原样（docs/climate-alerts/RESTORE.md）：默认开；关掉它，
+        // 自动关那条路就是 4.19 的样子 —— 只管开关和座椅，别的什么都不碰。
+        // The put-back switch (docs/climate-alerts/RESTORE.md): default on; off, the auto-off is exactly
+        // what 4.19 did — power and seats, and nothing else.
+        bindSwitch("pref_alerts_climate_restore", appConfig.isAlertsClimateRestore(),
+                appConfig::setAlertsClimateRestore);
 
         // 叫车开空调时那几项：动不动座椅、座椅档位、开多久。
         // What 'ac on' does: seats, level, minutes.
